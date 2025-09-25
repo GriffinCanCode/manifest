@@ -20,10 +20,12 @@ pub mod caching;
 pub mod initialization;
 pub mod serialization;
 pub mod hot_reload;
+pub mod managers;
 
 // Re-export the main GameWorld struct and commonly used types
 pub use core::GameWorld;
 pub use caching::{CacheStatistics, QueryCacheStats, ArchetypeCacheStats};
+pub use managers::{WorldManager, SystemCoordinator, SubsystemRegistry};
 
 // Re-export for convenience
 pub use serialization::*;
@@ -43,14 +45,11 @@ pub enum WorldError {
     #[error("Resource not found: {0}")]
     ResourceNotFound(String),
     
-    #[error("Archetype error: {0}")]
-    ArchetypeError(#[from] crate::ecs::archetypes::ArchetypeError),
-    
     #[error("Hierarchy error: {0}")]
     HierarchyError(#[from] crate::ecs::hierarchy::HierarchyError),
     
     #[error("Save/load error: {0}")]
-    SaveError(#[from] crate::ecs::saves::SaveError),
+    SaveError(#[from] crate::ecs::persistence::SaveError),
     
     #[error("Cache error: {0}")]
     CacheError(String),

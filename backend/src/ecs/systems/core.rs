@@ -14,22 +14,20 @@ use crate::ecs::{components::*, resources::*, EcsScheduler, hierarchy::{sync_hie
 #[instrument(name = "time_system", skip_all)]
 pub fn time_system(
     mut game_time: ResMut<GameTime>,
-    simulation_state: Option<Res<SimulationState>>
+    simulation_state: Option<Res<SimulationState>>,
+    mut last_time: Local<Option<std::time::Instant>>,
 ) {
     let start_time = std::time::Instant::now();
     
-    // Calculate real delta time
-    static mut LAST_TIME: Option<std::time::Instant> = None;
-    let delta_time = unsafe {
-        if let Some(last) = LAST_TIME {
-            let delta = start_time.duration_since(last).as_secs_f32();
-            LAST_TIME = Some(start_time);
-            // Cap delta time to prevent large jumps (e.g., when debugging or alt-tabbing)
-            delta.min(1.0 / 30.0) // Maximum 30 FPS minimum for stability
-        } else {
-            LAST_TIME = Some(start_time);
-            1.0 / 60.0 // Default delta for first frame
-        }
+    // Calculate real delta time using safe Local parameter
+    let delta_time = if let Some(last) = *last_time {
+        let delta = start_time.duration_since(last).as_secs_f32();
+        *last_time = Some(start_time);
+        // Cap delta time to prevent large jumps (e.g., when debugging or alt-tabbing)
+        delta.min(1.0 / 30.0) // Maximum 30 FPS minimum for stability
+    } else {
+        *last_time = Some(start_time);
+        1.0 / 60.0 // Default delta for first frame
     };
     
     // Use default simulation if not available (for backward compatibility)

@@ -96,4 +96,46 @@ impl GameWorld {
         
         empty_positions
     }
+
+    /// Find entities with multiple components in range (replaces custom archetype queries)
+    pub fn entities_in_range_with_components_2<T1: Component, T2: Component>(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
+        let spatial_entities = self.entities_in_range(center, radius);
+        let mut query = self.world.query_filtered::<Entity, (With<T1>, With<T2>)>();
+        let entities_with_components: std::collections::HashSet<Entity> = 
+            query.iter(&self.world).collect();
+        
+        spatial_entities.into_iter()
+            .filter(|e| entities_with_components.contains(e))
+            .collect()
+    }
+
+    /// Find entities with three components in range
+    pub fn entities_in_range_with_components_3<T1: Component, T2: Component, T3: Component>(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
+        let spatial_entities = self.entities_in_range(center, radius);
+        let mut query = self.world.query_filtered::<Entity, (With<T1>, With<T2>, With<T3>)>();
+        let entities_with_components: std::collections::HashSet<Entity> = 
+            query.iter(&self.world).collect();
+        
+        spatial_entities.into_iter()
+            .filter(|e| entities_with_components.contains(e))
+            .collect()
+    }
+
+    /// Find units (entities with Position, Movement, Health) in range - replaces archetype system
+    pub fn units_in_range(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
+        use crate::ecs::components::{Position, Movement, Health};
+        self.entities_in_range_with_components_3::<Position, Movement, Health>(center, radius)
+    }
+
+    /// Find living entities (entities with Position, Health) in range
+    pub fn living_entities_in_range(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
+        use crate::ecs::components::{Position, Health};
+        self.entities_in_range_with_components_2::<Position, Health>(center, radius)
+    }
+
+    /// Find movable entities (entities with Position, Movement) in range
+    pub fn movable_entities_in_range(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
+        use crate::ecs::components::{Position, Movement};
+        self.entities_in_range_with_components_2::<Position, Movement>(center, radius)
+    }
 }

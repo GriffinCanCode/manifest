@@ -239,6 +239,46 @@ impl TileModifierManager {
         self.stats.compute_derived();
     }
 
+    /// Update modifier statistics from pre-collected data (avoids borrow conflicts)
+    pub fn update_stats_from_data(&mut self, tile_data: &[(bevy_ecs::entity::Entity, usize, usize, Vec<ModifierInstance>)]) {
+        self.stats = ModifierStats::new();
+        
+        let mut max_modifiers_on_tile = 0;
+        let mut total_memory = 0;
+        
+        for (_entity, memory_size, modifier_count, instances) in tile_data {
+            self.stats.total_modified_tiles += 1;
+            max_modifiers_on_tile = max_modifiers_on_tile.max(*modifier_count);
+            total_memory += memory_size;
+            
+            for instance in instances {
+                self.stats.total_modifier_instances += 1;
+                
+                let counter = self.stats.by_source.entry(instance.source).or_insert(0);
+                *counter += 1;
+                
+                let type_counter = self.stats.by_type.entry(instance.modifier_type).or_insert(0);
+                *type_counter += 1;
+                
+                if instance.duration.is_some() {
+                    self.stats.temporary_modifiers += 1;
+                } else {
+                    self.stats.permanent_modifiers += 1;
+                }
+            }
+        }
+        
+        self.stats.max_modifiers_on_tile = max_modifiers_on_tile;
+        self.stats.memory_usage_bytes = total_memory;
+        self.stats.cache_hit_rate = if self.cache_hits + self.cache_misses > 0 {
+            self.cache_hits as f32 / (self.cache_hits + self.cache_misses) as f32
+        } else {
+            0.0
+        };
+        
+        self.stats.compute_derived();
+    }
+
     /// Get current modifier statistics
     pub fn stats(&self) -> &ModifierStats {
         &self.stats
@@ -361,7 +401,7 @@ impl TileModifierManager {
     }
     
     /// Validate cache consistency (for debugging)
-    pub fn validate_cache_consistency(&self, world: &World) -> Result<(), Vec<String>> {
+    pub fn validate_cache_consistency(&self, world: &mut World) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
         
         // Check that all cached entries correspond to actual tiles with modifiers
@@ -432,6 +472,37 @@ impl TileModifierManager {
         
         issues
     }
+
+    /// Validate modifier data integrity from pre-collected data (avoids borrow conflicts)
+    pub fn validate_integrity_from_data(&self, tile_data: &[(bevy_ecs::entity::Entity, Vec<ModifierInstance>)]) -> Vec<String> {
+        let mut issues = Vec::new();
+        
+        for (entity, instances) in tile_data {
+            // Check for duplicate modifiers
+            let mut seen = std::collections::HashSet::new();
+            for instance in instances {
+                let key = (instance.modifier_type, instance.source, instance.source_id);
+                if !seen.insert(key) {
+                    issues.push(format!(
+                        "Duplicate modifier {:?} from {:?} on tile entity {:?}",
+                        instance.modifier_type, instance.source, entity
+                    ));
+                }
+            }
+            
+            // Check for invalid strength values
+            for instance in instances {
+                if instance.strength == 0 || instance.strength > super::bitfields::MAX_MODIFIER_STACKS {
+                    issues.push(format!(
+                        "Invalid modifier strength {} on tile entity {:?}",
+                        instance.strength, entity
+                    ));
+                }
+            }
+        }
+        
+        issues
+    }
 }
 
 impl Default for TileModifierManager {
@@ -471,9 +542,14 @@ pub fn process_modifiers_system(
     
     // Update statistics periodically (every 10 turns to avoid overhead)
     if current_turn % 10 == 0 {
+        // Collect the data needed for stats update from the current query
+        let tile_data: Vec<_> = query.iter().map(|(entity, tile_modifiers)| {
+            (entity, tile_modifiers.memory_size(), tile_modifiers.modifier_count(), tile_modifiers.instances.clone())
+        }).collect();
+        
         commands.add(move |world: &mut bevy_ecs::world::World| {
             if let Some(mut manager) = world.get_resource_mut::<TileModifierManager>() {
-                manager.update_stats(world);
+                manager.update_stats_from_data(&tile_data);
             }
         });
     }
@@ -491,9 +567,14 @@ pub fn update_modifier_stats_system(
         return;
     }
     
+    // Collect the data needed for stats update
+    let tile_data: Vec<_> = query.iter().map(|tile_modifiers| {
+        (bevy_ecs::entity::Entity::PLACEHOLDER, tile_modifiers.memory_size(), tile_modifiers.modifier_count(), tile_modifiers.instances.clone())
+    }).collect();
+    
     commands.add(move |world: &mut bevy_ecs::world::World| {
         if let Some(mut manager) = world.get_resource_mut::<TileModifierManager>() {
-            manager.update_stats(world);
+            manager.update_stats_from_data(&tile_data);
             
             let stats = manager.stats();
             debug!("Modifier stats updated: {} tiles, {} instances, {:.1}% cache hit rate", 
@@ -516,9 +597,14 @@ pub fn validate_modifier_integrity_system(
         return;
     }
     
+    // Collect the data needed for integrity validation
+    let validation_data: Vec<_> = query.iter().map(|(entity, tile_modifiers)| {
+        (*entity, tile_modifiers.instances.clone())
+    }).collect();
+    
     commands.add(move |world: &mut bevy_ecs::world::World| {
         if let Some(manager) = world.get_resource::<TileModifierManager>() {
-            let issues = manager.validate_integrity(world);
+            let issues = manager.validate_integrity_from_data(&validation_data);
             if !issues.is_empty() {
                 warn!("Modifier integrity issues found on turn {}:", world.get_resource::<crate::core::game_state::CoreGameState>().map(|s| s.turn).unwrap_or(0));
                 for issue in issues {

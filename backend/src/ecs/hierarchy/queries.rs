@@ -303,15 +303,19 @@ impl HierarchyQueries {
     }
 
     /// Count entities that exist in components but not in graph
-    fn count_orphaned_entities(&self, world: &mut World) -> usize {
+    fn count_orphaned_entities(&self, world: &World) -> usize {
         let mut orphaned_count = 0;
         
         // Get all entities that have hierarchical components
-        let mut hierarchical_query = world.query_filtered::<Entity, With<Hierarchical>>();
-        let hierarchical_entities: FastHashSet<Entity> = hierarchical_query.iter(world).collect();
+        let hierarchical_entities: FastHashSet<Entity> = world
+            .query_filtered::<Entity, With<Hierarchical>>()
+            .iter(world)
+            .collect();
         
-        let mut relationships_query = world.query_filtered::<Entity, With<Relationships>>();
-        let relationships_entities: FastHashSet<Entity> = relationships_query.iter(world).collect();
+        let relationships_entities: FastHashSet<Entity> = world
+            .query_filtered::<Entity, With<Relationships>>()
+            .iter(world)
+            .collect();
         
         // Combine both sets of entities that should be in the graph
         let mut component_entities = hierarchical_entities;

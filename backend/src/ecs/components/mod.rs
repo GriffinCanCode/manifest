@@ -33,7 +33,7 @@ pub use interpolation::{
 // Re-export entity creation utilities
 pub use entities::{
     EntityFactory, EntityQueries, MovableEntityBundle, LivingEntityBundle,
-    TileBundle, UnitBundle
+    TileBundle, ImprovementBundle, ResourceBundle, UnitBundle
 };
 
 // Convenient type aliases

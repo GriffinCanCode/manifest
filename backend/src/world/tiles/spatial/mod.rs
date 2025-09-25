@@ -152,7 +152,11 @@ impl TileSpatialIndex {
         use crate::core::caching::{CacheKey, CachePriority};
         
         // Create cache key for this specific query
-        let cache_key = CacheKey::Spatial(format!("radius:{}:{}:{}", center.q, center.r, radius));
+        let cache_key = CacheKey::Spatial(crate::core::caching::SpatialCacheKey::entities_in_range(
+            glam::IVec2::new(center.q, center.r), 
+            radius as u32, 
+            self.world_generation()
+        ));
         
         // Try to get from cache first (synchronous check)
         let cache = Arc::clone(&self.cache);
@@ -402,7 +406,11 @@ impl TileSpatialIndex {
                         for offset_r in -2..=2 {
                             let center_q = tile_hex.q + offset_q;
                             let center_r = tile_hex.r + offset_r;
-                            let cache_key = CacheKey::Spatial(format!("radius:{}:{}:{}", center_q, center_r, radius));
+                            let cache_key = CacheKey::Spatial(crate::core::caching::SpatialCacheKey::entities_in_range(
+                                glam::IVec2::new(center_q, center_r), 
+                                radius, 
+                                0  // TODO: Get proper world generation
+                            ));
                             let _ = cache.remove(&cache_key).await;
                         }
                     }

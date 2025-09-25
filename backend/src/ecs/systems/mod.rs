@@ -17,8 +17,9 @@ pub use changes::{
 };
 
 pub use schedule::{
-    EcsScheduler, EcsTask, ResourceAccess, Access, ResourceSpecBuilder, SystemResources
+    EcsScheduler, EcsTask, ResourceAccess, ResourceSpecBuilder, SystemResources
 };
+pub use crate::core::Access;
 
 pub use core::{
     time_system, interpolation_system, selection_validation_system,

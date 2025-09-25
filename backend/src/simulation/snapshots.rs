@@ -311,17 +311,14 @@ impl SnapshotManager {
         
         // Extract component storage data (metadata only, actual data in entities)
         let mut components = Vec::new();
-        for component_id in world.components().iter() {
-            let component_info = world.components().get_info(component_id);
-            if let Some(info) = component_info {
-                let storage = ComponentStorage {
-                    type_name: info.name().to_string(),
-                    type_id: component_id.index() as u64,
-                    data: Vec::new(), // Component data will be serialized separately
-                    entity_indices: Vec::new(), // Entity indices will be populated separately
-                };
-                components.push(storage);
-            }
+        for component_info in world.components().iter() {
+            let storage = ComponentStorage {
+                type_name: component_info.name().to_string(),
+                type_id: component_info.id().index() as u64,  // Get ComponentId and then its index
+                data: Vec::new(), // Component data will be serialized separately
+                entity_indices: Vec::new(), // Entity indices will be populated separately
+            };
+            components.push(storage);
         }
         
         debug!(

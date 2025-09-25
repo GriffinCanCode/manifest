@@ -188,7 +188,7 @@ impl LuaEnvironment {
     }
 
     /// Create a new Lua VM on demand with appropriate settings
-    fn create_lua_vm(&self) -> ScriptResult<Lua> {
+    pub fn create_lua_vm(&self) -> ScriptResult<Lua> {
         let lua = if self.sandbox_enabled {
             Lua::new_with(
                 StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8,

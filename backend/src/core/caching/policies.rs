@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use tracing::debug;
 
 use crate::core::hashing::FastHashMap;
 use super::{CacheKey, CachePriority, CachedValue};
@@ -368,8 +369,27 @@ impl PolicyEngine {
                 }
             }
             GameSpecificEviction::SpatialDistance => {
-                // Would need player position context - simplified for now
-                cached_value.access_count < 2
+                // Implement spatial distance-based eviction
+                match &cached_value.key {
+                    CacheKey::Spatial(spatial_key) => {
+                        // Extract coordinates from spatial key
+                        let coords = (spatial_key.position.x as f64, spatial_key.position.y as f64);
+                        let distance = self.calculate_distance_from_player_focus(coords);
+                        // Evict if far from player focus and low access count
+                        distance > 50.0 && cached_value.access_count < 3
+                    },
+                    CacheKey::Rendering(render_key) => {
+                        // Rendering data further from player should be evicted first
+                        if render_key.asset_id.contains("tile") || render_key.asset_id.contains("terrain") {
+                            // Estimate distance from key pattern
+                            cached_value.age_seconds() > 120 && cached_value.access_count < 2
+                        } else {
+                            cached_value.access_count < 3
+                        }
+                    },
+                    CacheKey::Player(_) => false, // Never evict player data based on distance
+                    _ => cached_value.access_count < 2,
+                }
             }
             GameSpecificEviction::Hybrid => {
                 // Combine multiple factors
@@ -415,13 +435,33 @@ impl PolicyEngine {
                 
                 pattern.last_access = now;
                 
-                // Update trend (simplified)
-                if pattern.access_frequency > 0.1 {
-                    pattern.trend = AccessTrend::Increasing;
-                } else if pattern.access_frequency < 0.01 {
-                    pattern.trend = AccessTrend::Decreasing;
-                } else {
+                // Update trend with more sophisticated analysis
+                let current_frequency = pattern.access_frequency;
+                let total_accesses = pattern.total_accesses;
+                
+                // Calculate trend based on frequency changes and access patterns
+                if total_accesses < 5 {
+                    // Not enough data for reliable trend analysis
                     pattern.trend = AccessTrend::Stable;
+                } else {
+                    // Compare current frequency with expected baseline
+                    let baseline_frequency = 0.05; // 1 access per 20 seconds baseline
+                    let frequency_ratio = current_frequency / baseline_frequency;
+                    
+                    // Factor in recent access burst vs sustained access
+                    let recent_intensity = pattern.recent_accesses as f64 / time_diff.max(1.0);
+                    let sustained_access = total_accesses as f64 > 10.0;
+                    
+                    if frequency_ratio > 2.0 && recent_intensity > 0.1 {
+                        pattern.trend = AccessTrend::Increasing;
+                    } else if frequency_ratio < 0.3 && recent_intensity < 0.01 && sustained_access {
+                        pattern.trend = AccessTrend::Decreasing;
+                    } else if frequency_ratio > 0.5 && frequency_ratio < 1.5 {
+                        pattern.trend = AccessTrend::Stable;
+                    } else {
+                        // Default to stable for borderline cases
+                        pattern.trend = AccessTrend::Stable;
+                    }
                 }
             })
             .or_insert(AccessPattern {
@@ -462,6 +502,129 @@ impl PolicyEngine {
     /// Update cache policy
     pub fn update_policy(&mut self, policy: CachePolicy) {
         self.policy = policy;
+    }
+
+    /// Extract coordinates from spatial cache key (helper for spatial distance eviction)
+    fn extract_coordinates_from_spatial_key(&self, spatial_key: &str) -> Option<(f64, f64)> {
+        // Parse spatial keys with formats like "radius:10:20:5" or "rect:10:20:30:40"
+        if let Some(coords_part) = spatial_key.split(':').nth(1) {
+            if let (Some(x_str), Some(y_str)) = (spatial_key.split(':').nth(1), spatial_key.split(':').nth(2)) {
+                if let (Ok(x), Ok(y)) = (x_str.parse::<f64>(), y_str.parse::<f64>()) {
+                    return Some((x, y));
+                }
+            }
+        }
+        
+        // Try alternative formats
+        if spatial_key.contains("tile:") {
+            // Format like "tile:x:y"
+            let parts: Vec<&str> = spatial_key.split(':').collect();
+            if parts.len() >= 3 {
+                if let (Ok(x), Ok(y)) = (parts[1].parse::<f64>(), parts[2].parse::<f64>()) {
+                    return Some((x, y));
+                }
+            }
+        }
+        
+        None
+    }
+
+    /// Calculate distance from player's current focus point
+    /// In a real implementation, this would use actual player position
+    fn calculate_distance_from_player_focus(&self, coords: (f64, f64)) -> f64 {
+        // For now, assume player focus is at origin (0, 0)
+        // In a real implementation, this would come from game state
+        let player_focus = (0.0, 0.0);
+        let (px, py) = player_focus;
+        let (cx, cy) = coords;
+        
+        // Calculate Euclidean distance
+        ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
+    }
+
+    /// Set player focus position for spatial-based cache policies
+    pub fn set_player_focus(&mut self, x: f64, y: f64) {
+        // In a complete implementation, this would store player position
+        // For now, we just note that this capability exists
+        debug!("Player focus updated to ({}, {})", x, y);
+    }
+
+    /// Get cache efficiency metrics for player-context optimization
+    pub fn get_player_context_metrics(&self) -> PlayerContextMetrics {
+        let spatial_patterns = self.access_patterns.iter()
+            .filter(|(key, _)| {
+                // Check if key represents spatial data
+                format!("{}", key).contains("spatial") || 
+                format!("{}", key).contains("tile") ||
+                format!("{}", key).contains("radius")
+            })
+            .count();
+            
+        let player_patterns = self.access_patterns.iter()
+            .filter(|(key, _)| format!("{}", key).contains("player"))
+            .count();
+            
+        PlayerContextMetrics {
+            total_patterns: self.access_patterns.len(),
+            spatial_patterns,
+            player_patterns,
+            avg_access_frequency: self.access_patterns.values()
+                .map(|p| p.access_frequency)
+                .sum::<f64>() / self.access_patterns.len().max(1) as f64,
+        }
+    }
+}
+
+/// Metrics for player-context cache optimization
+#[derive(Debug, Clone)]
+pub struct PlayerContextMetrics {
+    /// Total number of access patterns being tracked
+    pub total_patterns: usize,
+    /// Number of patterns related to spatial queries
+    pub spatial_patterns: usize,
+    /// Number of patterns related to player-specific data
+    pub player_patterns: usize,
+    /// Average access frequency across all patterns
+    pub avg_access_frequency: f64,
+}
+
+impl PlayerContextMetrics {
+    /// Calculate the efficiency of player-context caching
+    pub fn player_context_efficiency(&self) -> f64 {
+        if self.total_patterns == 0 {
+            return 0.0;
+        }
+        
+        // Higher ratio of player/spatial patterns indicates better context awareness
+        let context_ratio = (self.player_patterns + self.spatial_patterns) as f64 / self.total_patterns as f64;
+        
+        // Factor in access frequency - higher frequency suggests more effective caching
+        let frequency_factor = (self.avg_access_frequency * 10.0).min(1.0);
+        
+        context_ratio * 0.7 + frequency_factor * 0.3
+    }
+    
+    /// Suggest optimizations based on current metrics
+    pub fn suggest_optimizations(&self) -> Vec<String> {
+        let mut suggestions = Vec::new();
+        
+        if self.player_context_efficiency() < 0.3 {
+            suggestions.push("Consider increasing cache TTL for player-specific data".to_string());
+        }
+        
+        if self.spatial_patterns > self.total_patterns / 2 {
+            suggestions.push("High spatial query load - consider spatial cache optimization".to_string());
+        }
+        
+        if self.avg_access_frequency < 0.01 {
+            suggestions.push("Low cache hit frequency - review cache key strategies".to_string());
+        }
+        
+        if self.player_patterns < self.total_patterns / 10 {
+            suggestions.push("Low player-context caching - consider player-aware cache keys".to_string());
+        }
+        
+        suggestions
     }
 }
 

@@ -34,7 +34,26 @@ pub struct LivingEntityBundle {
 pub struct TileBundle {
     pub position: Position,
     pub name: Name,
-    // Add other tile-specific components as needed
+    pub renderable: Renderable,
+    pub owner: Owner,
+}
+
+/// Bundle for improvements (roads, farms, mines, etc.)
+#[derive(Bundle, Debug, Clone)]
+pub struct ImprovementBundle {
+    pub position: Position,
+    pub renderable: Renderable,
+    pub name: Name,
+    pub owner: Owner,
+}
+
+/// Bundle for resources (oil, gold, stone, etc.)
+#[derive(Bundle, Debug, Clone)]
+pub struct ResourceBundle {
+    pub position: Position,
+    pub renderable: Renderable,
+    pub name: Name,
+    pub owner: Owner,
 }
 
 /// Bundle for complete game units (most common entity type)
@@ -54,17 +73,18 @@ pub struct EntityFactory;
 
 impl EntityFactory {
     /// Create a basic terrain tile with validation
+    /// Uses TileBundle for consistent archetype allocation
     pub fn create_terrain_tile(
         commands: &mut Commands,
         hex_pos: IVec2,
         terrain_type: &str,
     ) -> Result<Entity, ComponentError> {
-        let entity = commands.spawn((
-            Position::new_unchecked(hex_pos.x, hex_pos.y),
-            Renderable::new(format!("terrain_{}", terrain_type)),
-            Name::new(format!("{} Tile", terrain_type))?,
-            Owner::neutral(),
-        )).id();
+        let entity = commands.spawn(TileBundle {
+            position: Position::new_unchecked(hex_pos.x, hex_pos.y),
+            name: Name::new(format!("{} Tile", terrain_type))?,
+            renderable: Renderable::new(format!("terrain_{}", terrain_type)),
+            owner: Owner::neutral(),
+        }).id();
         Ok(entity)
     }
 
@@ -105,7 +125,8 @@ impl EntityFactory {
         Ok(entity)
     }
 
-    /// Create an improvement (roads, farms, mines, etc.) with validation
+    /// Create an improvement (roads, farms, mines, etc.) with validation  
+    /// Uses ImprovementBundle for consistent archetype allocation
     pub fn create_improvement(
         commands: &mut Commands,
         hex_pos: IVec2,
@@ -113,27 +134,28 @@ impl EntityFactory {
         player_id: u32,
         is_human: bool,
     ) -> Result<Entity, ComponentError> {
-        let entity = commands.spawn((
-            Position::new_unchecked(hex_pos.x, hex_pos.y),
-            Renderable::new(format!("improvement_{}", improvement_type)),
-            Name::new(format!("{} Improvement", improvement_type))?,
-            Owner::player(player_id, is_human)?,
-        )).id();
+        let entity = commands.spawn(ImprovementBundle {
+            position: Position::new_unchecked(hex_pos.x, hex_pos.y),
+            renderable: Renderable::new(format!("improvement_{}", improvement_type)),
+            name: Name::new(format!("{} Improvement", improvement_type))?,
+            owner: Owner::player(player_id, is_human)?,
+        }).id();
         Ok(entity)
     }
 
     /// Create a resource node (oil, gold, stone, etc.) with validation
+    /// Uses ResourceBundle for consistent archetype allocation
     pub fn create_resource(
         commands: &mut Commands,
         hex_pos: IVec2,
         resource_type: &str,
     ) -> Result<Entity, ComponentError> {
-        let entity = commands.spawn((
-            Position::new_unchecked(hex_pos.x, hex_pos.y),
-            Renderable::new(format!("resource_{}", resource_type)),
-            Name::new(format!("{} Deposit", resource_type))?,
-            Owner::neutral(),
-        )).id();
+        let entity = commands.spawn(ResourceBundle {
+            position: Position::new_unchecked(hex_pos.x, hex_pos.y),
+            renderable: Renderable::new(format!("resource_{}", resource_type)),
+            name: Name::new(format!("{} Deposit", resource_type))?,
+            owner: Owner::neutral(),
+        }).id();
         Ok(entity)
     }
 }

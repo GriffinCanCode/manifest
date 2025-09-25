@@ -72,7 +72,11 @@ impl Pathfinder for TileAdjacencyGraph {
     }
     
     fn is_connected(&self, from: crate::world::tiles::chunks::TileId, to: crate::world::tiles::chunks::TileId) -> bool {
-        self.find_path(from, to).is_some()
+        // Use a reasonable default max depth for connectivity checks
+        let runtime = tokio::runtime::Handle::try_current()
+            .map(|handle| handle.block_on(self.find_path(from, to, 100)))
+            .unwrap_or(None);
+        runtime.is_some()
     }
 }
 

@@ -386,7 +386,7 @@ impl TurnManager {
                 match current_phase {
                     HybridTurnPhase::Planning => {
                         // Planning phase: advance when all players are ready OR max planning time reached
-                        ticks_since_turn_start >= *planning_duration_ticks ||
+                        ticks_since_turn_start >= planning_duration_ticks ||
                         players.turn_order.iter().all(|&player_id| {
                             self.player_ready_states.get(&player_id)
                                 .map(|state| matches!(state, PlayerTurnState::Ready | PlayerTurnState::Inactive))
@@ -395,7 +395,7 @@ impl TurnManager {
                     },
                     HybridTurnPhase::Resolution => {
                         // Resolution phase: advance after resolution duration OR when all moves processed
-                        ticks_since_turn_start >= *resolution_duration_ticks ||
+                        ticks_since_turn_start >= resolution_duration_ticks ||
                         self.all_moves_resolved(players)
                     },
                     HybridTurnPhase::Transition => {

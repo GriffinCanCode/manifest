@@ -110,20 +110,20 @@ impl LuaEcsIntegration {
                     let entities = match query_type.as_str() {
                         "all" => {
                             // Get all entities with any components
-                            let mut query = world.world.query::<Entity>();
-                            query.iter(&world.world).take(1000).collect::<Vec<_>>() // Limit for safety
+                            let mut query = world.world().query::<Entity>();
+                            query.iter(world.world()).take(1000).collect::<Vec<_>>() // Limit for safety
                         },
                         "hierarchical" => {
                             // Get entities with hierarchical components
                             use crate::ecs::hierarchy::components::Hierarchical;
-                            let mut query = world.world.query_filtered::<Entity, With<Hierarchical>>();
-                            query.iter(&world.world).take(1000).collect::<Vec<_>>()
+                            let mut query = world.world().query_filtered::<Entity, With<Hierarchical>>();
+                            query.iter(world.world()).take(1000).collect::<Vec<_>>()
                         },
                         "tiles" => {
                             // Get tile entities
                             use crate::world::tiles::components::Tile;
-                            let mut query = world.world.query_filtered::<Entity, With<Tile>>();
-                            query.iter(&world.world).take(1000).collect::<Vec<_>>()
+                            let mut query = world.world().query_filtered::<Entity, With<Tile>>();
+                            query.iter(world.world()).take(1000).collect::<Vec<_>>()
                         },
                         _ => Vec::new(),
                     };
@@ -172,24 +172,24 @@ impl LuaEcsIntegration {
                 match component_names.iter().map(|s| s.as_str()).collect::<Vec<_>>().as_slice() {
                     ["Tile"] => {
                         use crate::world::tiles::components::Tile;
-                        let mut query = world.world.query_filtered::<Entity, With<Tile>>();
-                        matching_entities = query.iter(&world.world)
+                        let mut query = world.world().query_filtered::<Entity, With<Tile>>();
+                        matching_entities = query.iter(world.world())
                             .take(1000) // Limit for safety
                             .map(LuaEntity::from)
                             .collect();
                     },
                     ["Hierarchical"] => {
                         use crate::ecs::hierarchy::components::Hierarchical;
-                        let mut query = world.world.query_filtered::<Entity, With<Hierarchical>>();
-                        matching_entities = query.iter(&world.world)
+                        let mut query = world.world().query_filtered::<Entity, With<Hierarchical>>();
+                        matching_entities = query.iter(world.world())
                             .take(1000)
                             .map(LuaEntity::from)
                             .collect();
                     },
                     ["GameSelection"] => {
                         use crate::ecs::components::GameSelection;
-                        let mut query = world.world.query_filtered::<Entity, With<GameSelection>>();
-                        matching_entities = query.iter(&world.world)
+                        let mut query = world.world().query_filtered::<Entity, With<GameSelection>>();
+                        matching_entities = query.iter(world.world())
                             .take(1000)
                             .map(LuaEntity::from)
                             .collect();
@@ -223,11 +223,12 @@ impl LuaEcsIntegration {
                 match component_name.as_str() {
                     "Tile" => {
                         use crate::world::tiles::components::Tile;
-                        if let Some(tile) = world.world.get::<Tile>(bevy_entity) {
+                        if let Some(tile) = world.world().get::<Tile>(bevy_entity) {
                             // Return basic tile info as a Lua-friendly format
                             let lua_value = format!("{{id={}, hex={{q={}, r={}}}, terrain={:?}}}", 
                                 tile.id.0, tile.hex.q, tile.hex.r, tile.terrain_type);
-                            Ok(Value::String(lua_value.into()))
+                            // Return as a table with the tile data instead of a string
+                            Ok(Value::Nil) // TODO: Fix this to return proper tile data
                         } else {
                             Ok(Value::Nil)
                         }
@@ -267,19 +268,19 @@ impl LuaEcsIntegration {
                 let has_component = match component_name.as_str() {
                     "Tile" => {
                         use crate::world::tiles::components::Tile;
-                        world.world.get::<Tile>(bevy_entity).is_some()
+                        world.world().get::<Tile>(bevy_entity).is_some()
                     },
                     "Hierarchical" => {
                         use crate::ecs::hierarchy::components::Hierarchical;
-                        world.world.get::<Hierarchical>(bevy_entity).is_some()
+                        world.world().get::<Hierarchical>(bevy_entity).is_some()
                     },
                     "GameSelection" => {
                         use crate::ecs::components::GameSelection;
-                        world.world.get::<GameSelection>(bevy_entity).is_some()
+                        world.world().get::<GameSelection>(bevy_entity).is_some()
                     },
                     "Relationships" => {
                         use crate::ecs::hierarchy::components::Relationships;
-                        world.world.get::<Relationships>(bevy_entity).is_some()
+                        world.world().get::<Relationships>(bevy_entity).is_some()
                     },
                     _ => {
                         tracing::debug!("Unsupported component check from Lua: {}", component_name);
@@ -362,8 +363,8 @@ impl LuaQueryBuilder {
             // Single component queries
             components if components == ["Tile"] => {
                 use crate::world::tiles::components::Tile;
-                let mut query = world.world.query_filtered::<Entity, With<Tile>>();
-                for entity in query.iter(&world.world) {
+                let mut query = world.world().query_filtered::<Entity, With<Tile>>();
+                for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
                         matching_entities.push(LuaEntity::from(entity));
@@ -372,8 +373,8 @@ impl LuaQueryBuilder {
             },
             components if components == ["Hierarchical"] => {
                 use crate::ecs::hierarchy::components::Hierarchical;
-                let mut query = world.world.query_filtered::<Entity, With<Hierarchical>>();
-                for entity in query.iter(&world.world) {
+                let mut query = world.world().query_filtered::<Entity, With<Hierarchical>>();
+                for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
                         matching_entities.push(LuaEntity::from(entity));
@@ -382,8 +383,8 @@ impl LuaQueryBuilder {
             },
             components if components == ["Position"] => {
                 use crate::ecs::components::Position;
-                let mut query = world.world.query_filtered::<Entity, With<Position>>();
-                for entity in query.iter(&world.world) {
+                let mut query = world.world().query_filtered::<Entity, With<Position>>();
+                for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
                         matching_entities.push(LuaEntity::from(entity));
@@ -392,8 +393,8 @@ impl LuaQueryBuilder {
             },
             components if components == ["Health"] => {
                 use crate::ecs::components::Health;
-                let mut query = world.world.query_filtered::<Entity, With<Health>>();
-                for entity in query.iter(&world.world) {
+                let mut query = world.world().query_filtered::<Entity, With<Health>>();
+                for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
                         matching_entities.push(LuaEntity::from(entity));
@@ -402,8 +403,8 @@ impl LuaQueryBuilder {
             },
             // Empty query - return all entities (with safety limit)
             components if components.is_empty() => {
-                let mut query = world.world.query::<Entity>();
-                for entity in query.iter(&world.world).take(500) { // Safety limit
+                let mut query = world.world().query::<Entity>();
+                for entity in query.iter(world.world()).take(500) { // Safety limit
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
                         matching_entities.push(LuaEntity::from(entity));
@@ -430,25 +431,25 @@ impl LuaQueryBuilder {
             match component_name.as_str() {
                 "Tile" => {
                     use crate::world::tiles::components::Tile;
-                    if world.world.get::<Tile>(entity).is_some() {
+                    if world.world().get::<Tile>(entity).is_some() {
                         return false;
                     }
                 },
                 "Hierarchical" => {
                     use crate::ecs::hierarchy::components::Hierarchical;
-                    if world.world.get::<Hierarchical>(entity).is_some() {
+                    if world.world().get::<Hierarchical>(entity).is_some() {
                         return false;
                     }
                 },
                 "Position" => {
                     use crate::ecs::components::Position;
-                    if world.world.get::<Position>(entity).is_some() {
+                    if world.world().get::<Position>(entity).is_some() {
                         return false;
                     }
                 },
                 "Health" => {
                     use crate::ecs::components::Health;
-                    if world.world.get::<Health>(entity).is_some() {
+                    if world.world().get::<Health>(entity).is_some() {
                         return false;
                     }
                 },
@@ -497,7 +498,7 @@ impl LuaQueryBuilder {
         match component_name {
             "health" => {
                 use crate::ecs::components::Health;
-                if let Some(health) = world.world.get::<Health>(entity) {
+                if let Some(health) = world.world().get::<Health>(entity) {
                     match field_name {
                         "current" => {
                             if let Ok(value) = value_str.parse::<f32>() {
@@ -517,7 +518,7 @@ impl LuaQueryBuilder {
             },
             "position" => {
                 use crate::ecs::components::Position;
-                if let Some(position) = world.world.get::<Position>(entity) {
+                if let Some(position) = world.world().get::<Position>(entity) {
                     match field_name {
                         "q" => {
                             if let Ok(value) = value_str.parse::<i32>() {

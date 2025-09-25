@@ -283,7 +283,7 @@ impl DeterministicTimer {
 }
 
 /// Thread-safe global simulation state
-#[derive(Debug, Resource)]
+#[derive(Debug, Clone, Resource)]
 pub struct SimulationState {
     /// Deterministic timer
     pub timer: Arc<Mutex<DeterministicTimer>>,

@@ -5,11 +5,12 @@
 
 use strum::{EnumIter, EnumString, Display, IntoStaticStr};
 use serde::{Deserialize, Serialize};
+use bevy_ecs::prelude::*;
 
 use crate::world::tiles::components::TerrainType;
 
 /// Enhanced terrain type enumeration with Lua integration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Component)]
 #[derive(EnumIter, EnumString, Display, IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum EnhancedTerrainType {

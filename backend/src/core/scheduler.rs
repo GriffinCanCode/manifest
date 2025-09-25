@@ -17,10 +17,11 @@ use std::{
     },
     time::Instant,
 };
+use bevy_ecs::system::Resource as BevyResource;
 use thiserror::Error;
 
 /// Errors that can occur during scheduling and execution
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SchedulerError {
     #[error("Task failed to execute: {0}")]
     TaskFailed(String),
@@ -92,6 +93,9 @@ pub enum Stage {
     PreUpdate,
     Update,
     PostUpdate,
+    Gameplay,
+    WorldGeneration,
+    Late,
     Cleanup,
 }
 
@@ -150,6 +154,7 @@ impl TaskBatch {
 }
 
 /// Thread-safe parallel task scheduler
+#[derive(BevyResource)]
 pub struct Scheduler {
     thread_pool: ThreadPool,
     batches: Arc<RwLock<HashMap<Stage, TaskBatch>>>,
@@ -158,6 +163,17 @@ pub struct Scheduler {
     error_sender: Sender<SchedulerError>,
     error_receiver: Receiver<SchedulerError>,
     metrics: Arc<Mutex<SchedulerMetrics>>,
+}
+
+impl Debug for Scheduler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Scheduler")
+            .field("thread_count", &self.thread_pool.current_num_threads())
+            .field("active_tasks", &self.active_tasks.load(Ordering::Relaxed))
+            .field("total_tasks", &self.total_tasks.load(Ordering::Relaxed))
+            .field("batches_count", &self.batches.read().len())
+            .finish()
+    }
 }
 
 /// Performance metrics for the scheduler

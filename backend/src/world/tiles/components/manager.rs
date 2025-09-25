@@ -206,7 +206,7 @@ impl TileComponentManager {
             let hecs_world_guard = self.hecs_world.read();
             let tile_ref = hecs_world_guard.get::<&Tile>(hecs_entity)
                 .map_err(|_| TileError::ComponentNotFound)?;
-            tile_ref.clone()
+            (*tile_ref).clone()  // Dereference to get owned Tile
         };
 
         // Create corresponding entity in Bevy world

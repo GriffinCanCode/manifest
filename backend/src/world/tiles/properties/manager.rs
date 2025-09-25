@@ -270,8 +270,8 @@ impl TilePropertiesSystem {
         };
         
         // Apply modifier effects
-        let modifier_multiplier = modifiers.iter().fold(1.0, |acc, (_, &modifier)| {
-            acc * (1.0 + modifier)
+        let modifier_multiplier = modifiers.iter().fold(1.0, |acc, (_, modifier)| {
+            acc * (1.0 + *modifier)
         });
         
         base_cost * modifier_multiplier
@@ -293,7 +293,9 @@ impl TilePropertiesSystem {
         let args = (climate_data, terrain_str, elevation);
         
         // Try to call Lua function first
-        match self.script_manager.call_function::<((i8, u16, u8, u8), &str, f32), String>("determine_biome", args) {
+        let (temp, rain, hum, elev) = args.0;
+        let (terrain_str, modifier) = (args.1, args.2);
+        match self.script_manager.call_function::<(i8, u16, u8, u8, &str, f32), String>("determine_biome", (temp, rain, hum, elev, terrain_str, modifier)) {
             Ok(biome) => {
                 debug!("Lua biome determination succeeded: {} for terrain {} at elevation {}", biome, terrain_str, elevation);
                 Ok(Some(biome))

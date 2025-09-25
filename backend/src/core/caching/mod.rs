@@ -115,8 +115,19 @@ pub enum CacheKey {
     Rendering(RenderingCacheKey),
     /// Player data key (player ID, data type)
     Player(PlayerCacheKey),
+    /// Tectonic simulation key (position, influence type, world seed)
+    Tectonic(TectonicCacheKey),
     /// Custom cache key for game-specific data
     Custom(String),
+}
+
+/// Trait for types that can be used as cache keys
+pub trait CacheKeyTrait {
+    /// Get the size in bytes for memory accounting
+    fn size_bytes(&self) -> usize;
+    
+    /// Get cache priority for eviction policies
+    fn priority(&self) -> u32;
 }
 
 impl CacheKey {
@@ -129,6 +140,7 @@ impl CacheKey {
             CacheKey::AI(_) => CachePriority::Normal,
             CacheKey::Rendering(_) => CachePriority::Low,
             CacheKey::Player(_) => CachePriority::Critical,
+            CacheKey::Tectonic(_) => CachePriority::High,
             CacheKey::Custom(_) => CachePriority::Normal,
         }
     }
@@ -142,6 +154,7 @@ impl CacheKey {
             CacheKey::AI(_) => 512, // Complex decision trees
             CacheKey::Rendering(_) => 1024, // Sprite/texture data
             CacheKey::Player(_) => 64, // Player stats
+            CacheKey::Tectonic(_) => 2048, // Large tectonic simulation data
             CacheKey::Custom(_) => 128, // Conservative estimate
         }
     }
@@ -287,4 +300,45 @@ impl<T> CacheEntry<T> {
     pub fn age(&self) -> Duration {
         Instant::now() - self.created_at
     }
+}
+
+/// Tectonic cache key for tectonic simulation queries
+#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TectonicCacheKey {
+    /// Type of tectonic query
+    pub query_type: TectonicQueryType,
+    /// Primary position for tectonic influence
+    pub position: (f64, f64),
+    /// Optional radius for area queries (in km)
+    pub radius: Option<f64>,
+    /// World seed for cache invalidation
+    pub world_seed: u64,
+    /// Tectonic configuration hash for cache invalidation
+    pub config_hash: u64,
+}
+
+impl TectonicCacheKey {
+    /// Fast hash using existing game hashing infrastructure
+    pub fn fast_hash(&self) -> u64 {
+        FastHasher::hash_one(self)
+    }
+}
+
+/// Types of tectonic queries that can be cached
+#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TectonicQueryType {
+    /// Tectonic influence at specific position
+    TectonicInfluence,
+    /// Plate information at position
+    PlateInfo,
+    /// Nearby volcanic activity
+    VolcanicActivity,
+    /// Seismic hazard levels
+    SeismicHazard,
+    /// Mountain/elevation influence
+    ElevationModifiers,
+    /// Geological features in area
+    GeologicalFeatures,
+    /// Complete tectonic result for region
+    RegionalTectonics,
 }

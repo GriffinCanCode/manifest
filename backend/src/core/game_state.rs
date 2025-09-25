@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use bevy_ecs::prelude::Resource;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Resource)]
 pub struct CoreGameState {
     pub turn: u32,
     pub tick: u64,

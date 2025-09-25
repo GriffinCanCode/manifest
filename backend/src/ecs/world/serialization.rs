@@ -22,11 +22,11 @@ impl GameWorld {
         let mut state = WorldState::default();
         
         // Serialize all entities with their components
-        let mut entity_query = self.world.query::<Entity>();
-        let entities: Vec<Entity> = entity_query.iter(&self.world).collect();
+        let mut entity_query = self.world().query::<Entity>();
+        let entities: Vec<Entity> = entity_query.iter(self.world()).collect();
         
         for entity in entities {
-            if let Some(serialized_entity) = serialize_entity(&self.world, entity) {
+            if let Some(serialized_entity) = serialize_entity(self.world(), entity) {
                 state.entities.push(serialized_entity);
                 state.entity_count += 1;
             }
@@ -34,15 +34,15 @@ impl GameWorld {
         
         // Export hierarchical relationships (legacy format for compatibility)
         let hierarchical_entities: Vec<StableEntityId> = {
-            let mut hierarchical_query = self.world.query_filtered::<Entity, With<Hierarchical>>();
-            hierarchical_query.iter(&self.world)
+            let mut hierarchical_query = self.world().query_filtered::<Entity, With<Hierarchical>>();
+            hierarchical_query.iter(self.world())
                 .filter_map(|entity| StableEntityId::from_entity(entity))
                 .collect()
         };
         
         let entity_relationships: HashMap<StableEntityId, Relationships> = {
-            let mut relationships_query = self.world.query::<(Entity, &Relationships)>();
-            relationships_query.iter(&self.world)
+            let mut relationships_query = self.world().query::<(Entity, &Relationships)>();
+            relationships_query.iter(self.world())
                 .filter_map(|(entity, relationships)| {
                     StableEntityId::from_entity(entity)
                         .map(|stable_id| (stable_id, relationships.clone()))
@@ -60,7 +60,7 @@ impl GameWorld {
     /// Import world state from saved data
     pub fn import_world_state(&mut self, state: WorldState) {
         // Clear existing entities but keep resources
-        self.world.clear_entities();
+        self.world_mut().clear_entities();
         
         // Create entity mapping for relationship reconstruction
         let mut entity_mapping = HashMap::new();
@@ -69,27 +69,11 @@ impl GameWorld {
         // Restore entities
         for serialized_entity in &state.entities {
             let stable_id = serialized_entity.stable_id;
-            let entity = deserialize_entity(&mut self.world, serialized_entity);
+            let entity = deserialize_entity(self.world_mut(), serialized_entity);
             entity_mapping.insert(stable_id, entity);
             
-            // Register with archetype manager based on components
-            // This is a bit tricky since we need to determine the bundle type dynamically
-            if let Some(mut archetype_manager) = self.world.get_resource_mut::<crate::ecs::archetypes::ArchetypeManager>() {
-                if serialized_entity.position.is_some() && 
-                   serialized_entity.movement.is_some() && 
-                   serialized_entity.health.is_some() {
-                    // This is a UnitBundle entity
-                    let _ = archetype_manager.register_entity::<crate::ecs::entities::UnitBundle>(entity);
-                } else if serialized_entity.position.is_some() && 
-                         serialized_entity.health.is_some() {
-                    // This is a LivingEntityBundle entity
-                    let _ = archetype_manager.register_entity::<crate::ecs::entities::LivingEntityBundle>(entity);
-                } else if serialized_entity.position.is_some() && 
-                         serialized_entity.movement.is_some() {
-                    // This is a MovableEntityBundle entity
-                    let _ = archetype_manager.register_entity::<crate::ecs::entities::MovableEntityBundle>(entity);
-                }
-            }
+            // Archetype registration happens automatically in Bevy ECS
+            // No manual tracking needed
 
             restored_count += 1;
         }
@@ -97,8 +81,8 @@ impl GameWorld {
         // Legacy: Restore hierarchical entities (for backwards compatibility)
         for stable_id in &state.hierarchical_entities {
             if let Some(&entity) = entity_mapping.get(stable_id) {
-                if self.world.get_entity(entity).is_some() {
-                    self.world.entity_mut(entity).insert(Hierarchical);
+                if self.world().get_entity(entity).is_some() {
+                    self.world_mut().entity_mut(entity).insert(Hierarchical);
                 }
             }
         }
@@ -106,19 +90,19 @@ impl GameWorld {
         // Legacy: Restore entity relationships (for backwards compatibility)
         for (stable_id, relationships) in &state.entity_relationships {
             if let Some(&entity) = entity_mapping.get(stable_id) {
-                if self.world.get_entity(entity).is_some() {
+                if self.world().get_entity(entity).is_some() {
                     let mut updated_relationships = relationships.clone();
                     updated_relationships.remap_entities(&entity_mapping);
-                    self.world.entity_mut(entity).insert(updated_relationships);
+                    self.world_mut().entity_mut(entity).insert(updated_relationships);
                 }
             }
         }
 
         // Sync hierarchy system after import
-        if let Some(hierarchy_queries) = self.world.remove_resource::<HierarchyQueries>() {
+        if let Some(hierarchy_queries) = self.world_mut().remove_resource::<HierarchyQueries>() {
             // Manually sync the hierarchy using our direct approach
-            let mut relationships_query = self.world.query::<(Entity, &Relationships)>();
-            let updates: Vec<_> = relationships_query.iter(&self.world)
+            let mut relationships_query = self.world().query::<(Entity, &Relationships)>();
+            let updates: Vec<_> = relationships_query.iter(self.world())
                 .map(|(entity, relationships)| (entity, relationships.clone()))
                 .collect();
             
@@ -128,7 +112,7 @@ impl GameWorld {
             }
             
             // Put the resource back
-            self.world.insert_resource(hierarchy_queries);
+            self.world_mut().insert_resource(hierarchy_queries);
         }
 
         info!("Imported world state with {} entities restored ({} entities in save file)", 

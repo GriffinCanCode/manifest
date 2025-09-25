@@ -4,7 +4,7 @@
 
 use bevy_ecs::prelude::*;
 use crate::ecs::{
-    world_state::SerializedEntity,
+    persistence::world_state::SerializedEntity,
     components::{Position, Movement, Health, Renderable, Name, Owner},
     hierarchy::{StableEntityId, Relationships}
 };

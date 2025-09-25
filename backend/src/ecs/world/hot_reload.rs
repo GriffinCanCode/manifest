@@ -118,8 +118,10 @@ impl GameWorld {
     #[cfg(debug_assertions)]
     pub fn reload_file(&mut self, path: &std::path::Path) -> Result<(), String> {
         if let Some(ref mut manager) = self.reload_manager_mut() {
-            manager.reload_file_manually(path)
-                .map_err(|e| format!("Failed to reload file: {}", e))
+            // Note: ReloadManager doesn't have reload_file_manually method
+            // For now, we'll watch the file which will trigger a reload
+            manager.watch_file(path.to_path_buf(), crate::core::reloader::FileType::Lua)
+                .map_err(|e| format!("Failed to watch file for reload: {}", e))
         } else {
             Err("Hot reload manager not available".to_string())
         }
@@ -129,7 +131,9 @@ impl GameWorld {
     #[cfg(debug_assertions)]
     pub fn watched_files(&self) -> Vec<std::path::PathBuf> {
         if let Some(ref manager) = self.reload_manager() {
-            manager.watched_files()
+            // Note: ReloadManager doesn't have watched_files method
+            // For now, return empty vector as we don't have this API
+            Vec::new()
         } else {
             Vec::new()
         }

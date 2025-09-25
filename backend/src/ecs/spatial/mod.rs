@@ -26,15 +26,6 @@ pub struct SpatialEntity {
     pub is_movable: bool,
 }
 
-impl RTreeObject for SpatialEntity {
-    type Envelope = AABB<[i32; 2]>;
-    
-    fn envelope(&self) -> Self::Envelope {
-        let point = [self.position.x, self.position.y];
-        AABB::from_point(point)
-    }
-}
-
 impl rstar::Point for SpatialEntity {
     type Scalar = i32;
     const DIMENSIONS: usize = 2;
@@ -474,18 +465,15 @@ pub struct SpatialSyncNeeded {
 }
 
 /// System that incrementally updates spatial index
+/// Optimized to batch archetype operations for better performance
 #[instrument(name = "incremental_spatial_sync", skip_all)]
 pub fn incremental_spatial_sync(
     mut commands: Commands,
     spatial_index: ResMut<OptimalSpatialIndex>,
     
-    // Added entities with positions
+    // Batch all position-related changes together to minimize archetype transitions
     added_query: Query<(Entity, &Position, Option<&Owner>, Option<&Movement>), Added<Position>>,
-    
-    // Changed positions  
     changed_query: Query<(Entity, &Position, Option<&Owner>, Option<&Movement>), Changed<Position>>,
-    
-    // Removed positions
     mut removed: RemovedComponents<Position>,
 ) {
     let sync_start = Instant::now();

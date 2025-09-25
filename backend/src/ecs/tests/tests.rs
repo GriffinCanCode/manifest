@@ -153,13 +153,13 @@ mod tests {
         assert_eq!(owner.player_id(), 1);
         assert!(owner.is_human());
 
-        // Test terrain creation
-        let terrain_entity = world.spawn((
-            Position::new_unchecked(1, 1),
-            Renderable::new("terrain_forest".to_string(), 0).unwrap(),
-            Name::new("Forest Tile".to_string()).unwrap(),
-            Owner::neutral(),
-        )).id();
+        // Test terrain creation using proper Bundle for consistent archetype
+        let terrain_entity = world.spawn(TileBundle {
+            position: Position::new_unchecked(1, 1),
+            renderable: Renderable::new("terrain_forest".to_string()),
+            name: Name::new("Forest Tile".to_string()).unwrap(),
+            owner: Owner::neutral(),
+        }).id();
 
         let terrain_renderable = world.get::<Renderable>(terrain_entity).unwrap();
         assert_eq!(terrain_renderable.sprite(), "terrain_forest");

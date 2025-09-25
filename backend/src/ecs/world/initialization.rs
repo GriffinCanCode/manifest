@@ -7,8 +7,8 @@ use glam::IVec2;
 use tracing::info;
 
 use crate::ecs::{
-    components::{Name, Position, Health, Movement, Owner, MovementType},
-    entities::{TileBundle, UnitBundle},
+    components::{Name, Position, Health, Movement, Owner, MovementType, Renderable},
+    components::entities::{TileBundle, UnitBundle},
     resources::{Players}
 };
 
@@ -18,10 +18,10 @@ impl GameWorld {
     /// Initialize a new game with default entities
     pub fn initialize_game(&mut self, player_name: String, civilization: String) {
         // Clear existing world state (keep resources)
-        self.world.clear_entities();
+        self.world_mut().clear_entities();
 
         // Update player data
-        if let Some(mut players) = self.world.get_resource_mut::<Players>() {
+        if let Some(mut players) = self.world_mut().get_resource_mut::<Players>() {
             if let Some(player_data) = players.data.get_mut(&1) {
                 player_data.name = player_name;
                 player_data.civilization = civilization;
@@ -45,16 +45,17 @@ impl GameWorld {
                 if s.abs() <= 5 {
                     let hex_pos = IVec2::new(q, r);
                     
-                    // Create basic tile
+                    // Create basic tile with all required components
                     let tile_bundle = TileBundle {
-                        name: Name::new(format!("Tile ({}, {})", q, r))
-                            .expect("Valid tile name"),
                         position: Position::from_hex(hex_pos)
                             .expect("Valid tile position"),
-                        // Add other default tile components as needed
+                        name: Name::new(format!("Tile ({}, {})", q, r))
+                            .expect("Valid tile name"),
+                        renderable: Renderable::new("terrain_grass".to_string()),
+                        owner: Owner::neutral(),
                     };
                     
-                    self.spawn_entity_registered(tile_bundle);
+                    self.spawn_entity(tile_bundle);
                 }
             }
         }
@@ -79,7 +80,7 @@ impl GameWorld {
             renderable: crate::ecs::components::Renderable::new("settler".to_string()),
         };
         
-        let settler_entity = self.spawn_entity_registered(settler);
+        let settler_entity = self.spawn_entity(settler);
         
         // Create a warrior nearby
         let warrior = UnitBundle {
@@ -96,7 +97,7 @@ impl GameWorld {
             renderable: crate::ecs::components::Renderable::new("warrior".to_string()),
         };
         
-        let warrior_entity = self.spawn_entity_registered(warrior);
+        let warrior_entity = self.spawn_entity(warrior);
         
         info!("⚔️ Created starting units: Settler({:?}), Warrior({:?})", settler_entity, warrior_entity);
     }
@@ -136,7 +137,7 @@ impl GameWorld {
                                 .expect("Valid tile position"),
                         };
                     
-                    self.spawn_entity_registered(tile_bundle);
+                    self.spawn_entity(tile_bundle);
                 }
             }
         }
@@ -163,7 +164,7 @@ impl GameWorld {
                                 .expect("Valid tile position"),
                         };
                     
-                    self.spawn_entity_registered(tile_bundle);
+                    self.spawn_entity(tile_bundle);
                 }
             }
         }
@@ -189,7 +190,7 @@ impl GameWorld {
                                 .expect("Valid tile position"),
                         };
                     
-                    self.spawn_entity_registered(tile_bundle);
+                    self.spawn_entity(tile_bundle);
                 }
             }
         }
@@ -215,7 +216,7 @@ impl GameWorld {
                                 .expect("Valid tile position"),
                         };
                     
-                    self.spawn_entity_registered(tile_bundle);
+                    self.spawn_entity(tile_bundle);
                 }
             }
         }
@@ -226,11 +227,11 @@ impl GameWorld {
     /// Clear all terrain tiles
     fn clear_terrain(&mut self) {
         // Find all tile entities and despawn them
-        let mut tile_query = self.world.query_filtered::<Entity, With<Position>>();
-        let tile_entities: Vec<Entity> = tile_query.iter(&self.world).collect();
+        let mut tile_query = self.world_mut().query_filtered::<Entity, With<Position>>();
+        let tile_entities: Vec<Entity> = tile_query.iter(self.world()).collect();
         
         for entity in tile_entities {
-            self.despawn_entity_registered(entity);
+            self.despawn_entity(entity);
         }
     }
 

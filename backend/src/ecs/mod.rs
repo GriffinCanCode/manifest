@@ -2,7 +2,6 @@
 //! 
 //! This module provides the core ECS infrastructure for the Manifest game engine.
 
-pub mod archetypes;
 pub mod components;
 pub mod hierarchy;
 pub mod persistence;
@@ -18,7 +17,6 @@ pub mod tests;
 pub use bevy_ecs::prelude::*;
 
 // Re-export our custom types
-pub use archetypes::*;
 pub use components::*;
 pub use hierarchy::*;
 pub use persistence::*;

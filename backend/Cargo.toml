@@ -52,7 +52,7 @@ rmp-serde = "1.1"
 sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite"] }
 
 # Math & Geometry
-nalgebra = "0.32"
+nalgebra = { version = "0.32", features = ["serde-serialize"] }
 glam = { version = "0.25", features = ["serde"] }
 rstar = "0.11"  # R-tree spatial indexing
 ndarray = { version = "0.15", features = ["serde"] }  # Multi-dimensional arrays for chunks
@@ -82,6 +82,21 @@ console-subscriber = { version = "0.4", optional = true }
 rand = "0.8"
 rand_chacha = "0.3"
 
+# Procedural Generation & Noise
+noise = "0.8"           # Perlin, Simplex noise
+bracket-noise = "0.8"   # Game-oriented noise library
+voronator = "0.2"       # Voronoi diagrams
+fast_poisson = "0.5"    # Poisson disk sampling
+cached = "0.46"         # Proc macro for caching
+
+# Tectonic Simulation Dependencies
+delaunator = "1.0"      # Delaunay triangulation for plate generation
+geo = "0.27"            # Computational geometry for boundaries
+line_drawing = "1.0"    # Line drawing algorithms for mountain ranges
+spade = "2.8"           # Spatial data structures for rift valleys
+robust = "1.1"          # Robust geometric predicates for transform faults
+rand_distr = "0.4"      # Statistical distributions for volcanic activity
+
 # Time & Scheduling
 chrono = { version = "0.4", features = ["serde"] }
 spin_sleep = "1.2"
@@ -92,6 +107,7 @@ ordered-float = { version = "4.2", features = ["serde"] }
 
 # Compression for log rotation
 flate2 = "1.0"
+lz4_flex = "0.11"
 
 # Simulation Dependencies
 rkyv = { version = "0.8", features = ["alloc", "bytecheck"] }
@@ -119,7 +135,7 @@ blake3 = "1.5"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 # Caching (2025 high-performance libraries)
-moka = { version = "0.12", features = ["future"] }
+moka = { version = "0.12", features = ["future", "sync"] }
 dashmap = "5.5"
 quick_cache = "0.4"
 num_cpus = "1.16"
@@ -135,8 +151,16 @@ ron = "0.8"
 strum = { version = "0.25", features = ["derive"] }
 fixedbitset = { version = "0.4", features = ["serde"] }
 
+# Hydrological Systems Dependencies
+pathfinding = "4.8"      # A* pathfinding for rivers
+priority-queue = "2.0"   # Priority queues for river sources
+union-find = "0.4"       # Union-find for lake detection
+kdtree = "0.7"           # Spatial queries for wetlands
+grid2d = "1.2.0"          # 2D grids for flow accumulation (commented out - not needed for tectonics system)
+
 # Lazy static initialization
 once_cell = "1.19"
+
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

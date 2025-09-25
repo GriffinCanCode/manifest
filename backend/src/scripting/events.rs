@@ -72,6 +72,28 @@ impl<'lua> IntoLua<'lua> for LuaEventValue {
     }
 }
 
+impl LuaEventData {
+    /// Create event data from a map
+    pub fn from_map(mut data_map: HashMap<String, LuaEventValue>) -> Self {
+        let event_type = data_map.remove("event_type")
+            .and_then(|v| match v {
+                LuaEventValue::String(s) => Some(s),
+                _ => None,
+            })
+            .unwrap_or_else(|| "unknown".to_string());
+            
+        Self {
+            event_type,
+            data: data_map,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            source: None,
+        }
+    }
+}
+
 impl UserData for LuaEventData {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_type", |_, this, ()| {

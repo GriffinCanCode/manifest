@@ -32,8 +32,8 @@ impl GameWorld {
             }
             
             // Cache miss - perform query
-            let mut query = self.world.query_filtered::<Entity, With<Hierarchical>>();
-            let entities: Vec<Entity> = query.iter(&self.world).collect();
+            let mut query = self.world().query_filtered::<Entity, With<Hierarchical>>();
+            let entities: Vec<Entity> = query.iter(self.world()).collect();
             
             // Cache result asynchronously
             let cache = self.query_cache().clone();
@@ -47,14 +47,14 @@ impl GameWorld {
             entities
         } else {
             // No tokio runtime - fallback to uncached query
-            let mut query = self.world.query_filtered::<Entity, With<Hierarchical>>();
-            query.iter(&self.world).collect()
+            let mut query = self.world().query_filtered::<Entity, With<Hierarchical>>();
+            query.iter(self.world()).collect()
         }
     }
 
     /// Get hierarchy queries resource for advanced relationship operations
     pub fn hierarchy_queries(&self) -> Option<&HierarchyQueries> {
-        self.world.get_resource::<HierarchyQueries>()
+        self.world().get_resource::<HierarchyQueries>()
     }
 
     /// Find all entities with relationships
@@ -88,8 +88,8 @@ impl GameWorld {
             }
             
             // Cache miss - perform query
-            let mut query = self.world.query::<(Entity, &Relationships)>();
-            let results: Vec<(Entity, Relationships)> = query.iter(&self.world)
+            let mut query = self.world().query::<(Entity, &Relationships)>();
+            let results: Vec<(Entity, Relationships)> = query.iter(self.world())
                 .map(|(entity, rel)| (entity, rel.clone()))
                 .collect();
             
@@ -104,7 +104,7 @@ impl GameWorld {
                         let serialized = bincode::serialize(rel).unwrap_or_default();
                         crate::core::caching::ComponentData::Serialized {
                             data: serialized,
-                            type_id: TypeId::of::<Relationships>(),
+                            type_id: crate::core::hashing::TypeIdHasher::hash(TypeId::of::<Relationships>()),
                         }
                     })
                     .collect();
@@ -116,8 +116,8 @@ impl GameWorld {
             results
         } else {
             // No tokio runtime - fallback to uncached query
-            let mut query = self.world.query::<(Entity, &Relationships)>();
-            query.iter(&self.world)
+            let mut query = self.world().query::<(Entity, &Relationships)>();
+            query.iter(self.world())
                 .map(|(entity, rel)| (entity, rel.clone()))
                 .collect()
         }
@@ -170,8 +170,8 @@ impl GameWorld {
 
     /// Get the root entities (entities with no parents) in the hierarchy
     pub fn get_root_entities(&mut self) -> Vec<Entity> {
-        let mut query = self.world.query::<(Entity, &Relationships)>();
-        query.iter(&self.world)
+        let mut query = self.world().query::<(Entity, &Relationships)>();
+        query.iter(self.world())
             .filter(|(_, relationships)| relationships.parents().is_empty())
             .map(|(entity, _)| entity)
             .collect()
@@ -179,8 +179,8 @@ impl GameWorld {
 
     /// Get leaf entities (entities with no children) in the hierarchy
     pub fn get_leaf_entities(&mut self) -> Vec<Entity> {
-        let mut query = self.world.query::<(Entity, &Relationships)>();
-        query.iter(&self.world)
+        let mut query = self.world().query::<(Entity, &Relationships)>();
+        query.iter(self.world())
             .filter(|(_, relationships)| relationships.children().is_empty())
             .map(|(entity, _)| entity)
             .collect()

@@ -286,7 +286,8 @@ impl VerificationSystem {
         let mut hasher = SeaHasher::new();
         
         // Collect all entities and sort them by ID for deterministic ordering
-        let mut entities: Vec<Entity> = world.entities().iter().collect();
+        let mut query = world.query::<Entity>();
+        let mut entities: Vec<Entity> = query.iter(world).collect();
         entities.sort_by_key(|e| (e.index(), e.generation()));
         
         // Hash each entity's ID and components in sorted order

@@ -246,15 +246,15 @@ impl<'w, 's, T: Component> ChangeDetectionExt<'w, 's> for Query<'w, 's, &T, Chan
     }
 }
 
-/// Central change detection system - single source of truth for ALL component changes
-/// This system replaces all individual change detection queries across other systems
+/// Central change detection system optimized for archetype performance
+/// Batches component changes to minimize archetype fragmentation and improve query performance
 #[instrument(name = "unified_change_system", skip_all)]
 pub fn unified_change_system(
     mut commands: Commands,
     mut monitor: ResMut<ChangeMonitor>,
     game_time: Res<GameTime>,
     
-    // Comprehensive change detection queries for all major component types
+    // Batch core component changes together for better archetype locality
     added_positions: Query<(Entity, &Position), Added<Position>>,
     changed_positions: Query<(Entity, &Position, Option<&Name>), Changed<Position>>,
     added_movements: Query<(Entity, &Movement), Added<Movement>>,
@@ -268,13 +268,13 @@ pub fn unified_change_system(
     added_renderables: Query<(Entity, &Renderable), Added<Renderable>>,
     changed_renderables: Query<(Entity, &Renderable, Option<&Name>), Changed<Renderable>>,
     
-    // Interpolated component changes
+    // Separate interpolated components to avoid mixing with core components
     added_interpolated_positions: Query<(Entity, &InterpolatedPosition), Added<InterpolatedPosition>>,
     changed_interpolated_positions: Query<(Entity, &InterpolatedPosition), Changed<InterpolatedPosition>>,
     added_interpolated_health: Query<(Entity, &InterpolatedHealth), Added<InterpolatedHealth>>,
     changed_interpolated_health: Query<(Entity, &InterpolatedHealth), Changed<InterpolatedHealth>>,
     
-    // Game-specific component changes
+    // Game-specific components batched separately
     added_game_selections: Query<(Entity, &crate::ecs::components::GameSelection), Added<crate::ecs::components::GameSelection>>,
     changed_game_selections: Query<(Entity, &crate::ecs::components::GameSelection), Changed<crate::ecs::components::GameSelection>>,
     
