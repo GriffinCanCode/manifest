@@ -1,0 +1,61 @@
+{
+  "installer": {
+    "platforms": {
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "",
+        "webviewInstallMode": {
+          "type": "downloadBootstrapper",
+          "silent": true
+        },
+        "allowDowngrades": false,
+        "wix": {
+          "language": ["en-US"],
+          "template": "installer-template.wxs",
+          "fragmentPaths": ["installer-fragments"],
+          "componentGroupRefs": ["CustomComponents"],
+          "componentRefs": ["GameAssets"],
+          "featureGroupRefs": ["FullInstall"],
+          "featureRefs": ["MainApplication"],
+          "mergeRefs": ["VCRedist"]
+        }
+      },
+      "macos": {
+        "minimumSystemVersion": "10.15",
+        "signingIdentity": null,
+        "hardenedRuntime": true,
+        "entitlements": "entitlements.plist",
+        "exceptionDomain": "localhost",
+        "dmg": {
+          "appPosition": { "x": 180, "y": 170 },
+          "applicationFolderPosition": { "x": 480, "y": 170 },
+          "windowSize": { "width": 660, "height": 400 },
+          "background": "dmg-background.png"
+        }
+      },
+      "linux": {
+        "deb": {
+          "depends": ["webkit2gtk-4.0", "libgtk-3-0", "libayatana-appindicator3-1"],
+          "section": "games",
+          "priority": "optional",
+          "homepage": "https://manifest-game.com",
+          "maintainer": "Griffin <griffincancode@gmail.com>",
+          "changelog": "CHANGELOG.md"
+        },
+        "appimage": {
+          "bundleMediaFramework": false,
+          "libs": ["libwebkit2gtk-4.0-37"]
+        }
+      }
+    },
+    "compression": {
+      "level": 6,
+      "algorithm": "zstd"
+    },
+    "signing": {
+      "keychain": "manifest-codesign",
+      "timestampServer": "http://timestamp.sectigo.com"
+    }
+  }
+}

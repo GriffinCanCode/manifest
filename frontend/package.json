@@ -12,7 +12,13 @@
     "tauri": "tauri",
     "test": "vitest",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build:installers": "cd ../backend/scripts && npm run build",
+    "build:installers:dev": "cd ../backend/scripts && npm run build:dev",
+    "build:windows": "cd ../backend/scripts && npm run build:windows",
+    "build:macos": "cd ../backend/scripts && npm run build:macos",
+    "build:linux": "cd ../backend/scripts && npm run build:linux",
+    "validate:build": "cd ../backend/scripts && npm run validate"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

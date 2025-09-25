@@ -37,8 +37,8 @@
   }
 
   button {
-    @extend .btn;
-    @extend .btn-primary;
+    @extend .btn !optional;
+    @extend .btn-primary !optional;
     padding: vars.$space-3 vars.$space-6;
     font-size: 1rem;
   }

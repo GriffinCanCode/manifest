@@ -64,7 +64,7 @@ const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .game-ui {
           position: absolute;
           top: 0;

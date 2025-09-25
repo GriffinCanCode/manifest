@@ -19,7 +19,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
         <p className="loading-message">{message}</p>
       </div>
       
-      <style jsx>{`
+      <style>{`
         .loading-screen {
           position: fixed;
           top: 0;

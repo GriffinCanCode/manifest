@@ -70,5 +70,4 @@ config.local.*
 cmake-build-*/
 
 # Core dumps
-core
 core.*

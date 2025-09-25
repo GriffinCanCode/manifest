@@ -36,10 +36,10 @@
     "active": true,
     "category": "Game",
     "copyright": "Copyright © 2025 Griffin (griffincancode@gmail.com)",
-    "shortDescription": "Manifest - A game for the masses",
-    "longDescription": "Manifest is an immersive grand strategy game featuring complex civilizations, dynamic economies, and engaging warfare systems. Built using Rust, TypeScript, and modern web technologies by Griffin.",
-    "targets": ["deb", "dmg", "msi", "app"],
-    "resources": ["assets/*"],
+    "shortDescription": "Manifest",
+    "longDescription": "Manifest is a strategy game featuring civilizations, economies, and strategic warfare.",
+    "targets": ["deb", "dmg", "msi", "app", "appimage"],
+    "resources": ["assets/*", "lua-scripts/*"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -49,16 +49,37 @@
     ],
     "macOS": {
       "minimumSystemVersion": "10.15",
-      "signingIdentity": null
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "entitlements": null,
+      "exceptionDomain": "localhost",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      }
     },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": "",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "allowDowngrades": false,
+      "wix": {
+        "language": ["en-US"]
+      }
     },
     "linux": {
       "deb": {
-        "depends": ["webkit2gtk-4.0"]
+        "depends": ["webkit2gtk-4.0", "libgtk-3-0"],
+        "section": "games",
+        "priority": "optional"
+      },
+      "appimage": {
+        "bundleMediaFramework": false
       }
     }
   },

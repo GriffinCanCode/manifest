@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 // SCSS styles are imported globally in main.tsx
 
@@ -21,7 +21,7 @@ interface GameState {
 function App() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { gameState, setGameState, isLoading, setLoading } = useGameStore();
+  const { setGameState, isLoading, setLoading } = useGameStore();
 
   // Initialize the game on mount
   useEffect(() => {

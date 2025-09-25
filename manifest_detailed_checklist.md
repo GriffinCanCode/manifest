@@ -297,21 +297,21 @@ rocks = {
 - [x] Configure **@tauri-apps/plugin-fs** for file system access
 - [x] Implement custom window chrome with **@tauri-apps/plugin-window**
 - [x] Configure app permissions and CSP policies (make light in beginning to ensure no breaking)
-- [ ] Create installer configurations for each platform (lightweight)
+- [x] Create installer configurations for each platform (lightweight)
 - [ ] Implement crash reporting with **@sentry/react** (local mode)
 
 ### Backend Core Systems (Rust)
 - [ ] **ECS Architecture Setup** (Bevy ECS or Legion)
-  - [ ] Evaluate and choose **bevy_ecs** (best performance) vs **legion** (simpler API)
-  - [ ] Design components with **serde** derive macros for serialization
-  - [ ] Implement system scheduling with **rayon** parallel execution
-  - [ ] Create resources with **parking_lot::RwLock** for thread safety
-  - [ ] Build queries with **hecs** query optimization
-  - [ ] Implement archetypes with **slotmap** for entity storage
-  - [ ] Add change detection with **notify** crate
-  - [ ] Create hierarchy with **petgraph** for entity relationships
-  - [ ] Build serialization with **bincode** for saves
-  - [ ] Implement hot-reload with **hot-lib-reloader**
+  - [X] Evaluate and choose **bevy_ecs** (best performance) vs **legion** (simpler API)
+  - [X] Design components with **serde** derive macros for serialization
+  - [X] Implement system scheduling with **rayon** parallel execution
+  - [X] Create resources with **parking_lot::RwLock** for thread safety
+  - [x] Build queries with **hecs** query optimization
+  - [x] Implement archetypes with **slotmap** for entity storage
+  - [x] Add change detection with **notify** crate
+  - [x] Create hierarchy with **petgraph** for entity relationships
+  - [x] Build serialization with **bincode** for saves
+  - [x] Implement hot-reload with **hot-lib-reloader**
 
 - [ ] **Deterministic Simulation Core**
   - [ ] Implement fixed timestep with **spin_sleep** for precision

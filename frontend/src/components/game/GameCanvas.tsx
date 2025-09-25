@@ -62,7 +62,7 @@ const GameCanvas: React.FC = () => {
         </Suspense>
       </Canvas>
       
-      <style jsx>{`
+      <style>{`
         .game-canvas {
           width: 100%;
           height: 100%;

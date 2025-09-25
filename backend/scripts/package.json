@@ -1,0 +1,18 @@
+{
+  "name": "manifest-build-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsx build.ts",
+    "build:dev": "tsx build.ts --dev",
+    "build:windows": "tsx build.ts --platform windows",
+    "build:macos": "tsx build.ts --platform macos", 
+    "build:linux": "tsx build.ts --platform linux",
+    "validate": "tsx validate.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0"
+  }
+}
