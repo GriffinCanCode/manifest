@@ -1,16 +1,12 @@
-//! Edge detection with image crate algorithms for tile boundaries
-//!
-//! Provides sophisticated edge detection for tile-based systems using image
-//! processing algorithms to identify terrain boundaries, political borders,
-//! and other significant transitions between tiles.
+//! Main edge detection implementation
 
 use image::{Luma, GrayImage};
 use ndarray::Array2;
 use bevy_ecs::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use parking_lot::RwLock;
 use std::sync::Arc;
+use tracing::{debug, instrument};
 
 use crate::core::{
     zig_ffi::HexCoord,
@@ -21,178 +17,12 @@ use crate::world::tiles::{
     components::{Tile, TerrainType, TileComponentManager},
     adjacency::HexDirection
 };
-use tracing::{debug, instrument};
 
-/// Types of edges that can be detected
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum EdgeType {
-    /// Terrain boundary (forest to grassland, etc.)
-    TerrainBoundary = 0,
-    /// Elevation change (cliff, slope)
-    ElevationChange = 1,
-    /// Political border (nation, province)
-    PoliticalBorder = 2,
-    /// Cultural boundary (different cultures)
-    CulturalBoundary = 3,
-    /// Climate zone transition
-    ClimateTransition = 4,
-    /// Resource deposit edge
-    ResourceBoundary = 5,
-    /// River bank
-    Riverbank = 6,
-    /// Coastline (land to water)
-    Coastline = 7,
-}
-
-impl EdgeType {
-    /// Get all edge types
-    pub const ALL: [EdgeType; 8] = [
-        EdgeType::TerrainBoundary,
-        EdgeType::ElevationChange,
-        EdgeType::PoliticalBorder,
-        EdgeType::CulturalBoundary,
-        EdgeType::ClimateTransition,
-        EdgeType::ResourceBoundary,
-        EdgeType::Riverbank,
-        EdgeType::Coastline,
-    ];
-
-    /// Get edge strength threshold (0.0 to 1.0)
-    pub fn strength_threshold(self) -> f32 {
-        match self {
-            EdgeType::TerrainBoundary => 0.3,
-            EdgeType::ElevationChange => 0.4,
-            EdgeType::PoliticalBorder => 0.2,
-            EdgeType::CulturalBoundary => 0.25,
-            EdgeType::ClimateTransition => 0.35,
-            EdgeType::ResourceBoundary => 0.3,
-            EdgeType::Riverbank => 0.5,
-            EdgeType::Coastline => 0.6,
-        }
-    }
-}
-
-/// Detected edge between two tiles
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TileEdge {
-    /// Source tile ID
-    pub from_tile: TileId,
-    /// Target tile ID
-    pub to_tile: TileId,
-    /// Direction of edge from source
-    pub direction: HexDirection,
-    /// Type of edge detected
-    pub edge_type: EdgeType,
-    /// Strength of edge (0.0 = no edge, 1.0 = strong edge)
-    pub strength: f32,
-    /// Additional properties of the edge
-    pub properties: EdgeProperties,
-}
-
-impl TileEdge {
-    /// Create new tile edge
-    pub fn new(from_tile: TileId, to_tile: TileId, direction: HexDirection, edge_type: EdgeType, strength: f32) -> Self {
-        Self {
-            from_tile,
-            to_tile,
-            direction,
-            edge_type,
-            strength: strength.clamp(0.0, 1.0),
-            properties: EdgeProperties::default(),
-        }
-    }
-
-    /// Check if edge is significant (above threshold)
-    pub fn is_significant(&self) -> bool {
-        self.strength >= self.edge_type.strength_threshold()
-    }
-
-    /// Get edge intensity category
-    pub fn intensity(&self) -> EdgeIntensity {
-        if self.strength >= 0.8 { EdgeIntensity::VeryStrong }
-        else if self.strength >= 0.6 { EdgeIntensity::Strong }
-        else if self.strength >= 0.4 { EdgeIntensity::Moderate }
-        else if self.strength >= 0.2 { EdgeIntensity::Weak }
-        else { EdgeIntensity::VeryWeak }
-    }
-}
-
-/// Edge intensity categories
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EdgeIntensity {
-    VeryWeak,
-    Weak,
-    Moderate,
-    Strong,
-    VeryStrong,
-}
-
-/// Additional properties for edges
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct EdgeProperties {
-    /// Whether edge blocks movement
-    pub blocks_movement: bool,
-    /// Movement cost multiplier
-    pub movement_cost_modifier: f32,
-    /// Visual representation data
-    pub visual_style: EdgeVisualStyle,
-    /// Custom metadata
-    pub metadata: HashMap<String, String>,
-}
-
-/// Visual styling for edge rendering
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EdgeVisualStyle {
-    /// Line width for rendering
-    pub line_width: f32,
-    /// Color components (RGBA)
-    pub color: [f32; 4],
-    /// Whether edge should be dashed
-    pub dashed: bool,
-    /// Animation speed (if animated)
-    pub animation_speed: f32,
-}
-
-impl Default for EdgeVisualStyle {
-    fn default() -> Self {
-        Self {
-            line_width: 1.0,
-            color: [1.0, 1.0, 1.0, 1.0], // White
-            dashed: false,
-            animation_speed: 0.0,
-        }
-    }
-}
-
-/// Edge detection algorithms and parameters
-#[derive(Debug, Clone)]
-pub struct EdgeDetectionConfig {
-    /// Sobel operator kernels for edge detection
-    pub sobel_threshold: f32,
-    /// Canny edge detection parameters
-    pub canny_low_threshold: f32,
-    pub canny_high_threshold: f32,
-    /// Gaussian blur parameters for noise reduction
-    pub gaussian_blur_sigma: f32,
-    /// Minimum edge length to consider significant
-    pub min_edge_length: u32,
-    /// Maximum gap size to bridge in edge linking
-    pub max_gap_size: u32,
-}
-
-impl Default for EdgeDetectionConfig {
-    fn default() -> Self {
-        Self {
-            sobel_threshold: 0.1,
-            canny_low_threshold: 0.05,
-            canny_high_threshold: 0.15,
-            gaussian_blur_sigma: 0.8,
-            min_edge_length: 3,
-            max_gap_size: 2,
-        }
-    }
-}
+use super::{
+    types::{EdgeType, TileEdge},
+    config::EdgeDetectionConfig,
+    stats::{EdgeDetectionStats, EdgeDetectionError}
+};
 
 /// High-performance edge detection system using image processing algorithms
 #[derive(Debug, Resource)]
@@ -728,78 +558,5 @@ impl Default for TileEdgeDetector {
         let tile_manager = Arc::new(TileComponentManager::new());
         let chunk_manager = Arc::new(ChunkManager::default());
         Self::new(tile_manager, chunk_manager)
-    }
-}
-
-/// Statistics for edge detection monitoring
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct EdgeDetectionStats {
-    pub total_edges: usize,
-    pub significant_edges: usize,
-    pub chunks_processed: usize,
-    pub edges_by_type: HashMap<EdgeType, usize>,
-}
-
-/// Edge detection errors
-#[derive(Debug, thiserror::Error)]
-pub enum EdgeDetectionError {
-    #[error("Chunk data not available: {chunk:?}")]
-    ChunkDataUnavailable { chunk: ChunkCoord },
-    
-    #[error("Image processing error: {message}")]
-    ImageProcessingError { message: String },
-    
-    #[error("Invalid tile data")]
-    InvalidTileData,
-    
-    #[error("Cache error: {message}")]
-    CacheError { message: String },
-}
-
-/// System for updating edge detection when tiles change
-pub fn update_edges_system(
-    edge_detector: Res<TileEdgeDetector>,
-    // Would include change detection queries
-) {
-    // Monitor tile changes and update edge detection for affected chunks
-    // Implementation would depend on change tracking system
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_edge_type_properties() {
-        assert!(EdgeType::TerrainBoundary.strength_threshold() > 0.0);
-        assert!(EdgeType::Coastline.strength_threshold() > EdgeType::PoliticalBorder.strength_threshold());
-    }
-
-    #[test]
-    fn test_tile_edge_creation() {
-        let edge = TileEdge::new(1, 2, HexDirection::East, EdgeType::TerrainBoundary, 0.5);
-        
-        assert_eq!(edge.from_tile, 1);
-        assert_eq!(edge.to_tile, 2);
-        assert_eq!(edge.direction, HexDirection::East);
-        assert_eq!(edge.edge_type, EdgeType::TerrainBoundary);
-        assert_eq!(edge.strength, 0.5);
-        assert!(edge.is_significant());
-    }
-
-    #[test]
-    fn test_edge_intensity() {
-        let weak_edge = TileEdge::new(1, 2, HexDirection::East, EdgeType::TerrainBoundary, 0.1);
-        let strong_edge = TileEdge::new(1, 2, HexDirection::East, EdgeType::TerrainBoundary, 0.9);
-        
-        assert_eq!(weak_edge.intensity(), EdgeIntensity::VeryWeak);
-        assert_eq!(strong_edge.intensity(), EdgeIntensity::VeryStrong);
-    }
-
-    #[test]
-    fn test_edge_detection_config() {
-        let config = EdgeDetectionConfig::default();
-        assert!(config.sobel_threshold > 0.0);
-        assert!(config.canny_high_threshold > config.canny_low_threshold);
     }
 }

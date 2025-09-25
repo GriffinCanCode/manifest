@@ -4,7 +4,7 @@
 //! cleaning up orphaned relationships, and performance monitoring.
 
 use bevy_ecs::prelude::*;
-use tracing::warn;
+use tracing::{warn, info, debug};
 
 use super::{
     manager::TileHierarchy,

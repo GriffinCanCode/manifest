@@ -1,12 +1,9 @@
-//! Adjacency graph system with indexmap for efficient tile neighbor management
+//! Core TileAdjacencyGraph implementation
 //!
-//! Provides high-performance adjacency relationships between tiles using indexmap
-//! for deterministic ordering and fast lookups, integrated with the hashing
-//! infrastructure and SIMD optimizations where applicable.
+//! Contains the main adjacency graph structure and its methods.
 
 use indexmap::{IndexMap, IndexSet};
 use bevy_ecs::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -23,135 +20,10 @@ use crate::world::tiles::{
 };
 use tracing::{debug, instrument, warn};
 
-/// Direction of adjacency in hex grid (6 neighbors)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum HexDirection {
-    East = 0,
-    Northeast = 1,
-    Northwest = 2,
-    West = 3,
-    Southwest = 4,
-    Southeast = 5,
-}
-
-impl HexDirection {
-    /// Get all six hex directions
-    pub const ALL: [HexDirection; 6] = [
-        HexDirection::East,
-        HexDirection::Northeast,
-        HexDirection::Northwest,
-        HexDirection::West,
-        HexDirection::Southwest,
-        HexDirection::Southeast,
-    ];
-
-    /// Get opposite direction
-    pub fn opposite(self) -> HexDirection {
-        match self {
-            HexDirection::East => HexDirection::West,
-            HexDirection::Northeast => HexDirection::Southwest,
-            HexDirection::Northwest => HexDirection::Southeast,
-            HexDirection::West => HexDirection::East,
-            HexDirection::Southwest => HexDirection::Northeast,
-            HexDirection::Southeast => HexDirection::Northwest,
-        }
-    }
-
-    /// Get hex offset for this direction
-    pub fn offset(self) -> HexCoord {
-        match self {
-            HexDirection::East => HexCoord { q: 1, r: 0 },
-            HexDirection::Northeast => HexCoord { q: 1, r: -1 },
-            HexDirection::Northwest => HexCoord { q: 0, r: -1 },
-            HexDirection::West => HexCoord { q: -1, r: 0 },
-            HexDirection::Southwest => HexCoord { q: -1, r: 1 },
-            HexDirection::Southeast => HexCoord { q: 0, r: 1 },
-        }
-    }
-
-    /// Get direction from one hex to adjacent hex
-    pub fn from_hex_to_hex(from: HexCoord, to: HexCoord) -> Option<HexDirection> {
-        let diff = HexCoord { q: to.q - from.q, r: to.r - from.r };
-        
-        for direction in Self::ALL {
-            if direction.offset().q == diff.q && direction.offset().r == diff.r {
-                return Some(direction);
-            }
-        }
-        
-        None // Not adjacent
-    }
-}
-
-/// Adjacency relationship between two tiles
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TileAdjacency {
-    /// Source tile ID
-    pub from_tile: TileId,
-    /// Target tile ID  
-    pub to_tile: TileId,
-    /// Direction from source to target
-    pub direction: HexDirection,
-    /// Connection strength (0.0 = blocked, 1.0 = open)
-    pub connection_strength: f32,
-    /// Movement cost modifier for this connection
-    pub movement_cost_modifier: f32,
-    /// Whether this connection is bidirectional
-    pub bidirectional: bool,
-}
-
-impl TileAdjacency {
-    /// Create new adjacency relationship
-    pub fn new(from_tile: TileId, to_tile: TileId, direction: HexDirection) -> Self {
-        Self {
-            from_tile,
-            to_tile,
-            direction,
-            connection_strength: 1.0,
-            movement_cost_modifier: 1.0,
-            bidirectional: true,
-        }
-    }
-
-    /// Create adjacency with custom properties
-    pub fn with_properties(from_tile: TileId, to_tile: TileId, direction: HexDirection, 
-                          strength: f32, cost_modifier: f32, bidirectional: bool) -> Self {
-        Self {
-            from_tile,
-            to_tile,
-            direction,
-            connection_strength: strength.clamp(0.0, 1.0),
-            movement_cost_modifier: cost_modifier.max(0.0),
-            bidirectional,
-        }
-    }
-
-    /// Check if connection is passable
-    pub fn is_passable(&self) -> bool {
-        self.connection_strength > 0.0
-    }
-
-    /// Get effective movement cost for this connection
-    pub fn effective_movement_cost(&self, base_cost: f32) -> f32 {
-        if !self.is_passable() {
-            return f32::INFINITY;
-        }
-        base_cost * self.movement_cost_modifier / self.connection_strength
-    }
-
-    /// Create reverse adjacency (for bidirectional connections)
-    pub fn reverse(&self) -> Self {
-        Self {
-            from_tile: self.to_tile,
-            to_tile: self.from_tile,
-            direction: self.direction.opposite(),
-            connection_strength: self.connection_strength,
-            movement_cost_modifier: self.movement_cost_modifier,
-            bidirectional: self.bidirectional,
-        }
-    }
-}
+use super::{
+    types::{HexDirection, TileAdjacency},
+    stats::{AdjacencyStats, AdjacencyError, AdjacencyResult}
+};
 
 /// High-performance adjacency graph using indexmap for deterministic ordering
 #[derive(Debug, Resource)]
@@ -319,7 +191,7 @@ impl TileAdjacencyGraph {
 
     /// Build adjacency graph from spatial data (batch operation)
     #[instrument(skip(self, tiles))]
-    pub async fn build_from_tiles(&self, tiles: &[(TileId, HexCoord)]) -> Result<(), AdjacencyError> {
+    pub async fn build_from_tiles(&self, tiles: &[(TileId, HexCoord)]) -> AdjacencyResult<()> {
         debug!("Building adjacency graph from {} tiles", tiles.len());
         
         // Clear existing adjacencies
@@ -375,17 +247,10 @@ impl TileAdjacencyGraph {
             
             for (direction, adjacency) in directions.iter_mut() {
                 // Look up terrain type for the adjacent tile
-                let adjacent_terrain = if let Some(adjacent_id) = adjacency.tile {
-                    self.get_terrain_type(adjacent_id).unwrap_or(TerrainType::Plains)
-                } else {
-                    continue; // Skip if no adjacent tile
-                };
+                let adjacent_terrain = self.get_terrain_type(adjacency.to_tile).unwrap_or(TerrainType::Plains);
                 
-                // Calculate terrain-aware weights based on movement rules
-                let terrain_modifier = self.calculate_terrain_modifier(current_terrain, adjacent_terrain, *direction);
-                adjacency.weight = adjacency.base_weight * terrain_modifier;
                 // Apply terrain-based modifications
-                // adjacency.connection_strength *= terrain_modifier(from_terrain, to_terrain);
+                adjacency.connection_strength *= terrain_modifier(current_terrain, adjacent_terrain);
             }
         }
         
@@ -528,7 +393,7 @@ impl TileAdjacencyGraph {
     }
 
     /// Validate adjacency graph consistency
-    pub fn validate(&self) -> Result<(), AdjacencyError> {
+    pub fn validate(&self) -> AdjacencyResult<()> {
         let adjacencies = self.adjacencies.read();
         let reverse = self.reverse_adjacencies.read();
         
@@ -563,6 +428,13 @@ impl TileAdjacencyGraph {
         let mut gen = self.generation.write();
         *gen += 1;
     }
+
+    /// Get terrain type for a tile (placeholder - should integrate with ECS)
+    fn get_terrain_type(&self, _tile_id: TileId) -> Option<TerrainType> {
+        // This is a placeholder - should integrate with the ECS system
+        // to look up terrain components
+        Some(TerrainType::Plains)
+    }
 }
 
 impl Default for TileAdjacencyGraph {
@@ -572,78 +444,9 @@ impl Default for TileAdjacencyGraph {
     }
 }
 
-/// Statistics for adjacency graph performance monitoring
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdjacencyStats {
-    pub total_tiles: usize,
-    pub total_adjacencies: usize,
-    pub passable_adjacencies: usize,
-    pub avg_neighbors_per_tile: f32,
-    pub reverse_lookup_size: usize,
-}
-
-/// Errors that can occur in adjacency operations
-#[derive(Debug, thiserror::Error)]
-pub enum AdjacencyError {
-    #[error("Inconsistent reverse lookup: tile {from} -> {to}")]
-    InconsistentReverseLookup { from: TileId, to: TileId },
-    
-    #[error("Missing bidirectional adjacency: tile {from} -> {to} in direction {direction:?}")]
-    MissingBidirectionalAdjacency { from: TileId, to: TileId, direction: HexDirection },
-    
-    #[error("Invalid tile ID: {tile_id}")]
-    InvalidTileId { tile_id: TileId },
-    
-    #[error("Pathfinding failed: no path from {from} to {to}")]
-    PathfindingFailed { from: TileId, to: TileId },
-}
-
-/// System for maintaining adjacency graph consistency
-pub fn maintain_adjacency_system(
-    adjacency_graph: Res<TileAdjacencyGraph>,
-) {
-    // Validate adjacency graph periodically
-    if let Err(e) = adjacency_graph.validate() {
-        warn!("Adjacency graph validation failed: {}", e);
-    }
-}
-
-/// System for updating adjacency based on tile changes
-pub fn update_adjacency_system(
-    adjacency_graph: Res<TileAdjacencyGraph>,
-    // This would include queries for changed tiles
-) {
-    // Monitor tile changes and update adjacencies accordingly
-    // Implementation would depend on change detection system
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_hex_direction() {
-        assert_eq!(HexDirection::East.opposite(), HexDirection::West);
-        assert_eq!(HexDirection::Northeast.opposite(), HexDirection::Southwest);
-        
-        let east_offset = HexDirection::East.offset();
-        assert_eq!(east_offset.q, 1);
-        assert_eq!(east_offset.r, 0);
-    }
-
-    #[test]
-    fn test_tile_adjacency() {
-        let adj = TileAdjacency::new(1, 2, HexDirection::East);
-        assert_eq!(adj.from_tile, 1);
-        assert_eq!(adj.to_tile, 2);
-        assert_eq!(adj.direction, HexDirection::East);
-        assert!(adj.is_passable());
-        
-        let reverse = adj.reverse();
-        assert_eq!(reverse.from_tile, 2);
-        assert_eq!(reverse.to_tile, 1);
-        assert_eq!(reverse.direction, HexDirection::West);
-    }
 
     #[tokio::test]
     async fn test_adjacency_graph() {

@@ -67,7 +67,7 @@ mod integration_tests {
         spatial_index.add_tile(tile_id, hex, TerrainType::Grassland, chunk_coord);
         
         // Test spatial queries
-        let nearby_tiles = spatial_index.tiles_in_radius(hex, 5.0).await;
+        let nearby_tiles = spatial_index.tiles_in_radius(hex, 5.0);
         assert!(nearby_tiles.contains(&tile_id));
         
         // Test adjacency system
