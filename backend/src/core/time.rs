@@ -18,6 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::{debug, warn};
+use crate::core::zig_ffi::{det_add_f32, det_mul_f32, det_div_f32, det_sqrt_f32};
 
 /// Deterministic float type for cross-platform consistency
 pub type DeterministicFloat = OrderedFloat<f32>;
@@ -33,6 +34,55 @@ pub fn det_f32(value: f32) -> DeterministicFloat {
 /// Create a deterministic double value  
 pub fn det_f64(value: f64) -> DeterministicDouble {
     OrderedFloat(value)
+}
+
+/// Deterministic floating point operations using Zig SIMD optimizations
+pub mod det_math {
+    use super::*;
+    
+    /// Deterministic addition using Zig optimizations
+    pub fn add(a: f32, b: f32) -> f32 {
+        det_add_f32(a, b)
+    }
+    
+    /// Deterministic multiplication using Zig optimizations
+    pub fn mul(a: f32, b: f32) -> f32 {
+        det_mul_f32(a, b)
+    }
+    
+    /// Deterministic division using Zig optimizations
+    pub fn div(a: f32, b: f32) -> f32 {
+        det_div_f32(a, b)
+    }
+    
+    /// Deterministic square root using Zig optimizations
+    pub fn sqrt(a: f32) -> f32 {
+        det_sqrt_f32(a)
+    }
+    
+    /// Deterministic linear interpolation
+    pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
+        add(mul(a, sub(1.0, t)), mul(b, t))
+    }
+    
+    /// Deterministic subtraction
+    pub fn sub(a: f32, b: f32) -> f32 {
+        add(a, -b)
+    }
+    
+    /// Deterministic distance calculation
+    pub fn distance(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+        let dx = sub(x2, x1);
+        let dy = sub(y2, y1);
+        sqrt(add(mul(dx, dx), mul(dy, dy)))
+    }
+    
+    /// Deterministic clamp operation  
+    pub fn clamp(value: f32, min_val: f32, max_val: f32) -> f32 {
+        if value < min_val { min_val }
+        else if value > max_val { max_val }
+        else { value }
+    }
 }
 
 /// Global deterministic RNG state

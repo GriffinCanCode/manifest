@@ -261,19 +261,15 @@ pub fn camera_system(
     game_logging::log_performance_event("camera_system", duration_ms, 1);
 }
 
-/// Hex coordinate to pixel coordinate conversion
+/// Hex coordinate to pixel coordinate conversion using Zig SIMD optimizations
 /// Uses flat-topped hexagon layout with size = 1.0
 fn hex_to_pixel(hex: glam::IVec2) -> glam::Vec2 {
+    use crate::core::zig_ffi::{hex_to_pixel as zig_hex_to_pixel, HexCoord};
+    
     const SIZE: f32 = 1.0;
-    const SQRT_3: f32 = 1.732050807568877;
-    
-    let q = hex.x as f32;
-    let r = hex.y as f32;
-    
-    glam::Vec2::new(
-        SIZE * (SQRT_3 * q + SQRT_3 / 2.0 * r),
-        SIZE * (3.0 / 2.0 * r),
-    )
+    let coord = HexCoord::new(hex.x, hex.y);
+    let pixel = zig_hex_to_pixel(coord, SIZE);
+    glam::Vec2::new(pixel.x, pixel.y)
 }
 
 /// System set definitions for organizing system execution order

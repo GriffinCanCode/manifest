@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use crate::core::{hashing::{FastHashMap, collections}, logging::{LoggingSystem, game_logging}};
 use crate::core::caching::{GameCache, CacheKey, SpatialCacheKey, SpatialQueryResult, CachePriority};
+use crate::core::zig_ffi::{hex_distance as zig_hex_distance, HexCoord};
 use crate::ecs::components::{Position, Owner, Movement};
 
 /// Spatial entity wrapper for R-tree insertion
@@ -281,10 +282,10 @@ impl OptimalSpatialIndex {
     // === PRIVATE IMPLEMENTATION ===
     
     fn hex_distance(&self, a: IVec2, b: IVec2) -> u32 {
-        let dx = (a.x - b.x).abs() as u32;
-        let dy = (a.y - b.y).abs() as u32;
-        let dz = ((a.x + a.y) - (b.x + b.y)).abs() as u32;
-        (dx + dy + dz) / 2
+        // Convert to hex coordinates and use Zig SIMD-optimized distance calculation
+        let hex_a = HexCoord::new(a.x, a.y);
+        let hex_b = HexCoord::new(b.x, b.y);
+        zig_hex_distance(hex_a, hex_b)
     }
     
     fn range_cache_key(&self, center: IVec2, radius: u32, player_id: Option<u32>) -> u64 {

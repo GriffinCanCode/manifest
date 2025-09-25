@@ -59,3 +59,34 @@ export fn manifest_hex_to_pixel(q: i32, r: i32, size: f32, x: *f32, y: *f32) voi
     x.* = pos.x;
     y.* = pos.y;
 }
+
+export fn manifest_hex_from_pixel(x: f32, y: f32, size: f32, q: *i32, r: *i32) void {
+    const coord = hex.fromPixel(x, y, size);
+    q.* = coord.q;
+    r.* = coord.r;
+}
+
+export fn manifest_hex_get_neighbors(q: i32, r: i32, neighbors: *[6]hex.HexCoord) void {
+    const coord = hex.HexCoord.init(q, r);
+    const result = hex.getNeighbors(coord);
+    neighbors.* = result;
+}
+
+export fn manifest_hex_get_neighbor(q: i32, r: i32, direction: u8, out_q: *i32, out_r: *i32) void {
+    const coord = hex.HexCoord.init(q, r);
+    const neighbor = hex.getNeighbor(coord, @intCast(direction));
+    out_q.* = neighbor.q;
+    out_r.* = neighbor.r;
+}
+
+export fn manifest_hex_batch_to_pixel(coords: [*]const hex.HexCoord, size: f32, pixels: [*]hex.PixelPos, count: usize) void {
+    const coord_slice = coords[0..count];
+    const pixel_slice = pixels[0..count];
+    hex.batchToPixel(coord_slice, size, pixel_slice);
+}
+
+export fn manifest_hex_round_to_hex(q_f: f32, r_f: f32, q: *i32, r: *i32) void {
+    const coord = hex.roundToHex(q_f, r_f);
+    q.* = coord.q;
+    r.* = coord.r;
+}

@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tracing::{info, debug, warn, error, instrument};
 use std::fmt;
 use nalgebra::{Point2, Point3};
+use crate::core::zig_ffi::{hex_distance as zig_hex_distance, hex_to_pixel as zig_hex_to_pixel, HexCoord, PixelPos};
 
 use crate::core::{
     logging::{LoggingSystem, game_logging},
@@ -118,12 +119,11 @@ impl Position {
         Ok(())
     }
 
-    /// Calculate distance to another position
+    /// Calculate distance to another position using Zig SIMD optimizations
     pub fn distance_to(&self, other: &Position) -> u32 {
-        let dx = (self.hex.x - other.hex.x).abs() as u32;
-        let dy = (self.hex.y - other.hex.y).abs() as u32;
-        let dz = (self.hex.x + self.hex.y - other.hex.x - other.hex.y).abs() as u32;
-        (dx + dy + dz) / 2
+        let a = HexCoord::new(self.hex.x, self.hex.y);
+        let b = HexCoord::new(other.hex.x, other.hex.y);
+        zig_hex_distance(a, b)
     }
 }
 
@@ -863,19 +863,13 @@ impl fmt::Display for Name {
     }
 }
 
-/// Hex coordinate to pixel coordinate conversion
+/// Hex coordinate to pixel coordinate conversion using Zig SIMD optimizations
 /// Uses flat-topped hexagon layout with size = 1.0
 fn hex_to_pixel(hex: IVec2) -> Vec2 {
     const SIZE: f32 = 1.0;
-    const SQRT_3: f32 = 1.732050807568877;
-    
-    let q = hex.x as f32;
-    let r = hex.y as f32;
-    
-    Vec2::new(
-        SIZE * (SQRT_3 * q + SQRT_3 / 2.0 * r),
-        SIZE * (3.0 / 2.0 * r),
-    )
+    let coord = HexCoord::new(hex.x, hex.y);
+    let pixel = zig_hex_to_pixel(coord, SIZE);
+    Vec2::new(pixel.x, pixel.y)
 }
 
 // Interpolated component implementations for smooth rendering

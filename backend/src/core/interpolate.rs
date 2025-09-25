@@ -8,6 +8,7 @@ use nalgebra::{
     UnitQuaternion, Isometry2, Isometry3
 };
 use crate::core::time::DeterministicFloat;
+use crate::core::zig_ffi::{simd_add_4, simd_mul_4, simd_dot_4, Vec4};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -103,13 +104,8 @@ impl Color {
 
 impl Interpolate for Color {
     fn interpolate(&self, other: &Self, t: InterpolationFactor) -> Self {
-        let t = t.into_inner();
-        Self {
-            r: self.r.lerp(other.r, t),
-            g: self.g.lerp(other.g, t),
-            b: self.b.lerp(other.b, t),
-            a: self.a.lerp(other.a, t),
-        }
+        // Use SIMD for faster color interpolation
+        simd_lerp_color(*self, *other, t.into_inner())
     }
 }
 
@@ -130,6 +126,53 @@ impl LerpExt for f32 {
         self + t * (other - self)
     }
 }
+
+/// SIMD-optimized interpolation functions
+pub mod simd_interp {
+    use super::*;
+    
+    /// SIMD-optimized color interpolation
+    pub fn simd_lerp_color(a: Color, b: Color, t: f32) -> Color {
+        let vec_a = Vec4::new(a.r, a.g, a.b, a.a);
+        let vec_b = Vec4::new(b.r, b.g, b.b, b.a);
+        let vec_t = Vec4::new(t, t, t, t);
+        let one_minus_t = Vec4::new(1.0 - t, 1.0 - t, 1.0 - t, 1.0 - t);
+        
+        // SIMD: result = a * (1 - t) + b * t
+        let a_scaled = simd_mul_4(vec_a, one_minus_t);
+        let b_scaled = simd_mul_4(vec_b, vec_t);
+        let result = simd_add_4(a_scaled, b_scaled);
+        
+        Color::new(result.x, result.y, result.z, result.w)
+    }
+    
+    /// SIMD-optimized 4-element vector interpolation
+    pub fn simd_lerp_vec4(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+        let vec_a = Vec4::new(a[0], a[1], a[2], a[3]);
+        let vec_b = Vec4::new(b[0], b[1], b[2], b[3]);
+        let vec_t = Vec4::new(t, t, t, t);
+        let one_minus_t = Vec4::new(1.0 - t, 1.0 - t, 1.0 - t, 1.0 - t);
+        
+        let a_scaled = simd_mul_4(vec_a, one_minus_t);
+        let b_scaled = simd_mul_4(vec_b, vec_t);
+        let result = simd_add_4(a_scaled, b_scaled);
+        
+        [result.x, result.y, result.z, result.w]
+    }
+    
+    /// SIMD-optimized distance calculation for 4D vectors
+    pub fn simd_distance_4d(a: [f32; 4], b: [f32; 4]) -> f32 {
+        let vec_a = Vec4::new(a[0], a[1], a[2], a[3]);
+        let vec_b = Vec4::new(b[0], b[1], b[2], b[3]);
+        let diff = simd_add_4(vec_a, Vec4::new(-b[0], -b[1], -b[2], -b[3]));
+        
+        // Dot product gives us squared distance
+        simd_dot_4(diff, diff).sqrt()
+    }
+}
+
+// Re-export SIMD functions for easy access
+pub use simd_interp::*;
 
 /// Interpolated property that tracks previous and current values
 #[derive(Debug, Clone, Serialize, Deserialize)]
