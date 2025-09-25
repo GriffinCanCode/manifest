@@ -1,0 +1,23 @@
+// ==========================================================================
+// Main SCSS Entry Point
+// ==========================================================================
+// This file imports all SCSS modules using the modern @use syntax
+// Following SCSS best practices for 2025
+
+// Base styles (foundation)
+@use 'base/reset';
+@use 'base/variables';
+
+// Utilities (mixins, functions, utility classes)
+@use 'utilities/mixins';
+@use 'utilities/animations';
+@use 'utilities/utility-classes';
+
+// Components (reusable UI components)
+@use 'components/buttons';
+@use 'components/forms';
+@use 'components/error-screen';
+
+// Layouts (page-level structures)
+@use 'layouts/app';
+@use 'layouts/game';

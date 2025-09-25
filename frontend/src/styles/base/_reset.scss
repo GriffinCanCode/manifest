@@ -1,0 +1,55 @@
+// ==========================================================================
+// CSS Reset and Base Styles
+// ==========================================================================
+
+@use 'variables' as vars;
+
+// Import fonts
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+// CSS Reset
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: vars.$font-family;
+  font-weight: vars.$font-weight-normal;
+  line-height: 1.5;
+  color: vars.$text-primary;
+  background: vars.$bg-primary;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+// Scrollbar styling
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: vars.$bg-secondary;
+  border-radius: vars.$radius-md;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: vars.$radius-md;
+  border: 2px solid vars.$bg-secondary;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}

@@ -1,0 +1,26 @@
+// ==========================================================================
+// Button Components
+// ==========================================================================
+
+@use '../utilities/mixins' as mix;
+
+// Focus styles for interactive elements
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  @include mix.focus-visible;
+}
+
+// Base button class
+.btn {
+  @include mix.btn-base;
+}
+
+.btn-primary {
+  @include mix.btn-primary;
+}
+
+.btn-secondary {
+  @include mix.btn-secondary;
+}

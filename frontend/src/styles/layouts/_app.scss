@@ -1,0 +1,34 @@
+// ==========================================================================
+// App Layout
+// ==========================================================================
+
+@use '../base/variables' as vars;
+@use '../utilities/mixins' as mix;
+
+// Main App Layout
+.app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  background: vars.$bg-primary;
+
+  // Performance optimizations
+  * {
+    will-change: auto;
+  }
+
+  @include mix.media-down(lg) {
+    font-size: 14px;
+  }
+}
+
+.game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  @include mix.gpu-acceleration;
+  @include mix.no-select;
+}

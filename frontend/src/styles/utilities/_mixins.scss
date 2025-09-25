@@ -1,0 +1,160 @@
+// ==========================================================================
+// Mixins
+// ==========================================================================
+
+@use '../base/variables' as vars;
+
+// Glass morphism effects
+@mixin glass($opacity: 0.05, $blur: 10px, $border-opacity: 0.1) {
+  background: rgba(255, 255, 255, $opacity);
+  backdrop-filter: blur($blur);
+  -webkit-backdrop-filter: blur($blur);
+  border: 1px solid rgba(255, 255, 255, $border-opacity);
+}
+
+@mixin glass-strong {
+  @include glass(0.1, 20px, 0.2);
+}
+
+// Flexbox utilities
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+// User select utility
+@mixin no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+// Focus styles
+@mixin focus-visible {
+  &:focus-visible {
+    outline: 2px solid vars.$color-primary;
+    outline-offset: 2px;
+  }
+}
+
+// Animation mixins
+@mixin fade-in($duration: 0.5s) {
+  animation: fadeIn $duration ease-out;
+}
+
+// Button mixins
+@mixin btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: vars.$space-2;
+  padding: vars.$space-2 vars.$space-4;
+  font-weight: vars.$font-weight-medium;
+  border-radius: vars.$radius-md;
+  border: none;
+  cursor: pointer;
+  transition: all vars.$transition-base;
+  text-decoration: none;
+  font-size: 0.875rem;
+  line-height: 1.25;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@mixin btn-primary {
+  @include btn-base;
+  background: linear-gradient(135deg, vars.$color-primary, vars.$color-secondary);
+  color: white;
+  box-shadow: vars.$shadow-md;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: vars.$shadow-lg, vars.$shadow-glow;
+  }
+}
+
+@mixin btn-secondary {
+  @include btn-base;
+  background: vars.$bg-secondary;
+  color: vars.$text-primary;
+  border: 1px solid vars.$border-primary;
+
+  &:hover:not(:disabled) {
+    background: vars.$bg-tertiary;
+    border-color: vars.$border-accent;
+  }
+}
+
+// Input mixins
+@mixin input-base {
+  width: 100%;
+  padding: vars.$space-3 vars.$space-4;
+  background: vars.$bg-secondary;
+  border: 1px solid vars.$border-primary;
+  border-radius: vars.$radius-md;
+  color: vars.$text-primary;
+  font-size: 0.875rem;
+  transition: all vars.$transition-base;
+
+  &:focus {
+    outline: none;
+    border-color: vars.$color-primary;
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+  }
+
+  &::placeholder {
+    color: vars.$text-disabled;
+  }
+}
+
+// Performance optimization mixins
+@mixin gpu-acceleration {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+// Media query mixins
+@mixin media-up($breakpoint) {
+  @if $breakpoint == sm {
+    @media (min-width: vars.$breakpoint-sm) { @content; }
+  } @else if $breakpoint == md {
+    @media (min-width: vars.$breakpoint-md) { @content; }
+  } @else if $breakpoint == lg {
+    @media (min-width: vars.$breakpoint-lg) { @content; }
+  } @else if $breakpoint == xl {
+    @media (min-width: vars.$breakpoint-xl) { @content; }
+  } @else if $breakpoint == xxl {
+    @media (min-width: vars.$breakpoint-xxl) { @content; }
+  }
+}
+
+@mixin media-down($breakpoint) {
+  @if $breakpoint == sm {
+    @media (max-width: #{vars.$breakpoint-sm - 1px}) { @content; }
+  } @else if $breakpoint == md {
+    @media (max-width: #{vars.$breakpoint-md - 1px}) { @content; }
+  } @else if $breakpoint == lg {
+    @media (max-width: #{vars.$breakpoint-lg - 1px}) { @content; }
+  } @else if $breakpoint == xl {
+    @media (max-width: #{vars.$breakpoint-xl - 1px}) { @content; }
+  } @else if $breakpoint == xxl {
+    @media (max-width: #{vars.$breakpoint-xxl - 1px}) { @content; }
+  }
+}

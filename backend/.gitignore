@@ -1,0 +1,74 @@
+# Backend .gitignore (Rust/Tauri/Zig/Lua)
+
+# Rust/Cargo
+/target/
+**/*.rs.bk
+*.pdb
+
+# Keep Cargo.lock for applications (recommended for Tauri apps)
+# Cargo.lock
+
+# Tauri specific
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
+
+# Auto-generated files
+gen/
+*.generated.*
+
+# Build outputs
+/dist/
+/build/
+*.exe
+*.app
+*.dmg
+*.deb
+*.rpm
+*.msi
+
+# Zig specific
+zig-cache/
+zig-out/
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# Lua specific
+*.luac
+luac.out
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Profiling
+*.prof
+perf.data*
+
+# Test outputs
+test-results/
+test-output/
+
+# Local configuration
+local.toml
+config.local.*
+
+# Generated schemas (if they should be ignored)
+# Uncomment if these are auto-generated and shouldn't be committed
+# gen/schemas/
+
+# Rust analyzer
+.rust-analyzer/
+
+# CLion
+cmake-build-*/
+
+# Core dumps
+core
+core.*

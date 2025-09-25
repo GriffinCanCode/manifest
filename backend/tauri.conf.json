@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "Manifest",
+  "version": "0.1.0",
+  "identifier": "com.griffincancode.manifest",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Manifest",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1200,
+        "minHeight": 800,
+        "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "center": true,
+        "fullscreen": false,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "dragDropEnabled": false,
+        "shadow": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws://localhost:*; media-src 'self' data:;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "category": "Game",
+    "copyright": "Copyright © 2025 Griffin (griffincancode@gmail.com)",
+    "shortDescription": "Manifest - A game for the masses",
+    "longDescription": "Manifest is an immersive grand strategy game featuring complex civilizations, dynamic economies, and engaging warfare systems. Built using Rust, TypeScript, and modern web technologies by Griffin.",
+    "targets": ["deb", "dmg", "msi", "app"],
+    "resources": ["assets/*"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "linux": {
+      "deb": {
+        "depends": ["webkit2gtk-4.0"]
+      }
+    }
+  },
+  "plugins": {
+    "fs": {
+      "scope": ["$APPDATA/*", "$APPDATA/saves/*"]
+    },
+    "dialog": {
+      "open": true,
+      "save": true
+    },
+    "window-state": {
+      "filename": "window-state.json"
+    },
+    "updater": {
+      "active": false
+    }
+  }
+}

@@ -291,15 +291,13 @@ rocks = {
 ## Phase 1: Core Engine Foundation
 
 ### Tauri Application Setup
-- [ ] Initialize Tauri 2.0 project with Rust backend and TypeScript frontend
-- [ ] Configure **Vite** with **@vitejs/plugin-react-swc** for fast HMR
-- [ ] Set up **@tauri-apps/api** for type-safe IPC communication
-- [ ] Configure **@tauri-apps/plugin-fs** for file system access
-- [ ] Implement custom window chrome with **@tauri-apps/plugin-window**
-- [ ] Set up auto-updater with **@tauri-apps/plugin-updater**
-- [ ] Configure app permissions and CSP policies
-- [ ] Create installer configurations for each platform
-- [ ] Set up code signing certificates for distribution
+- [x] Initialize Tauri 2.0 project with Rust backend and TypeScript frontend
+- [x] Configure **Vite** with **@vitejs/plugin-react-swc** for fast HMR
+- [x] Set up **@tauri-apps/api** for type-safe IPC communication
+- [x] Configure **@tauri-apps/plugin-fs** for file system access
+- [x] Implement custom window chrome with **@tauri-apps/plugin-window**
+- [x] Configure app permissions and CSP policies (make light in beginning to ensure no breaking)
+- [ ] Create installer configurations for each platform (lightweight)
 - [ ] Implement crash reporting with **@sentry/react** (local mode)
 
 ### Backend Core Systems (Rust)
