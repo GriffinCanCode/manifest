@@ -6,21 +6,25 @@
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::core::hashing::{collections, FastHashMap};
+use crate::core::{
+    hashing::{collections, FastHashMap},
+    control::{TimeController, PlaybackMode},
+    interpolate::{InterpolationFactor, lerp_factor}
+};
 
-/// Core timing and turn management
-#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
+/// Core timing and turn management with time control integration
+#[derive(Resource, Debug)]
 pub struct GameTime {
     /// Current turn number (1-based)
     pub turn: u32,
-    /// Current tick within the turn (for animations/interpolation)
+    /// Current tick within the turn (for game logic)
     pub tick: u64,
-    /// Time since last turn in seconds
+    /// Time since last tick in seconds
     pub delta_time: f32,
-    /// Game speed multiplier
-    pub speed: f32,
-    /// Whether the game is paused
-    pub paused: bool,
+    /// Interpolation factor for smooth rendering (0.0 = previous tick, 1.0 = current tick)
+    pub interpolation_factor: InterpolationFactor,
+    /// Time controller for advanced playback control
+    pub controller: TimeController,
 }
 
 impl Default for GameTime {
@@ -29,30 +33,92 @@ impl Default for GameTime {
             turn: 1,
             tick: 0,
             delta_time: 0.0,
-            speed: 1.0,
-            paused: false,
+            interpolation_factor: lerp_factor(0.0),
+            controller: TimeController::new(),
         }
     }
 }
 
 impl GameTime {
+    /// Create new game time with custom controller
+    pub fn with_controller(controller: TimeController) -> Self {
+        Self {
+            turn: 1,
+            tick: 0,
+            delta_time: 0.0,
+            interpolation_factor: lerp_factor(0.0),
+            controller,
+        }
+    }
+
     /// Advance to next turn
     pub fn advance_turn(&mut self) {
         self.turn += 1;
         self.tick = 0;
     }
 
-    /// Update tick and delta time
-    pub fn update(&mut self, delta_time: f32) {
-        if !self.paused {
-            self.delta_time = delta_time * self.speed;
+    /// Update with time controller integration
+    pub fn update(&mut self, real_delta_time: f32, simulation: &crate::core::SimulationState) {
+        // Update time controller and get effective delta
+        self.delta_time = self.controller.update().into_inner();
+        
+        // Only advance if controller allows it
+        if self.controller.should_advance(simulation) {
             self.tick += 1;
         }
     }
 
-    /// Toggle pause state
-    pub fn toggle_pause(&mut self) {
-        self.paused = !self.paused;
+    /// Update interpolation factor for smooth rendering
+    pub fn update_interpolation(&mut self, time_since_last_tick: f32, tick_duration: f32) {
+        if tick_duration > 0.0 {
+            let factor = (time_since_last_tick / tick_duration).clamp(0.0, 1.0);
+            self.interpolation_factor = lerp_factor(factor);
+        }
+    }
+
+    /// Get current playback mode
+    pub fn playback_mode(&self) -> PlaybackMode {
+        self.controller.mode()
+    }
+
+    /// Get playback speed multiplier
+    pub fn speed(&self) -> f32 {
+        self.controller.speed()
+    }
+
+    /// Check if game is paused
+    pub fn is_paused(&self) -> bool {
+        matches!(self.controller.mode(), PlaybackMode::Paused)
+    }
+
+    /// Play the game
+    pub fn play(&self) -> Result<(), crate::core::control::ControlError> {
+        self.controller.play()
+    }
+
+    /// Pause the game
+    pub fn pause(&self) -> Result<(), crate::core::control::ControlError> {
+        self.controller.pause()
+    }
+
+    /// Toggle play/pause
+    pub fn toggle(&self) -> Result<PlaybackMode, crate::core::control::ControlError> {
+        self.controller.toggle()
+    }
+
+    /// Step one tick and pause
+    pub fn step(&self) -> Result<(), crate::core::control::ControlError> {
+        self.controller.step()
+    }
+
+    /// Set playback speed
+    pub fn set_speed(&self, speed: f32) -> Result<(), crate::core::control::ControlError> {
+        self.controller.set_speed(speed)
+    }
+
+    /// Get interpolation factor for rendering
+    pub fn interpolation_factor(&self) -> InterpolationFactor {
+        self.interpolation_factor
     }
 }
 

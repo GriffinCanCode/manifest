@@ -63,9 +63,21 @@ rand_chacha = "0.3"
 
 # Time & Scheduling
 chrono = { version = "0.4", features = ["serde"] }
+spin_sleep = "1.2"
+spin_sleep_util = "0.1"
+
+# Deterministic Float Operations
+ordered-float = { version = "4.2", features = ["serde"] }
 
 # Compression for log rotation
 flate2 = "1.0"
+
+# Simulation Dependencies
+rkyv = { version = "0.8", features = ["alloc", "bytecheck"] }
+speedy = { version = "0.8", features = ["chrono"] }
+seahash = "4.1"
+instant = "0.1"
+zstd = "0.13"
 
 # Parallel Processing
 rayon = "1.8"
@@ -109,3 +121,5 @@ bench = []
 performance-logging = []
 console-debug = ["console-subscriber"]
 dev-logging = ["performance-logging", "console-debug"]
+no_zig = []
+speedy = []

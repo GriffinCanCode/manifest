@@ -301,7 +301,7 @@ rocks = {
 - [ ] Implement crash reporting with **@sentry/react** (local mode)
 
 ### Backend Core Systems (Rust)
-- [ ] **ECS Architecture Setup** (Bevy ECS or Legion)
+- [X] **ECS Architecture Setup** (Bevy ECS or Legion)
   - [X] Evaluate and choose **bevy_ecs** (best performance) vs **legion** (simpler API)
   - [X] Design components with **serde** derive macros for serialization
   - [X] Implement system scheduling with **rayon** parallel execution
@@ -313,17 +313,17 @@ rocks = {
   - [x] Build serialization with **bincode** for saves
   - [x] Implement hot-reload with **hot-lib-reloader**
 
-- [ ] **Deterministic Simulation Core**
-  - [ ] Implement fixed timestep with **spin_sleep** for precision
-  - [ ] Create deterministic RNG with **rand_chacha::ChaCha8Rng**
-  - [ ] Build float determinism with **ordered-float** (USE ZIG for SIMD)
-  - [ ] Implement command queue with **crossbeam::channel**
-  - [ ] Create snapshots with **rkyv** (zero-copy serialization)
-  - [ ] Build replay system with **speedy** serialization
-  - [ ] Add verification with **seahash** for checksums
-  - [ ] Implement tick sync with **tokio::time::interval**
-  - [ ] Create time control with **instant** crate
-  - [ ] Build interpolation with **nalgebra::interpolation**
+- [X] **Deterministic Simulation Core**
+  - [x] Implement fixed timestep with **spin_sleep** for precision
+  - [x] Create deterministic RNG with **rand_chacha::ChaCha8Rng**
+  - [x] Build float determinism with **ordered-float** (USE ZIG for SIMD)
+  - [x] Implement command queue with **crossbeam::channel**
+  - [x] Create snapshots with **rkyv** (zero-copy serialization)
+  - [x] Build replay system with **speedy** serialization
+  - [x] Add verification with **seahash** for checksums
+  - [x] Implement tick sync with **tokio::time::interval**
+  - [x] Create time control with **instant** crate
+  - [x] Build interpolation with **nalgebra::interpolation**
 
 ### Hex Grid System (Rust + Zig optimization)
 - [ ] **Core Hex Mathematics** (IMPLEMENT IN ZIG with zmath)

@@ -10,7 +10,7 @@ use std::time::Instant;
 use tracing::{info, warn, error, debug};
 use slotmap::Key;
 
-use crate::core::{Stage, SchedulerMetrics, reloader::*, logging::{LoggingSystem, LoggingConfig, game_logging}, caching::{GameCache, GameCacheBuilder, CacheKey, QueryCacheKey, QueryResult, CachePriority}};
+use crate::core::{Stage, SchedulerMetrics, reloader::*, logging::{LoggingSystem, LoggingConfig, game_logging}, caching::{GameCache, GameCacheBuilder, CacheKey, QueryCacheKey, QueryResult, CachePriority, broadcast_cache_invalidation, CacheInvalidationEvent}};
 use crate::ecs::{resources::*, systems::*, changes::*, spatial::*, components::{Name, Position}, EcsScheduler, archetypes::{ArchetypeManager, BundleComponentExtractor}, hierarchy::{HierarchyQueries, Relationships, Hierarchical, StableEntityId}};
 
 /// Main game world wrapper that manages the ECS world and systems
@@ -119,17 +119,18 @@ impl GameWorld {
             "Starting world update cycle"
         );
 
-        // Update game time resource
-        if let Some(mut game_time) = self.world.get_resource_mut::<GameTime>() {
-            game_time.update(delta_time);
-            
+        // Game time is now updated by the time_system, not directly here
+        // This allows the time controller to manage pausing, stepping, speed control
+        if let Some(game_time) = self.world.get_resource::<GameTime>() {
             debug!(
                 target: "game::world",
                 correlation_id = correlation_id,
                 turn = game_time.turn,
                 tick = game_time.tick,
-                paused = game_time.paused,
-                "Game time updated"
+                mode = ?game_time.playback_mode(),
+                speed = game_time.speed(),
+                interpolation_factor = game_time.interpolation_factor().into_inner(),
+                "Game state"
             );
         }
 
@@ -226,9 +227,17 @@ impl GameWorld {
 
     /// Update the world with a fixed time step (useful for deterministic simulation)
     pub fn update_fixed(&mut self, fixed_delta: f32) {
-        // Update game time resource with fixed delta
-        if let Some(mut game_time) = self.world.get_resource_mut::<GameTime>() {
-            game_time.update(fixed_delta);
+        // Game time is now updated by systems, but we can set a target speed
+        if let Some(game_time) = self.world.get_resource::<GameTime>() {
+            let target_speed = fixed_delta / (1.0 / 60.0); // Convert to speed multiplier
+            let _ = game_time.set_speed(target_speed); // Ignore errors for now
+            
+            debug!(
+                target: "game::world::fixed",
+                fixed_delta = fixed_delta,
+                target_speed = target_speed,
+                "Fixed timestep update"
+            );
         }
 
         // Spatial indexing now handled automatically by incremental_spatial_sync system
@@ -679,6 +688,43 @@ impl GameWorld {
     /// Pure archetype manager responsibility
     pub fn cleanup_archetypes(&mut self) -> usize {
         self.archetype_manager.cleanup()
+    }
+
+    /// Advance world generation and invalidate all caches
+    pub async fn advance_world_generation(&mut self) {
+        self.world_generation += 1;
+        self.query_cache.clear().await;
+        
+        // Notify subsystems
+        tokio::spawn(async move {
+            broadcast_cache_invalidation(crate::core::caching::events::CacheInvalidationEvent::TileUpdated { tile_id: 0, batch_size: 1 }).await;
+        });
+    }
+
+    /// Invalidate caches when entity is modified
+    pub async fn invalidate_entity_caches(&self, entity: Entity, archetype_changed: bool, position_changed: Option<IVec2>) {
+        tokio::spawn(async move {
+            broadcast_cache_invalidation(crate::core::caching::events::CacheInvalidationEvent::TileUpdated { tile_id: 0, batch_size: 1 }).await;
+        });
+    }
+
+    /// Report all cache metrics to unified system
+    pub async fn report_all_cache_metrics(&self) {
+        // Report archetype cache metrics
+        self.archetype_manager.report_metrics().await;
+        
+        // Report main query cache metrics
+        let stats = self.query_cache.stats().await;
+        use crate::core::caching::{global_cache_events, SubsystemStats};
+        let subsystem_stats = SubsystemStats {
+            hits: stats.total_hits,
+            misses: stats.total_misses,
+            entries: stats.cache_count,
+            memory_usage_bytes: stats.memory_usage_bytes,
+            avg_access_time_micros: stats.avg_access_time_micros,
+            last_updated: std::time::Instant::now(),
+        };
+        global_cache_events().register_subsystem_metrics("world_query", subsystem_stats).await;
     }
 
     /// Initialize a new game with default entities
@@ -1260,8 +1306,4 @@ impl GameWorld {
         })
     }
 
-    /// Get current scheduler performance metrics
-    pub fn scheduler_metrics(&self) -> crate::core::SchedulerMetrics {
-        self.scheduler.metrics()
-    }
 }

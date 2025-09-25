@@ -88,7 +88,7 @@ struct TaskInfo {
 }
 
 /// Scheduling stage for organizing task execution
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum Stage {
     PreUpdate,
     Update,

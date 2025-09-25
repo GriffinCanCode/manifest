@@ -17,7 +17,7 @@ use tracing::{info, warn, error, debug, instrument};
 use crate::ecs::{WorldState, GameWorld};
 use crate::core::{
     logging::{LoggingSystem, game_logging},
-    caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority}
+    caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority, global_cache_events, SubsystemStats}
 };
 
 /// Save/Load errors with detailed context
@@ -67,6 +67,15 @@ pub struct SaveSystem {
     saves_dir: PathBuf,
     /// Cache for save metadata to avoid repeated file reads
     metadata_cache: GameCache,
+}
+
+impl std::fmt::Debug for SaveSystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SaveSystem")
+            .field("saves_dir", &self.saves_dir)
+            .field("metadata_cache", &"<GameCache>")
+            .finish()
+    }
 }
 
 impl SaveSystem {
@@ -229,7 +238,7 @@ impl SaveSystem {
     }
 
     /// List all available save files with cached metadata
-    pub async fn list_saves(&self) -> Result<Vec<SaveMetadata>, SaveError> {
+    pub async fn list_saves(&self) -> Result<Vec<SaveInfo>, SaveError> {
         let save_files = fs::read_dir(&self.saves_dir)?
             .filter_map(|entry| entry.ok())
             .filter(|entry| {
@@ -239,14 +248,21 @@ impl SaveSystem {
             })
             .collect::<Vec<_>>();
 
-        let mut metadata_list = Vec::new();
+        let mut save_info_list = Vec::new();
         
         for entry in save_files {
             if let Some(file_stem) = entry.path().file_stem()
                 .and_then(|stem| stem.to_str()) {
                 
                 match self.get_save_metadata(file_stem).await {
-                    Ok(metadata) => metadata_list.push(metadata),
+                    Ok(metadata) => {
+                        let save_info = SaveInfo {
+                            name: file_stem.to_string(),
+                            path: entry.path(),
+                            metadata,
+                        };
+                        save_info_list.push(save_info);
+                    },
                     Err(e) => {
                         warn!(
                             target: "game::saves",
@@ -260,9 +276,9 @@ impl SaveSystem {
         }
 
         // Sort by most recent first
-        metadata_list.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        save_info_list.sort_by(|a, b| b.metadata.timestamp.cmp(&a.metadata.timestamp));
 
-        Ok(metadata_list)
+        Ok(save_info_list)
     }
 
     /// Clear metadata cache (useful when save files are modified externally)
@@ -274,6 +290,22 @@ impl SaveSystem {
     pub async fn invalidate_save_metadata(&self, save_name: &str) {
         let cache_key = CacheKey::Custom(format!("save_metadata:{}", save_name));
         self.metadata_cache.remove(&cache_key).await;
+    }
+
+    /// Report cache metrics to the global metrics system
+    pub async fn report_metrics(&self) {
+        let cache_stats = self.metadata_cache.stats().await;
+        
+        let subsystem_stats = SubsystemStats {
+            hits: cache_stats.total_hits,
+            misses: cache_stats.total_misses,
+            entries: cache_stats.cache_count,
+            memory_usage_bytes: cache_stats.memory_usage_bytes,
+            avg_access_time_micros: cache_stats.avg_access_time_micros,
+            last_updated: std::time::Instant::now(),
+        };
+
+        global_cache_events().register_subsystem_metrics("saves", subsystem_stats).await;
     }
     
     /// Load world state with version compatibility checking
@@ -415,35 +447,6 @@ impl SaveSystem {
         Ok(())
     }
     
-    /// List available saves with metadata
-    pub fn list_saves(&self) -> Result<Vec<SaveInfo>, SaveError> {
-        let mut saves = Vec::new();
-        
-        for entry in fs::read_dir(&self.saves_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            
-            if path.extension().and_then(|s| s.to_str()) == Some("save") {
-                match self.load_metadata(&path) {
-                    Ok(metadata) => {
-                        saves.push(SaveInfo {
-                            name: metadata.name.clone(),
-                            path: path.clone(),
-                            metadata,
-                        });
-                    }
-                    Err(e) => {
-                        warn!("Failed to load metadata for {:?}: {}", path, e);
-                    }
-                }
-            }
-        }
-        
-        // Sort by timestamp (newest first)
-        saves.sort_by(|a, b| b.metadata.timestamp.cmp(&a.metadata.timestamp));
-        
-        Ok(saves)
-    }
     
     /// Delete save file
     pub fn delete(&self, name: &str) -> Result<(), SaveError> {

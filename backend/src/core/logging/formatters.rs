@@ -314,7 +314,7 @@ where
         let mut field_buffer = String::new();
         {
             let mut field_writer = Writer::new(&mut field_buffer);
-            ctx.format_fields(&mut field_writer, event).ok();
+            ctx.format_fields(field_writer, event).ok();
         }
         
         if !field_buffer.is_empty() {
@@ -358,14 +358,14 @@ impl LogfmtFormatter {
         }
     }
     
-    fn write_key_value<W: Write>(&self, writer: &mut W, key: &str, value: &str) -> fmt::Result {
+    fn write_key_value<W: fmt::Write>(&self, writer: &mut W, key: &str, value: &str) -> fmt::Result {
         if self.sensitive_filter.should_filter_field(key) {
             write!(writer, "{}=\"[REDACTED]\" ", key)
         } else if value.contains(' ') || value.contains('"') {
             write!(writer, "{}=\"{}\" ", key, value.replace('"', "\\\""))
         } else {
             write!(writer, "{}={} ", key, value)
-        }.map_err(|_| fmt::Error)
+        }
     }
 }
 
@@ -414,7 +414,7 @@ where
         let mut field_buffer = String::new();
         {
             let mut field_writer = Writer::new(&mut field_buffer);
-            ctx.format_fields(&mut field_writer, event).ok();
+            ctx.format_fields(field_writer, event).ok();
         }
         
         if !field_buffer.is_empty() {

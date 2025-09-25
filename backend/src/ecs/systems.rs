@@ -6,48 +6,112 @@
 use bevy_ecs::prelude::*;
 use tracing::{info, debug, warn, error, instrument, Span};
 
-use crate::core::{Stage, logging::{LoggingSystem, game_logging}};
+use crate::core::{Stage, SimulationState, logging::{LoggingSystem, game_logging}};
 use crate::ecs::{components::*, resources::*, EcsScheduler, hierarchy::{sync_hierarchy_system, cleanup_hierarchy_system}};
 
-/// Time management system - advances game time and turn state
+/// Time management system with time controller integration
 #[instrument(name = "time_system", skip_all)]
-pub fn time_system(mut game_time: ResMut<GameTime>) {
+pub fn time_system(
+    mut game_time: ResMut<GameTime>,
+    simulation_state: Option<Res<SimulationState>>
+) {
     let start_time = std::time::Instant::now();
     
-    if !game_time.paused {
-        let old_tick = game_time.tick;
-        let old_turn = game_time.turn;
-        
-        game_time.update(1.0 / 60.0); // Assume 60 FPS for now
-        
-        if game_time.tick != old_tick {
-            debug!(
-                target: "game::systems::time",
-                tick = game_time.tick,
-                turn = game_time.turn,
-                speed = game_time.speed,
-                delta_time = game_time.delta_time,
-                "Game tick updated"
-            );
-        }
-        
-        if game_time.turn != old_turn {
-            info!(
-                target: "game::systems::time",
-                new_turn = game_time.turn,
-                total_ticks = game_time.tick,
-                "Turn advanced"
-            );
-        }
-        
-        let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-        game_logging::log_performance_event("time_system", duration_ms, 1);
-    } else {
+    // Use default simulation if not available (for backward compatibility)
+    let default_sim = SimulationState::new(42, None);
+    let sim = simulation_state.as_deref().unwrap_or(&default_sim);
+    
+    let old_tick = game_time.tick;
+    let old_turn = game_time.turn;
+    let old_mode = game_time.playback_mode();
+    
+    // Update with time controller integration
+    game_time.update(1.0 / 60.0, sim); // TODO: Get real delta time
+    
+    let new_mode = game_time.playback_mode();
+    
+    // Log tick changes
+    if game_time.tick != old_tick {
         debug!(
             target: "game::systems::time",
-            "Game is paused, skipping time update"
+            tick = game_time.tick,
+            turn = game_time.turn,
+            speed = game_time.speed(),
+            delta_time = game_time.delta_time,
+            mode = ?new_mode,
+            "Game tick updated"
         );
     }
+    
+    // Log turn changes
+    if game_time.turn != old_turn {
+        info!(
+            target: "game::systems::time",
+            new_turn = game_time.turn,
+            total_ticks = game_time.tick,
+            "Turn advanced"
+        );
+    }
+    
+    // Log mode changes
+    if new_mode != old_mode {
+        info!(
+            target: "game::systems::time",
+            old_mode = ?old_mode,
+            new_mode = ?new_mode,
+            "Playback mode changed"
+        );
+    }
+    
+    let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+    game_logging::log_performance_event("time_system", duration_ms, 1);
+}
+
+/// Interpolation system - updates interpolation factor for smooth rendering
+#[instrument(name = "interpolation_system", skip_all)]
+pub fn interpolation_system(
+    mut game_time: ResMut<GameTime>,
+    mut interpolated_positions: Query<&mut InterpolatedPosition>,
+    mut interpolated_health: Query<&mut InterpolatedHealth>,
+    mut interpolated_renderables: Query<&mut InterpolatedRenderable>,
+) {
+    let start_time = std::time::Instant::now();
+    
+    // Update interpolation factor based on time since last tick
+    let current_time = instant::Instant::now();
+    static mut LAST_TICK_TIME: Option<instant::Instant> = None;
+    
+    unsafe {
+        if LAST_TICK_TIME.is_none() {
+            LAST_TICK_TIME = Some(current_time);
+        }
+        
+        if let Some(last_tick) = LAST_TICK_TIME {
+            let time_since_tick = current_time.duration_since(last_tick).as_secs_f32();
+            let tick_duration = 1.0 / 60.0; // Target 60 TPS
+            game_time.update_interpolation(time_since_tick, tick_duration);
+            
+            // Reset tick time when we advance a tick
+            if game_time.tick > 0 && time_since_tick >= tick_duration {
+                LAST_TICK_TIME = Some(current_time);
+            }
+        }
+    }
+    
+    // Note: Actual interpolation queries would happen in rendering systems
+    // This system just updates the global interpolation factor
+    
+    let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+    game_logging::log_performance_event("interpolation_system", duration_ms, 1);
+    
+    debug!(
+        target: "game::systems::interpolation",
+        interpolation_factor = game_time.interpolation_factor().into_inner(),
+        interpolated_positions = interpolated_positions.iter().len(),
+        interpolated_health = interpolated_health.iter().len(),
+        interpolated_renderables = interpolated_renderables.iter().len(),
+        "Interpolation factor updated"
+    );
 }
 
 // Movement restoration, position sync, and health cleanup are now handled 
@@ -231,6 +295,7 @@ pub fn configure_systems(app: &mut bevy_ecs::schedule::Schedule) {
         .add_systems(
             (
                 time_system,
+                interpolation_system,
             ).in_set(Early)
         )
         .add_systems(
@@ -259,6 +324,17 @@ pub fn configure_parallel_systems(scheduler: &mut EcsScheduler, world: &mut Worl
         Stage::PreUpdate, 
         "time_system", 
         time_system, 
+        vec![
+            ResourceAccess::write::<GameTime>(),
+            ResourceAccess::read::<SimulationState>(),
+        ],
+        world
+    );
+    
+    scheduler.add_system_with_accesses(
+        Stage::PreUpdate,
+        "interpolation_system",
+        interpolation_system,
         vec![ResourceAccess::write::<GameTime>()],
         world
     );

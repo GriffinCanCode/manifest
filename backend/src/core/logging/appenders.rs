@@ -674,6 +674,14 @@ impl Write for ConsoleWriterAdapter {
     }
 }
 
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for ConsoleWriterAdapter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
 /// Writer adapter for file
 #[derive(Clone)]
 struct FileWriterAdapter {
@@ -698,6 +706,14 @@ impl Write for FileWriterAdapter {
     fn flush(&mut self) -> io::Result<()> {
         self.writer.flush();
         Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for FileWriterAdapter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
     }
 }
 

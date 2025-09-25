@@ -27,7 +27,6 @@ pub mod spatial;
 pub mod query;
 pub mod strategies;
 pub mod metrics;
-pub mod coordinator;
 pub mod events;
 
 pub use cache::*;
@@ -36,7 +35,6 @@ pub use spatial::*;
 pub use query::*;
 pub use strategies::*;
 pub use metrics::*;
-pub use coordinator::*;
 pub use events::*;
 
 use std::time::{Duration, Instant};
@@ -159,6 +157,14 @@ pub enum CacheInvalidationEvent {
     PlayerChanged(u32),
     /// World state changed - invalidate spatial caches
     WorldChanged,
+    /// World generation advanced - invalidate all caches
+    WorldGeneration(u32),
+    /// Entity modified - cascade through relevant caches
+    EntityModified { 
+        entity: bevy_ecs::entity::Entity, 
+        archetype_changed: bool,
+        position_changed: Option<glam::IVec2>,
+    },
     /// Manual invalidation with custom filter
     Manual(Box<dyn Fn(&CacheKey) -> bool + Send + Sync>),
 }
@@ -170,6 +176,13 @@ impl std::fmt::Debug for CacheInvalidationEvent {
             Self::EntityChanged(entity) => f.debug_tuple("EntityChanged").field(entity).finish(),
             Self::PlayerChanged(player) => f.debug_tuple("PlayerChanged").field(player).finish(),
             Self::WorldChanged => write!(f, "WorldChanged"),
+            Self::WorldGeneration(gen) => f.debug_tuple("WorldGeneration").field(gen).finish(),
+            Self::EntityModified { entity, archetype_changed, position_changed } => 
+                f.debug_struct("EntityModified")
+                    .field("entity", entity)
+                    .field("archetype_changed", archetype_changed)
+                    .field("position_changed", position_changed)
+                    .finish(),
             Self::Manual(_) => write!(f, "Manual(<function>)"),
         }
     }
@@ -182,6 +195,13 @@ impl Clone for CacheInvalidationEvent {
             Self::EntityChanged(entity) => Self::EntityChanged(*entity),
             Self::PlayerChanged(player) => Self::PlayerChanged(*player),
             Self::WorldChanged => Self::WorldChanged,
+            Self::WorldGeneration(gen) => Self::WorldGeneration(*gen),
+            Self::EntityModified { entity, archetype_changed, position_changed } => 
+                Self::EntityModified {
+                    entity: *entity,
+                    archetype_changed: *archetype_changed,
+                    position_changed: *position_changed,
+                },
             Self::Manual(_) => {
                 // Functions can't be cloned, so we'll panic if someone tries to clone this variant
                 panic!("Manual cache invalidation events cannot be cloned - they contain function pointers")

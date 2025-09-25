@@ -6,6 +6,7 @@
 pub mod commands;
 pub mod core;
 pub mod ecs;
+pub mod simulation;
 
 // Re-export specific types to avoid conflicts
 pub use core::{Stage, Scheduler, SchedulerError, SchedulerMetrics};

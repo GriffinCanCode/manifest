@@ -16,7 +16,7 @@ use super::{
 };
 use crate::core::{
     hashing::{FastHashMap, FastHashSet},
-    caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority}
+    caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority, global_cache_events, SubsystemStats}
 };
 
 /// High-performance hierarchy query system that integrates with ECS
@@ -200,22 +200,22 @@ impl HierarchyQueries {
     }
 
     /// Find common ancestors between two entities
-    pub fn common_ancestors(&self, entity1: Entity, entity2: Entity) -> Vec<Entity> {
-        let ancestors1: FastHashSet<_> = self.ancestors(entity1).into_iter().collect();
-        let ancestors2 = self.ancestors(entity2);
+    pub async fn common_ancestors(&self, entity1: Entity, entity2: Entity) -> Vec<Entity> {
+        let ancestors1: FastHashSet<_> = self.ancestors(entity1).await.into_iter().collect();
+        let ancestors2 = self.ancestors(entity2).await;
 
         ancestors2
             .into_iter()
-            .filter(|ancestor| ancestors1.contains(ancestor))
+            .filter(|ancestor| ancestors1.contains(&ancestor))
             .collect()
     }
 
     /// Find the lowest common ancestor of two entities
-    pub fn lowest_common_ancestor(&self, entity1: Entity, entity2: Entity) -> Option<Entity> {
-        let ancestors1: FastHashSet<_> = self.ancestors(entity1).into_iter().collect();
+    pub async fn lowest_common_ancestor(&self, entity1: Entity, entity2: Entity) -> Option<Entity> {
+        let ancestors1: FastHashSet<_> = self.ancestors(entity1).await.into_iter().collect();
         
         // Walk up from entity2 until we find a common ancestor
-        for ancestor in self.ancestors(entity2) {
+        for ancestor in self.ancestors(entity2).await {
             if ancestors1.contains(&ancestor) {
                 return Some(ancestor);
             }
@@ -225,9 +225,9 @@ impl HierarchyQueries {
     }
 
     /// Find all entities in a subtree rooted at the given entity
-    pub fn subtree(&self, root: Entity) -> Vec<Entity> {
+    pub async fn subtree(&self, root: Entity) -> Vec<Entity> {
         let mut subtree = vec![root];
-        subtree.extend(self.descendants(root));
+        subtree.extend(self.descendants(root).await);
         subtree
     }
 
@@ -366,16 +366,33 @@ impl HierarchyQueries {
     }
 
     /// Get performance statistics for the hierarchy system
-    pub fn performance_stats(&self) -> HierarchyPerformanceStats {
-        let cache = self.cache.read();
+    pub async fn performance_stats(&self) -> HierarchyPerformanceStats {
+        let cache_stats = self.cache.stats().await;
         let graph_stats = self.graph.stats();
 
         HierarchyPerformanceStats {
             graph_stats,
-            cached_ancestors: cache.ancestors.len(),
-            cached_descendants: cache.descendants.len(),
-            cache_version: cache.cache_version,
+            cached_ancestors: cache_stats.cache_count / 2, // Rough estimate for ancestor cache entries
+            cached_descendants: cache_stats.cache_count / 2, // Rough estimate for descendant cache entries
+            cache_version: self.world_generation as u64,
         }
+    }
+
+    /// Report cache metrics to the global metrics system
+    pub async fn report_metrics(&self) {
+        let cache_stats = self.cache.stats().await;
+        let graph_stats = self.graph.stats();
+        
+        let subsystem_stats = SubsystemStats {
+            hits: cache_stats.total_hits,
+            misses: cache_stats.total_misses,
+            entries: cache_stats.cache_count,
+            memory_usage_bytes: cache_stats.memory_usage_bytes,
+            avg_access_time_micros: cache_stats.avg_access_time_micros,
+            last_updated: std::time::Instant::now(),
+        };
+
+        global_cache_events().register_subsystem_metrics("hierarchy", subsystem_stats).await;
     }
 }
 

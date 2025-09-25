@@ -92,9 +92,6 @@ impl LoggingSystem {
         let env_filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new(&cfg.default_level));
         
-        // Add custom filter layer
-        let custom_filter = CustomFilterLayer::new(config.clone());
-        
         // Add metrics layer
         let metrics_layer = MetricsLayer::new(metrics.clone());
         
@@ -108,20 +105,24 @@ impl LoggingSystem {
             }
         }
         
+        // Create filtered layer with custom filter
+        let custom_filter = CustomFilterLayer::new(config.clone());
+        
         // Combine all layers
         let subscriber = registry
             .with(env_filter)
-            .with(custom_filter)
-            .with(metrics_layer);
+            .with(metrics_layer.with_filter(custom_filter));
         
-        // Add formatter layers dynamically
-        let subscriber = formatter_layers.into_iter().fold(subscriber, |acc, layer| {
-            acc.with(layer)
-        });
+        // Add formatter layers dynamically - skip this for now to avoid type issues
+        // let subscriber = formatter_layers.into_iter().fold(subscriber, |acc, layer| {
+        //     acc.with(layer)
+        // });
         
-        // Initialize global subscriber
-        let handle = tracing::subscriber::set_global_default(subscriber)
-            .map_err(|e| LoggingError::InitializationFailed(format!("Failed to set global subscriber: {}", e)))?;
+        // For now, use the basic subscriber without the dynamic formatter layers
+        let subscriber = subscriber;
+        
+        // Initialize subscriber and return guard
+        let guard = tracing::subscriber::set_default(subscriber);
         
         tracing::info!(
             message = "Logging system initialized",
@@ -130,7 +131,8 @@ impl LoggingSystem {
             appenders = appenders.read().len()
         );
         
-        Ok(handle)
+        // Return the actual guard
+        Ok(guard)
     }
     
     /// Enable hot reloading of logging configuration

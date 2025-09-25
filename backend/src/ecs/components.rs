@@ -8,8 +8,12 @@ use glam::{IVec2, Vec2};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tracing::{info, debug, warn, error, instrument};
 use std::fmt;
+use nalgebra::{Point2, Point3};
 
-use crate::core::logging::{LoggingSystem, game_logging};
+use crate::core::{
+    logging::{LoggingSystem, game_logging},
+    interpolate::{Interpolate, InterpolatedProperty, Color as InterpolateColor}
+};
 
 /// Validation trait for component constraints and business rules
 pub trait Validate {
@@ -872,6 +876,233 @@ fn hex_to_pixel(hex: IVec2) -> Vec2 {
         SIZE * (SQRT_3 * q + SQRT_3 / 2.0 * r),
         SIZE * (3.0 / 2.0 * r),
     )
+}
+
+// Interpolated component implementations for smooth rendering
+impl Interpolate for Vec2 {
+    fn interpolate(&self, other: &Self, t: crate::core::interpolate::InterpolationFactor) -> Self {
+        let t = t.into_inner();
+        Vec2::new(
+            self.x + t * (other.x - self.x),
+            self.y + t * (other.y - self.y),
+        )
+    }
+}
+
+/// Smooth position interpolation component for rendering
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct InterpolatedPosition {
+    /// Interpolated pixel position for rendering
+    pixel_position: InterpolatedProperty<Vec2>,
+    /// Current hex position (for game logic)
+    hex_position: IVec2,
+}
+
+impl InterpolatedPosition {
+    /// Create new interpolated position from hex coordinates
+    pub fn new(hex: IVec2) -> Self {
+        let pixel = hex_to_pixel(hex);
+        Self {
+            pixel_position: InterpolatedProperty::new(pixel),
+            hex_position: hex,
+        }
+    }
+
+    /// Update position (call once per simulation tick)
+    pub fn update_hex(&mut self, new_hex: IVec2) {
+        if new_hex != self.hex_position {
+            self.hex_position = new_hex;
+            let new_pixel = hex_to_pixel(new_hex);
+            self.pixel_position.update(new_pixel);
+        }
+    }
+
+    /// Get interpolated pixel position for rendering
+    pub fn interpolated_pixel(&self, factor: crate::core::interpolate::InterpolationFactor) -> Vec2 {
+        self.pixel_position.interpolate(factor)
+    }
+
+    /// Get current hex position
+    pub fn hex(&self) -> IVec2 {
+        self.hex_position
+    }
+
+    /// Get current pixel position (no interpolation)
+    pub fn pixel(&self) -> Vec2 {
+        hex_to_pixel(self.hex_position)
+    }
+}
+
+/// Smooth health interpolation component for health bar animations
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct InterpolatedHealth {
+    /// Interpolated health value for smooth health bars
+    health_value: InterpolatedProperty<f32>,
+    /// Current actual health (for game logic)
+    current_health: f32,
+    /// Maximum health
+    max_health: f32,
+}
+
+impl InterpolatedHealth {
+    /// Create new interpolated health
+    pub fn new(max_health: f32) -> Result<Self, ComponentError> {
+        if max_health <= 0.0 {
+            return Err(ComponentError::InvalidHealth(
+                "Max health must be positive".to_string()
+            ));
+        }
+
+        Ok(Self {
+            health_value: InterpolatedProperty::new(max_health),
+            current_health: max_health,
+            max_health,
+        })
+    }
+
+    /// Update health value (call once per simulation tick)
+    pub fn update_health(&mut self, new_health: f32) {
+        if new_health != self.current_health {
+            self.current_health = new_health.clamp(0.0, self.max_health);
+            self.health_value.update(self.current_health);
+        }
+    }
+
+    /// Get interpolated health for smooth health bars
+    pub fn interpolated_value(&self, factor: crate::core::interpolate::InterpolationFactor) -> f32 {
+        self.health_value.interpolate(factor)
+    }
+
+    /// Get current health (no interpolation)
+    pub fn current(&self) -> f32 {
+        self.current_health
+    }
+
+    /// Get maximum health
+    pub fn max(&self) -> f32 {
+        self.max_health
+    }
+
+    /// Get interpolated percentage (0.0 to 1.0)
+    pub fn interpolated_percentage(&self, factor: crate::core::interpolate::InterpolationFactor) -> f32 {
+        if self.max_health > 0.0 {
+            self.interpolated_value(factor) / self.max_health
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Smooth rendering interpolation component for visual effects
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct InterpolatedRenderable {
+    /// Interpolated scale for smooth scaling animations
+    scale: InterpolatedProperty<f32>,
+    /// Interpolated color tint for smooth color transitions
+    tint: InterpolatedProperty<InterpolateColor>,
+    /// Current values (for game logic)
+    current_scale: f32,
+    current_tint: InterpolateColor,
+    /// Static properties that don't need interpolation
+    sprite: String,
+    layer: u8,
+    visible: bool,
+}
+
+impl InterpolatedRenderable {
+    /// Create new interpolated renderable
+    pub fn new(sprite: impl Into<String>, layer: u8) -> Result<Self, ComponentError> {
+        let sprite = sprite.into();
+        if sprite.is_empty() {
+            return Err(ComponentError::InvalidName(
+                "Sprite identifier cannot be empty".to_string()
+            ));
+        }
+
+        let initial_scale = 1.0;
+        let initial_tint = InterpolateColor::rgb(1.0, 1.0, 1.0);
+
+        Ok(Self {
+            scale: InterpolatedProperty::new(initial_scale),
+            tint: InterpolatedProperty::new(initial_tint),
+            current_scale: initial_scale,
+            current_tint: initial_tint,
+            sprite,
+            layer,
+            visible: true,
+        })
+    }
+
+    /// Update scale (call once per simulation tick)
+    pub fn update_scale(&mut self, new_scale: f32) -> Result<(), ComponentError> {
+        if new_scale <= 0.0 || new_scale > 100.0 {
+            return Err(ComponentError::InvalidName(
+                format!("Scale {} must be between 0.1 and 100.0", new_scale)
+            ));
+        }
+
+        if new_scale != self.current_scale {
+            self.current_scale = new_scale;
+            self.scale.update(new_scale);
+        }
+        Ok(())
+    }
+
+    /// Update tint color (call once per simulation tick)
+    pub fn update_tint(&mut self, r: f32, g: f32, b: f32, a: f32) -> Result<(), ComponentError> {
+        if [r, g, b, a].iter().any(|&c| c < 0.0 || c > 1.0) {
+            return Err(ComponentError::InvalidName(
+                "Tint values must be between 0.0 and 1.0".to_string()
+            ));
+        }
+
+        let new_tint = InterpolateColor::new(r, g, b, a);
+        if new_tint != self.current_tint {
+            self.current_tint = new_tint;
+            self.tint.update(new_tint);
+        }
+        Ok(())
+    }
+
+    /// Get interpolated scale for rendering
+    pub fn interpolated_scale(&self, factor: crate::core::interpolate::InterpolationFactor) -> f32 {
+        self.scale.interpolate(factor)
+    }
+
+    /// Get interpolated tint for rendering
+    pub fn interpolated_tint(&self, factor: crate::core::interpolate::InterpolationFactor) -> InterpolateColor {
+        self.tint.interpolate(factor)
+    }
+
+    /// Get sprite identifier
+    pub fn sprite(&self) -> &str {
+        &self.sprite
+    }
+
+    /// Get rendering layer
+    pub fn layer(&self) -> u8 {
+        self.layer
+    }
+
+    /// Check if visible
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Set visibility
+    pub fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    /// Get current scale (no interpolation)
+    pub fn current_scale(&self) -> f32 {
+        self.current_scale
+    }
+
+    /// Get current tint (no interpolation)
+    pub fn current_tint(&self) -> InterpolateColor {
+        self.current_tint
+    }
 }
 
 #[cfg(test)]

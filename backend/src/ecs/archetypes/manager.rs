@@ -13,7 +13,13 @@ use std::collections::HashSet;
 use std::time::Instant;
 use crate::ecs::components::*;
 use crate::ecs::entities::*;
-use crate::core::{caching::{GameCache, GameCacheBuilder, CacheKey, QueryCacheKey, QueryType, CachePriority, CacheInvalidationEvent}, logging::{LoggingSystem, game_logging}};
+use crate::core::{
+    caching::{
+        GameCache, GameCacheBuilder, CacheKey, QueryCacheKey, QueryType, CachePriority, 
+        CacheInvalidationEvent, global_cache_events, SubsystemStats
+    }, 
+    logging::{LoggingSystem, game_logging}
+};
 
 /// Trait for extracting component types from Bundle types at runtime
 /// 
@@ -298,6 +304,23 @@ impl ArchetypeManager {
             })
         );
         self.cache.handle_invalidation(&invalidation_event).await;
+    }
+
+    /// Report cache metrics to the global metrics system
+    pub async fn report_metrics(&self) {
+        let cache_stats = self.cache.stats().await;
+        let archetype_stats = self.stats();
+        
+        let subsystem_stats = SubsystemStats {
+            hits: cache_stats.total_hits,
+            misses: cache_stats.total_misses,
+            entries: archetype_stats.total_archetypes,
+            memory_usage_bytes: cache_stats.memory_usage_bytes,
+            avg_access_time_micros: cache_stats.avg_access_time_micros,
+            last_updated: std::time::Instant::now(),
+        };
+
+        global_cache_events().register_subsystem_metrics("archetypes", subsystem_stats).await;
     }
     
     /// Find archetypes that contain any of the specified components

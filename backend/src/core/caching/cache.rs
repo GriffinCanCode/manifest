@@ -350,6 +350,14 @@ impl GameCache {
             CacheInvalidationEvent::Manual(filter) => {
                 self.invalidate_with_filter(filter).await;
             }
+            CacheInvalidationEvent::WorldGeneration(_generation) => {
+                // World generation changed - clear all caches
+                self.clear().await;
+            }
+            CacheInvalidationEvent::EntityModified { entity, .. } => {
+                // Entity was modified - invalidate related caches
+                self.invalidate_entity_caches(*entity).await;
+            }
         }
     }
 

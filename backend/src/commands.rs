@@ -270,7 +270,7 @@ pub async fn list_saves(state: State<'_, AppState>) -> Result<Vec<SaveInfo>, Str
         "Retrieving available save files"
     );
     
-    match state.save_system.list_saves() {
+    match state.save_system.list_saves().await {
         Ok(saves) => {
             debug!(
                 target: "manifest::commands",
