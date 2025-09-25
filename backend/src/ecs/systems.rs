@@ -17,6 +17,20 @@ pub fn time_system(
 ) {
     let start_time = std::time::Instant::now();
     
+    // Calculate real delta time
+    static mut LAST_TIME: Option<std::time::Instant> = None;
+    let delta_time = unsafe {
+        if let Some(last) = LAST_TIME {
+            let delta = start_time.duration_since(last).as_secs_f32();
+            LAST_TIME = Some(start_time);
+            // Cap delta time to prevent large jumps (e.g., when debugging or alt-tabbing)
+            delta.min(1.0 / 30.0) // Maximum 30 FPS minimum for stability
+        } else {
+            LAST_TIME = Some(start_time);
+            1.0 / 60.0 // Default delta for first frame
+        }
+    };
+    
     // Use default simulation if not available (for backward compatibility)
     let default_sim = SimulationState::new(42, None);
     let sim = simulation_state.as_deref().unwrap_or(&default_sim);
@@ -25,8 +39,8 @@ pub fn time_system(
     let old_turn = game_time.turn;
     let old_mode = game_time.playback_mode();
     
-    // Update with time controller integration
-    game_time.update(1.0 / 60.0, sim); // TODO: Get real delta time
+    // Update with real delta time
+    game_time.update(delta_time, sim);
     
     let new_mode = game_time.playback_mode();
     
@@ -37,7 +51,8 @@ pub fn time_system(
             tick = game_time.tick,
             turn = game_time.turn,
             speed = game_time.speed(),
-            delta_time = game_time.delta_time,
+            real_delta_time = delta_time,
+            game_delta_time = game_time.delta_time,
             mode = ?new_mode,
             "Game tick updated"
         );

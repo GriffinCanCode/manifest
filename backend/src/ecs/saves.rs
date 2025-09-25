@@ -60,6 +60,8 @@ pub struct SaveMetadata {
     pub game_version: String,
     /// Total playtime in seconds
     pub playtime: u64,
+    /// Player's civilization name
+    pub civilization: String,
 }
 
 /// High-performance bincode serializer with optimal settings
@@ -133,6 +135,7 @@ impl SaveSystem {
                 .as_secs(),
             game_version: env!("CARGO_PKG_VERSION").to_string(),
             playtime: world_state.game_time.total_time() as u64,
+            civilization: "Ancient Empire".to_string(), // Default civilization for now
         };
         
         let save_file = SaveFile {

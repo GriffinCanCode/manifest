@@ -155,14 +155,16 @@ impl SimulationCore {
     fn execute_command(&self, command: SimulationCommand, world: &mut World) -> Result<CommandResult, SimulationError> {
         // Commands will be executed through the ECS scheduler
         match command {
-            SimulationCommand::SpawnEntity { components: _components } => {
+            SimulationCommand::SpawnEntity { components } => {
                 // Spawn empty entity first, then add components dynamically
-                let entity = world.spawn_empty().id();
+                let mut entity_commands = world.spawn_empty();
                 
-                // For now, we'll just spawn an empty entity since deserializing
-                // dynamic components requires a component registry
-                // TODO: Implement proper dynamic component deserialization
+                // Deserialize and add each component
+                for component_data in components.components {
+                    self.deserialize_and_add_component(&mut entity_commands, &component_data)?;
+                }
                 
+                let entity = entity_commands.id();
                 Ok(CommandResult::EntitySpawned(entity))
             }
             SimulationCommand::DespawnEntity { entity } => {
@@ -186,6 +188,114 @@ impl SimulationCore {
     fn should_snapshot(&self, tick: u64) -> bool {
         // Snapshot every 100 ticks or at specific intervals
         tick % 100 == 0
+    }
+
+    /// Deserialize component data and add it to an entity
+    fn deserialize_and_add_component(
+        &self,
+        entity_commands: &mut bevy_ecs::world::EntityWorldMut,
+        component_data: &crate::simulation::commands::ComponentData,
+    ) -> Result<(), SimulationError> {
+        use crate::ecs::components::*;
+        
+        match component_data.type_name.as_str() {
+            "manifest_rust_ts::ecs::components::Position" => {
+                let component: Position = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Position: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::Movement" => {
+                let component: Movement = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Movement: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::Health" => {
+                let component: Health = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Health: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::Renderable" => {
+                let component: Renderable = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Renderable: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::Owner" => {
+                let component: Owner = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Owner: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::Name" => {
+                let component: Name = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Name: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::InterpolatedPosition" => {
+                let component: InterpolatedPosition = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("InterpolatedPosition: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::InterpolatedHealth" => {
+                let component: InterpolatedHealth = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("InterpolatedHealth: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "manifest_rust_ts::ecs::components::InterpolatedRenderable" => {
+                let component: InterpolatedRenderable = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("InterpolatedRenderable: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            // Handle short type names as well (when using std::any::type_name)
+            "Position" => {
+                let component: Position = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Position: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "Movement" => {
+                let component: Movement = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Movement: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "Health" => {
+                let component: Health = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Health: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "Renderable" => {
+                let component: Renderable = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Renderable: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "Owner" => {
+                let component: Owner = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Owner: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "Name" => {
+                let component: Name = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("Name: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "InterpolatedPosition" => {
+                let component: InterpolatedPosition = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("InterpolatedPosition: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "InterpolatedHealth" => {
+                let component: InterpolatedHealth = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("InterpolatedHealth: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            "InterpolatedRenderable" => {
+                let component: InterpolatedRenderable = bincode::deserialize(&component_data.data)
+                    .map_err(|e| SimulationError::DeserializationError(format!("InterpolatedRenderable: {}", e)))?;
+                entity_commands.insert(component);
+            }
+            _ => {
+                return Err(SimulationError::UnknownComponent(component_data.type_name.clone()));
+            }
+        }
+        
+        Ok(())
     }
 }
 
@@ -225,6 +335,10 @@ pub enum SimulationError {
     Replay(#[from] ReplayError),
     #[error("Sync error: {0}")]
     Sync(#[from] SyncError),
+    #[error("Deserialization error: {0}")]
+    DeserializationError(String),
+    #[error("Unknown component type: {0}")]
+    UnknownComponent(String),
 }
 
 #[cfg(test)]

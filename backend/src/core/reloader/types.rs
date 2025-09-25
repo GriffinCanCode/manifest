@@ -2,7 +2,7 @@
 //!
 //! Simple, focused types following the existing codebase patterns.
 
-use std::{path::PathBuf, time::SystemTime};
+use std::{any::Any, path::PathBuf, time::SystemTime};
 use thiserror::Error;
 
 /// Hot reload errors
@@ -82,4 +82,7 @@ pub trait ReloadHandler: Send + Sync {
     
     /// Reload the file
     fn reload(&mut self, path: &PathBuf) -> ReloadResult<()>;
+    
+    /// Enable downcasting to concrete types
+    fn as_any(&self) -> &dyn Any;
 }

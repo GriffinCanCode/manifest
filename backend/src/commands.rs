@@ -242,7 +242,7 @@ pub async fn load_game(
     let game_state = GameState {
         turn: world_state.game_time.turn,
         player_name: save_file.metadata.name.clone(),
-        civilization: "Ancient Empire".to_string(), // TODO: Add to save metadata
+        civilization: save_file.metadata.civilization.clone(),
         is_paused: world_state.game_time.paused,
     };
     

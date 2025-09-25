@@ -7,6 +7,7 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::ecs::components::{ComponentError, Validate};
 use crate::core::hashing::{FastHashSet, HashStrategies};
+use super::graph::{EntityGraph, HierarchyError};
 
 /// Stable entity identifier for serialization
 /// Uses the entity's index and generation for a stable ID across save/load
@@ -201,11 +202,12 @@ impl Relationships {
         }
     }
 
-    /// Add a relationship with validation
+    /// Add a relationship with validation and cycle detection
     pub fn add(&mut self, relationship: Relationship) -> Result<bool, ComponentError> {
-        // Validate the relationship doesn't create cycles (for certain types)
+        // Validate the relationship doesn't create cycles for hierarchical types
         if matches!(relationship.relationship_type, RelationshipType::Parent | RelationshipType::Child) {
-            // TODO: Add cycle detection in graph module
+            // Check for immediate cycles - don't allow self-references or reciprocal parent-child relationships
+            self.validate_no_cycle(&relationship)?;
         }
 
         let inserted = self.relationships.insert(relationship);
@@ -213,6 +215,45 @@ impl Relationships {
             self.invalidate_cache();
         }
         Ok(inserted)
+    }
+
+    /// Validate that adding a relationship won't create a cycle
+    fn validate_no_cycle(&self, new_relationship: &Relationship) -> Result<(), ComponentError> {
+        // Self-reference check
+        if new_relationship.target == Entity::from_raw(0) {
+            return Err(ComponentError::InvalidHierarchy(
+                "Cannot create relationship with invalid entity".to_string()
+            ));
+        }
+
+        // Check for reciprocal relationships that would create cycles
+        match new_relationship.relationship_type {
+            RelationshipType::Parent => {
+                // If we're adding A -> B as Parent, check if B -> A already exists as Parent
+                if self.relationships.iter().any(|rel| 
+                    rel.target == new_relationship.target && 
+                    rel.relationship_type == RelationshipType::Child) {
+                    return Err(ComponentError::InvalidHierarchy(
+                        format!("Cannot add parent relationship to {:?}: child relationship already exists", 
+                               new_relationship.target)
+                    ));
+                }
+            }
+            RelationshipType::Child => {
+                // If we're adding A -> B as Child, check if B -> A already exists as Child  
+                if self.relationships.iter().any(|rel| 
+                    rel.target == new_relationship.target && 
+                    rel.relationship_type == RelationshipType::Parent) {
+                    return Err(ComponentError::InvalidHierarchy(
+                        format!("Cannot add child relationship to {:?}: parent relationship already exists", 
+                               new_relationship.target)
+                    ));
+                }
+            }
+            _ => {} // Other relationship types don't need cycle detection
+        }
+
+        Ok(())
     }
 
     /// Remove a relationship (ignores metadata)

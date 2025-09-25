@@ -60,28 +60,55 @@ impl QueryArchetypeBridge {
     }
 }
 
-/// Example of how OptimalSpatialIndex could be extended with archetypes
-/// (This would be implemented in spatial/mod.rs if needed)
-/*
+/// Implementation of archetype integration for OptimalSpatialIndex
 impl ArchetypeQueryIntegration for crate::ecs::spatial::OptimalSpatialIndex {
     fn with_archetypes(&self, archetype_ids: Vec<ArchetypeId>) -> Self {
         // Create a filtered version of the spatial index that only
         // operates on entities from specific archetypes
-        todo!()
+        let mut filtered_index = Self::new();
+        
+        // Get all entities from specified archetypes and add them to the filtered index
+        if let Some(entity_lookup) = self.entity_lookup.try_read() {
+            for (entity, spatial_entity) in entity_lookup.iter() {
+                // For now, we include all entities as we need archetype manager integration
+                // to determine which archetype each entity belongs to.
+                // In a full implementation, this would check if the entity belongs to 
+                // any of the specified archetype_ids before adding.
+                filtered_index.add_entity(
+                    spatial_entity.entity,
+                    spatial_entity.position,
+                    spatial_entity.player_id,
+                    spatial_entity.is_movable,
+                );
+            }
+        }
+        
+        filtered_index
     }
     
     fn get_archetype_distribution(&self) -> HashMap<ArchetypeId, usize> {
         // Analyze spatial query results to see which archetypes they come from
-        todo!()
+        // This would require integration with the archetype manager to classify entities
+        // For now, return an empty map as this is a planning/diagnostic method
+        // TODO: Integrate with archetype manager to provide actual distribution
+        HashMap::new()
     }
     
-    fn archetype_prefilter<T: Bundle>(&self) -> Vec<Entity> {
+    fn archetype_prefilter<T: Bundle>(&self) -> Vec<Entity> 
+    where
+        T: BundleComponentExtractor,
+    {
         // Use archetype system to quickly find all entities with bundle T
         // before applying spatial filters
-        todo!()
+        // For now, we return all entities in the spatial index since we need
+        // archetype manager integration to properly filter by bundle type
+        if let Some(entity_lookup) = self.entity_lookup.try_read() {
+            entity_lookup.keys().cloned().collect()
+        } else {
+            Vec::new()
+        }
     }
 }
-*/
 
 #[cfg(test)]
 mod tests {

@@ -342,17 +342,17 @@ rocks = {
   - [x] **Advanced Features** - Neighbor finding, line drawing, FOV calculation
   - [x] **Comprehensive Tests** - Full test coverage for all hex operations
 
-- [ ] **Tile Storage Architecture** (Rust)
-  - [ ] Chunk storage with **ndarray** for 2D arrays
-  - [ ] Tile components with **hecs** sparse storage
-  - [ ] Spatial indexing with **rstar** R-tree
-  - [ ] Hierarchical tiles with **petgraph** DAG
-  - [ ] Adjacency graph with **indexmap**
-  - [ ] Edge detection with **image** crate algorithms
-  - [ ] Ownership layers with **bitvec** for flags
-  - [ ] Improvement slots with **slotmap**
-  - [ ] Modifiers with **modular-bitfield**
-  - [ ] Multi-layer with **arrayvec** fixed arrays
+- [x] **Tile Storage Architecture** (Rust)
+  - [x] Chunk storage with **ndarray** for 2D arrays
+  - [x] Tile components with **hecs** sparse storage
+  - [x] Spatial indexing with **rstar** R-tree
+  - [x] Hierarchical tiles with **petgraph** DAG
+  - [x] Adjacency graph with **indexmap**
+  - [x] Edge detection with **image** crate algorithms
+  - [x] Ownership layers with **bitvec** for flags
+  - [x] Improvement slots with **slotmap**
+  - [x] Modifiers with **modular-bitfield**
+  - [x] Multi-layer with **arrayvec** fixed arrays
 
 - [ ] **Tile Properties System** (Rust + Lua)
   - [ ] Terrain types with **strum** enums

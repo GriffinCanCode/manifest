@@ -50,6 +50,21 @@ sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite"] }
 nalgebra = "0.32"
 glam = { version = "0.25", features = ["serde"] }
 rstar = "0.11"  # R-tree spatial indexing
+ndarray = { version = "0.15", features = ["serde"] }  # Multi-dimensional arrays for chunks
+
+# ECS Storage Systems
+hecs = "0.10"  # Additional sparse storage for tiles
+
+# Data Structures
+indexmap = { version = "2.2", features = ["serde"] }  # Ordered maps for adjacency graphs
+arrayvec = { version = "0.7", features = ["serde"] }  # Fixed-capacity arrays
+bitvec = { version = "1.0", features = ["serde"] }  # Bit vectors for ownership layers
+
+# Modular bitfield operations
+modular-bitfield = "0.11"
+
+# Image processing for edge detection  
+image = { version = "0.24", features = ["png", "jpeg"], default-features = false }
 
 # Profiling & Debug - Enhanced logging system
 tracing = "0.1"

@@ -1299,10 +1299,18 @@ impl GameWorld {
     /// Access Lua handler for direct script execution (debug builds only)
     #[cfg(debug_assertions)]
     pub fn lua_handler(&self) -> Option<std::sync::Arc<parking_lot::Mutex<mlua::Lua>>> {
-        self.reload_manager.as_ref().and_then(|_manager| {
-            // This is a bit hacky - in a real implementation we'd want a cleaner API
-            // For now, users can access Lua directly through the manager if needed
-            None // TODO: Implement proper Lua access
+        self.reload_manager.as_ref().and_then(|manager| {
+            // Get the handlers from the manager and find the Lua handler
+            let handlers = manager.handlers.lock();
+            for handler in handlers.iter() {
+                if handler.name() == "lua" {
+                    // Downcast to LuaHandler to access the lua() method
+                    if let Some(lua_handler) = handler.as_any().downcast_ref::<crate::core::reloader::LuaHandler>() {
+                        return Some(lua_handler.lua());
+                    }
+                }
+            }
+            None
         })
     }
 

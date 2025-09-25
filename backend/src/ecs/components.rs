@@ -38,6 +38,8 @@ pub enum ComponentError {
     InvalidHealth(String),
     #[error("Invalid name: {0}")]
     InvalidName(String),
+    #[error("Invalid hierarchy: {0}")]
+    InvalidHierarchy(String),
 }
 
 /// Fundamental positioning component for hex-grid based entities
