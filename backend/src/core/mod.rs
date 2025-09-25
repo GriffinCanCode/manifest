@@ -19,7 +19,11 @@ pub use control::*;
 pub use game_state::*;
 pub use hashing::*;
 pub use interpolate::*;
-pub use logging::*;
+// Re-export logging without metrics to avoid conflict with caching::metrics
+pub use logging::{
+    LoggingSystem, LoggingConfig, SensitiveDataFilter, FilterType, LoggingMetricsSnapshot,
+    LoggingError
+};
 pub use reloader::*;
 pub use scheduler::*;
 pub use time::*;

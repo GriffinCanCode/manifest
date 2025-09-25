@@ -7,7 +7,6 @@ use super::types::{Archetype, ArchetypeId, ComponentSignature, ArchetypeError, A
 use slotmap::SlotMap;
 use bevy_ecs::prelude::*;
 use parking_lot::RwLock;
-use std::any::TypeId;
 use crate::core::hashing::{collections, FastHashMap};
 
 /// Thread-safe archetype storage using slotmap for generational safety
@@ -24,6 +23,47 @@ pub struct ArchetypeStorage {
 impl Default for ArchetypeStorage {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Clone for ArchetypeStorage {
+    fn clone(&self) -> Self {
+        // Create new storage and copy data manually
+        let new_storage = Self::new();
+        
+        // Copy archetype data
+        {
+            let source_archetypes = self.archetypes.read();
+            let mut dest_archetypes = new_storage.archetypes.write();
+            for (id, archetype) in source_archetypes.iter() {
+                let new_archetype = Archetype::new(id, archetype.signature.clone());
+                // Copy entities
+                let archetype_id = dest_archetypes.insert(new_archetype);
+                if let Some(dest_arch) = dest_archetypes.get_mut(archetype_id) {
+                    dest_arch.entities = archetype.entities.clone();
+                }
+            }
+        }
+        
+        // Copy signature lookup
+        {
+            let source_lookup = self.signature_lookup.read();
+            let mut dest_lookup = new_storage.signature_lookup.write();
+            for (&hash, &archetype_id) in source_lookup.iter() {
+                dest_lookup.insert(hash, archetype_id);
+            }
+        }
+        
+        // Copy entity mapping
+        {
+            let source_mapping = self.entity_archetype.read();
+            let mut dest_mapping = new_storage.entity_archetype.write();
+            for (&entity, &archetype_id) in source_mapping.iter() {
+                dest_mapping.insert(entity, archetype_id);
+            }
+        }
+        
+        new_storage
     }
 }
 
@@ -248,6 +288,7 @@ impl ArchetypeStorage {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::any::TypeId;
 
     #[test]
     fn test_archetype_creation_and_retrieval() {

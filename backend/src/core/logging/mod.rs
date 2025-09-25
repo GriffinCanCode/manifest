@@ -18,7 +18,7 @@ use parking_lot::RwLock;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::{Registry, EnvFilter};
 use tracing_subscriber::prelude::*;
-use crate::core::hashing::{FastHasher, collections};
+use crate::core::hashing::FastHasher;
 use crate::core::reloader::{ReloadManager, ReloadHandler, ReloadResult, FileType};
 use std::path::PathBuf;
 
@@ -288,6 +288,10 @@ impl ReloadHandler for LoggingReloadHandler {
         tracing::info!("Logging configuration reloaded from file");
         Ok(())
     }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// Convenience macros for correlation-based logging
@@ -328,7 +332,6 @@ macro_rules! error_with_correlation {
 
 /// Game-specific logging utilities
 pub mod game_logging {
-    use super::*;
     use bevy_ecs::prelude::Entity;
     use glam::IVec2;
     

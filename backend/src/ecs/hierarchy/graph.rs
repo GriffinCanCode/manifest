@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
 
-use super::components::{Relationship, RelationshipType, Relationships};
-use crate::core::hashing::{FastHashMap, EntityHasher, HashStrategies};
+use super::components::{RelationshipType, Relationships};
+use crate::core::hashing::FastHashMap;
 
 /// Errors that can occur in hierarchy operations
 #[derive(Error, Debug, Clone)]
@@ -67,6 +67,12 @@ impl EntityGraph {
             entity_to_node: Arc::new(RwLock::new(FastHashMap::default())),
             node_to_entity: Arc::new(RwLock::new(FastHashMap::default())),
         }
+    }
+
+    /// Check if an entity exists in the graph
+    pub fn contains_entity(&self, entity: Entity) -> bool {
+        let entity_to_node = self.entity_to_node.read();
+        entity_to_node.contains_key(&entity)
     }
 
     /// Add entity to graph if not already present

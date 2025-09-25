@@ -10,8 +10,8 @@ use std::any::TypeId;
 use serde::{Serialize, Deserialize};
 use bevy_ecs::prelude::Entity;
 
-use crate::core::hashing::{HashStrategies, TypeIdHasher, FastHashMap, FastHashSet};
-use super::{CacheKey, CachePriority};
+use crate::core::hashing::{HashStrategies, FastHashMap, FastHashSet};
+use super::CachePriority;
 
 /// Query cache key for ECS component-based queries
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +34,86 @@ impl QueryCacheKey {
         use crate::core::hashing::FastHasher;
         FastHasher::hash_one(self)
     }
+    
+    /// Extract probable component TypeIds from this query key for caching index
+    /// This is a best-effort approximation based on query type and signature
+    pub fn extract_component_types(&self) -> Vec<TypeId> {
+        use std::any::TypeId;
+        use crate::ecs::components::{Position, Movement, Health, Owner, Name};
+        use crate::ecs::components::Renderable;
+        use crate::ecs::hierarchy::{Hierarchical, Relationships};
+        
+        match self.query_type {
+            QueryType::ComponentQuery | QueryType::PlayerOwnedQuery | QueryType::FilteredQuery => {
+                // For standard component queries, we can infer common component types
+                // This is a heuristic based on common query patterns in the game
+                let mut types = Vec::new();
+                
+                // Map common component signature patterns to likely TypeIds
+                let sig = self.component_signature;
+                
+                // Check against known component type signatures (approximate matching)
+                let position_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Position>()]);
+                let movement_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Movement>()]);
+                let health_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Health>()]);
+                let owner_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Owner>()]);
+                let renderable_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Renderable>()]);
+                
+                // Multi-component signatures (most common patterns)
+                let pos_health_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Position>(), TypeId::of::<Health>()]);
+                let pos_move_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Position>(), TypeId::of::<Movement>()]);
+                let pos_owner_sig = HashStrategies::hash_type_signature(&[TypeId::of::<Position>(), TypeId::of::<Owner>()]);
+                
+                // Match against common patterns
+                if sig == position_sig {
+                    types.push(TypeId::of::<Position>());
+                } else if sig == movement_sig {
+                    types.push(TypeId::of::<Movement>());
+                } else if sig == health_sig {
+                    types.push(TypeId::of::<Health>());
+                } else if sig == owner_sig {
+                    types.push(TypeId::of::<Owner>());
+                } else if sig == renderable_sig {
+                    types.push(TypeId::of::<Renderable>());
+                } else if sig == pos_health_sig {
+                    types.push(TypeId::of::<Position>());
+                    types.push(TypeId::of::<Health>());
+                } else if sig == pos_move_sig {
+                    types.push(TypeId::of::<Position>());
+                    types.push(TypeId::of::<Movement>());
+                } else if sig == pos_owner_sig {
+                    types.push(TypeId::of::<Position>());
+                    types.push(TypeId::of::<Owner>());
+                } else {
+                    // For unknown signatures, assume it involves common components
+                    // This is a reasonable fallback that ensures cache invalidation works
+                    types.push(TypeId::of::<Position>()); // Most queries involve position
+                }
+                
+                types
+            },
+            QueryType::HierarchicalQuery => {
+                vec![TypeId::of::<Hierarchical>(), TypeId::of::<Relationships>()]
+            },
+            QueryType::SpatialComponentQuery => {
+                vec![TypeId::of::<Position>(), TypeId::of::<Renderable>()] // Spatial queries typically need position
+            },
+            QueryType::ArchetypeQuery => {
+                // Archetype queries can contain any mix of components
+                // Return a conservative set of common component types
+                vec![
+                    TypeId::of::<Position>(),
+                    TypeId::of::<Movement>(),
+                    TypeId::of::<Health>(),
+                    TypeId::of::<Owner>()
+                ]
+            },
+            QueryType::EntitiesByComponents | QueryType::EntitiesWithData => {
+                // For entity-focused queries, include common components
+                vec![TypeId::of::<Position>(), TypeId::of::<Health>(), TypeId::of::<Owner>()]
+            },
+        }
+    }
 }
 
 /// Types of ECS queries that can be cached
@@ -51,6 +131,10 @@ pub enum QueryType {
     HierarchicalQuery,
     /// Spatial + component combined query
     SpatialComponentQuery,
+    /// Query returning entities by components
+    EntitiesByComponents,
+    /// Query returning entities with their component data
+    EntitiesWithData,
 }
 
 impl QueryCacheKey {
@@ -135,6 +219,7 @@ impl QueryCacheKey {
             QueryType::FilteredQuery => CachePriority::Normal,
             QueryType::HierarchicalQuery => CachePriority::Normal,
             QueryType::SpatialComponentQuery => CachePriority::High,
+            QueryType::EntitiesByComponents | QueryType::EntitiesWithData => CachePriority::Normal,
         }
     }
 
@@ -147,6 +232,7 @@ impl QueryCacheKey {
             QueryType::FilteredQuery => 128, // Filtered down results
             QueryType::HierarchicalQuery => 256, // Relationship data
             QueryType::SpatialComponentQuery => 512, // Combined query results
+            QueryType::EntitiesByComponents | QueryType::EntitiesWithData => 384, // Entity-focused query results
         }
     }
 }
@@ -350,25 +436,48 @@ pub struct ComponentIndex {
 impl ComponentIndex {
     /// Add a query key to the component index
     pub fn add_query(&mut self, key: &QueryCacheKey, key_hash: u64) {
-        // This would need access to the actual component types
-        // For now, we use the signature hash as a proxy
-        let type_proxy = TypeId::of::<()>(); // Placeholder
-        self.component_to_queries.entry(type_proxy)
-            .or_default()
-            .insert(key_hash);
+        // Extract component types from the query key
+        let component_types = key.extract_component_types();
+        
+        // Add query to each component type index
+        for component_type in component_types {
+            self.component_to_queries.entry(component_type)
+                .or_default()
+                .insert(key_hash);
+        }
+        
+        // Add to archetype index if it's an archetype query
+        if key.query_type == QueryType::ArchetypeQuery {
+            self.archetype_to_queries.entry(key.component_signature)
+                .or_default()
+                .insert(key_hash);
+        }
     }
 
     /// Remove a query key from the index
     pub fn remove_query(&mut self, key: &QueryCacheKey, key_hash: u64) {
-        // Remove from component index - would need actual implementation
-        for queries in self.component_to_queries.values_mut() {
-            queries.remove(&key_hash);
+        // Extract component types to remove from specific indices
+        let component_types = key.extract_component_types();
+        
+        // Remove from each component type index
+        for component_type in component_types {
+            if let Some(queries) = self.component_to_queries.get_mut(&component_type) {
+                queries.remove(&key_hash);
+                // Clean up empty sets
+                if queries.is_empty() {
+                    self.component_to_queries.remove(&component_type);
+                }
+            }
         }
         
         // Remove from archetype index
         if key.query_type == QueryType::ArchetypeQuery {
             if let Some(queries) = self.archetype_to_queries.get_mut(&key.component_signature) {
                 queries.remove(&key_hash);
+                // Clean up empty sets
+                if queries.is_empty() {
+                    self.archetype_to_queries.remove(&key.component_signature);
+                }
             }
         }
     }

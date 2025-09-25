@@ -6,17 +6,16 @@
 use bevy_ecs::prelude::*;
 use rayon::prelude::*;
 use petgraph::Direction;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
     components::{Relationships, RelationshipType, Hierarchical},
-    graph::{EntityGraph, HierarchyError, HierarchyResult},
+    graph::{EntityGraph, HierarchyResult},
 };
 use crate::core::{
     hashing::{FastHashMap, FastHashSet},
-    caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority, global_cache_events, SubsystemStats}
+    caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority, SubsystemStats, global_cache_events, events::CacheInvalidationEvent}
 };
 
 /// High-performance hierarchy query system that integrates with ECS
@@ -83,8 +82,8 @@ impl HierarchyQueries {
 
     /// Find all ancestor entities (recursive parents) with caching
     pub async fn ancestors(&self, entity: Entity) -> Vec<Entity> {
-        // Create cache key for ancestor query
-        let cache_key = CacheKey::Custom(format!("ancestors:{}", entity.index()));
+        let cache_key = CacheKey::Custom(format!("hierarchy:ancestors:{}:{}", 
+            entity.index(), self.world_generation));
         
         // Check cache first
         if let Ok(Some(ancestors)) = self.cache.get::<Vec<Entity>>(&cache_key).await {
@@ -94,7 +93,7 @@ impl HierarchyQueries {
         // Cache miss - compute ancestors
         let ancestors = self.graph.get_ancestors(entity);
         
-        // Cache the result
+        // Cache the result with normal priority (hierarchies are moderately important)
         let _ = self.cache.set(cache_key, ancestors.clone(), CachePriority::Normal).await;
 
         ancestors
@@ -102,8 +101,8 @@ impl HierarchyQueries {
 
     /// Find all descendant entities (recursive children) with caching
     pub async fn descendants(&self, entity: Entity) -> Vec<Entity> {
-        // Create cache key for descendant query
-        let cache_key = CacheKey::Custom(format!("descendants:{}", entity.index()));
+        let cache_key = CacheKey::Custom(format!("hierarchy:descendants:{}:{}", 
+            entity.index(), self.world_generation));
         
         // Check cache first
         if let Ok(Some(descendants)) = self.cache.get::<Vec<Entity>>(&cache_key).await {
@@ -113,10 +112,16 @@ impl HierarchyQueries {
         // Cache miss - compute descendants
         let descendants = self.graph.get_descendants(entity);
         
-        // Cache the result
+        // Cache the result with normal priority
         let _ = self.cache.set(cache_key, descendants.clone(), CachePriority::Normal).await;
 
         descendants
+    }
+
+    /// Check if one entity is an ancestor of another
+    pub async fn is_ancestor(&self, ancestor: Entity, descendant: Entity) -> bool {
+        let ancestors = self.ancestors(descendant).await;
+        ancestors.contains(&ancestor)
     }
 
     /// Find all entities owned by the given entity
@@ -199,35 +204,69 @@ impl HierarchyQueries {
         max_depth
     }
 
-    /// Find common ancestors between two entities
+    /// Find common ancestors between two entities with caching
     pub async fn common_ancestors(&self, entity1: Entity, entity2: Entity) -> Vec<Entity> {
+        let cache_key = CacheKey::Custom(format!("hierarchy:common_ancestors:{}:{}:{}", 
+            entity1.index(), entity2.index(), self.world_generation));
+        
+        // Check cache first
+        if let Ok(Some(common)) = self.cache.get::<Vec<Entity>>(&cache_key).await {
+            return common;
+        }
+
+        // Cache miss - compute common ancestors
         let ancestors1: FastHashSet<_> = self.ancestors(entity1).await.into_iter().collect();
         let ancestors2 = self.ancestors(entity2).await;
 
-        ancestors2
+        let common: Vec<Entity> = ancestors2
             .into_iter()
             .filter(|ancestor| ancestors1.contains(&ancestor))
-            .collect()
+            .collect();
+
+        // Cache the result with normal priority
+        let _ = self.cache.set(cache_key, common.clone(), CachePriority::Normal).await;
+        common
     }
 
-    /// Find the lowest common ancestor of two entities
+    /// Find the lowest common ancestor of two entities with caching
     pub async fn lowest_common_ancestor(&self, entity1: Entity, entity2: Entity) -> Option<Entity> {
+        let cache_key = CacheKey::Custom(format!("hierarchy:lca:{}:{}:{}", 
+            entity1.index(), entity2.index(), self.world_generation));
+        
+        // Check cache first
+        if let Ok(Some(lca)) = self.cache.get::<Option<Entity>>(&cache_key).await {
+            return lca;
+        }
+
+        // Cache miss - compute lowest common ancestor
         let ancestors1: FastHashSet<_> = self.ancestors(entity1).await.into_iter().collect();
         
         // Walk up from entity2 until we find a common ancestor
-        for ancestor in self.ancestors(entity2).await {
-            if ancestors1.contains(&ancestor) {
-                return Some(ancestor);
-            }
-        }
+        let lca = self.ancestors(entity2).await
+            .into_iter()
+            .find(|ancestor| ancestors1.contains(ancestor));
 
-        None
+        // Cache the result with normal priority
+        let _ = self.cache.set(cache_key, lca, CachePriority::Normal).await;
+        lca
     }
 
-    /// Find all entities in a subtree rooted at the given entity
+    /// Find all entities in a subtree rooted at the given entity with caching
     pub async fn subtree(&self, root: Entity) -> Vec<Entity> {
+        let cache_key = CacheKey::Custom(format!("hierarchy:subtree:{}:{}", 
+            root.index(), self.world_generation));
+        
+        // Check cache first
+        if let Ok(Some(subtree)) = self.cache.get::<Vec<Entity>>(&cache_key).await {
+            return subtree;
+        }
+
+        // Cache miss - compute subtree
         let mut subtree = vec![root];
         subtree.extend(self.descendants(root).await);
+        
+        // Cache the result with normal priority
+        let _ = self.cache.set(cache_key, subtree.clone(), CachePriority::Normal).await;
         subtree
     }
 
@@ -252,22 +291,41 @@ impl HierarchyQueries {
     }
 
     /// Validate hierarchy integrity (no cycles, valid relationships)
-    pub fn validate_hierarchy(&self) -> HierarchyResult<HierarchyValidation> {
+    pub fn validate_hierarchy(&self, world: &World) -> HierarchyResult<HierarchyValidation> {
         let stats = self.graph.stats();
         
         Ok(HierarchyValidation {
             has_cycles: stats.has_cycles,
             entity_count: stats.entity_count,
             relationship_count: stats.edge_count,
-            orphaned_entities: self.count_orphaned_entities(),
+            orphaned_entities: self.count_orphaned_entities(world),
         })
     }
 
     /// Count entities that exist in components but not in graph
-    fn count_orphaned_entities(&self) -> usize {
-        // This would need access to the world to implement fully
-        // For now, return 0 as placeholder
-        0
+    fn count_orphaned_entities(&self, world: &mut World) -> usize {
+        let mut orphaned_count = 0;
+        
+        // Get all entities that have hierarchical components
+        let mut hierarchical_query = world.query_filtered::<Entity, With<Hierarchical>>();
+        let hierarchical_entities: FastHashSet<Entity> = hierarchical_query.iter(world).collect();
+        
+        let mut relationships_query = world.query_filtered::<Entity, With<Relationships>>();
+        let relationships_entities: FastHashSet<Entity> = relationships_query.iter(world).collect();
+        
+        // Combine both sets of entities that should be in the graph
+        let mut component_entities = hierarchical_entities;
+        component_entities.extend(relationships_entities);
+        
+        // Count entities that exist in components but not tracked by the graph
+        for entity in component_entities {
+            // Check if the entity exists in the graph's entity tracking
+            if !self.graph.contains_entity(entity) {
+                orphaned_count += 1;
+            }
+        }
+        
+        orphaned_count
     }
 
     /// Perform hierarchical query with custom traversal function
@@ -328,28 +386,62 @@ impl HierarchyQueries {
 
     /// Clear all caches and invalidate cached results
     pub async fn invalidate_cache(&self) {
+        // Clear all hierarchy-related cache entries
         self.cache.clear().await;
+        
+        // Broadcast cache invalidation event for hierarchy subsystem
+        global_cache_events().broadcast(
+            CacheInvalidationEvent::WorldGeneration(self.world_generation)
+        ).await;
+    }
+
+    /// Synchronous cache invalidation for ECS systems
+    pub fn invalidate_cache_sync(&self) {
+        // Use tokio::task::block_in_place to handle async operations in sync context
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.block_on(async {
+                self.invalidate_cache().await;
+            });
+        }
+        // If no async runtime available, skip cache invalidation but log warning
+        else {
+            tracing::warn!("Cannot invalidate hierarchy cache: no async runtime available");
+        }
     }
 
     /// Advance world generation and invalidate caches
     pub async fn advance_world_generation(&mut self) {
         self.world_generation += 1;
-        self.cache.clear().await;
+        self.invalidate_cache().await;
     }
 
     /// Invalidate cache entries for a specific entity
     pub async fn invalidate_entity(&self, entity: Entity) {
-        let entity_key = entity.index();
+        // Remove specific cache entries related to this entity
+        let entity_index = entity.index();
+        let generation = self.world_generation;
         
-        // Remove all cache entries related to this entity
-        let ancestor_key = CacheKey::Custom(format!("ancestors:{}", entity_key));
-        let descendant_key = CacheKey::Custom(format!("descendants:{}", entity_key));
+        // Remove entity-specific caches
+        let ancestors_key = CacheKey::Custom(format!("hierarchy:ancestors:{}:{}", entity_index, generation));
+        let descendants_key = CacheKey::Custom(format!("hierarchy:descendants:{}:{}", entity_index, generation));
+        let subtree_key = CacheKey::Custom(format!("hierarchy:subtree:{}:{}", entity_index, generation));
         
-        self.cache.remove(&ancestor_key).await;
-        self.cache.remove(&descendant_key).await;
+        self.cache.remove(&ancestors_key).await;
+        self.cache.remove(&descendants_key).await;
+        self.cache.remove(&subtree_key).await;
         
-        // Also invalidate any cached results that might include this entity
-        // This is a simplified approach - a more sophisticated system would track dependencies
+        // Also need to invalidate any common ancestor or LCA caches involving this entity
+        // This is more expensive but necessary for correctness
+        // For now, we'll do a broader invalidation for caches involving this entity
+        
+        // Broadcast entity-specific invalidation event
+        global_cache_events().broadcast(
+            CacheInvalidationEvent::EntityModified { 
+                entity, 
+                archetype_changed: false, 
+                position_changed: None 
+            }
+        ).await;
     }
 
     /// Get access to the underlying EntityGraph for testing
@@ -358,10 +450,41 @@ impl HierarchyQueries {
         &self.graph
     }
 
-    /// Update hierarchy with new relationship data (public interface)
-    pub fn update_relationships(&self, updates: Vec<(Entity, Relationships)>) -> HierarchyResult<()> {
+    /// Update hierarchy with new relationship data (async interface)
+    pub async fn update_relationships(&self, updates: Vec<(Entity, Relationships)>) -> HierarchyResult<()> {
+        // Extract entities that will be affected for targeted cache invalidation
+        let affected_entities: Vec<Entity> = updates.iter().map(|(entity, _)| *entity).collect();
+        
+        // Update the graph
         self.graph.batch_update_relationships(updates)?;
-        self.invalidate_cache();
+        
+        // Invalidate cache entries for affected entities
+        for entity in affected_entities {
+            self.invalidate_entity(entity).await;
+        }
+        
+        Ok(())
+    }
+
+    /// Update hierarchy with new relationship data (sync interface for non-async contexts)
+    pub fn update_relationships_sync(&self, updates: Vec<(Entity, Relationships)>) -> HierarchyResult<()> {
+        // Extract entities that will be affected for targeted cache invalidation
+        let affected_entities: Vec<Entity> = updates.iter().map(|(entity, _)| *entity).collect();
+        
+        // Update the graph
+        self.graph.batch_update_relationships(updates)?;
+        
+        // Invalidate cache entries for affected entities using runtime
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            for entity in affected_entities {
+                handle.block_on(async {
+                    self.invalidate_entity(entity).await;
+                });
+            }
+        } else {
+            tracing::warn!("Cannot invalidate hierarchy cache: no async runtime available");
+        }
+        
         Ok(())
     }
 
@@ -370,10 +493,15 @@ impl HierarchyQueries {
         let cache_stats = self.cache.stats().await;
         let graph_stats = self.graph.stats();
 
+        // Estimate hierarchy-specific cache entries
+        let total_entries = cache_stats.cache_count;
+        let estimated_ancestors = total_entries / 4; // Rough estimate
+        let estimated_descendants = total_entries / 4; // Rough estimate
+
         HierarchyPerformanceStats {
             graph_stats,
-            cached_ancestors: cache_stats.cache_count / 2, // Rough estimate for ancestor cache entries
-            cached_descendants: cache_stats.cache_count / 2, // Rough estimate for descendant cache entries
+            cached_ancestors: estimated_ancestors,
+            cached_descendants: estimated_descendants,
             cache_version: self.world_generation as u64,
         }
     }
@@ -392,7 +520,19 @@ impl HierarchyQueries {
             last_updated: std::time::Instant::now(),
         };
 
+        // Report metrics to the global metrics system
         global_cache_events().register_subsystem_metrics("hierarchy", subsystem_stats).await;
+        
+        // Log hierarchy-specific performance info
+        tracing::debug!(
+            target: "hierarchy::performance",
+            graph_entities = graph_stats.entity_count,
+            graph_edges = graph_stats.edge_count,
+            cache_hits = cache_stats.total_hits,
+            cache_misses = cache_stats.total_misses,
+            cache_entries = cache_stats.cache_count,
+            "Hierarchy system performance stats"
+        );
     }
 }
 
@@ -429,8 +569,8 @@ pub fn sync_hierarchy_system(
         tracing::warn!("Failed to sync hierarchy with world: {}", e);
     }
     
-    // Invalidate cache after sync
-    hierarchy_queries.invalidate_cache();
+    // Invalidate cache after sync (sync version for ECS system)
+    hierarchy_queries.invalidate_cache_sync();
 }
 
 /// System for cleaning up orphaned relationships

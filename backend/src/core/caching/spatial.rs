@@ -6,13 +6,12 @@
 //! - Player territory and visibility caching
 //! - Spatial relationship caching for pathfinding
 
-use std::collections::HashSet;
 use glam::IVec2;
 use serde::{Serialize, Deserialize};
 use bevy_ecs::prelude::Entity;
 
 use crate::core::hashing::{CoordinateHasher, FastHashSet, FastHashMap};
-use super::{CacheKey, CachePriority};
+use super::CachePriority;
 
 /// Spatial cache key for position-based queries
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]

@@ -243,7 +243,7 @@ impl TypeIdHasher {
     #[inline]
     pub fn hash(type_id: TypeId) -> u64 {
         // Use the fastest hashing approach for TypeId
-        use std::hash::{Hash, Hasher};
+        use std::hash::Hash;
         let mut hasher = Xxh3::new();
         type_id.hash(&mut hasher);
         hasher.digest()
@@ -252,7 +252,7 @@ impl TypeIdHasher {
     /// Hash TypeId with seed
     #[inline]
     pub fn hash_with_seed(type_id: TypeId, seed: u64) -> u64 {
-        use std::hash::{Hash, Hasher};
+        use std::hash::Hash;
         let mut hasher = Xxh3::with_seed(seed);
         type_id.hash(&mut hasher);
         hasher.digest()
@@ -329,7 +329,7 @@ impl HashStrategies {
         let mut hasher = Xxh3::new();
         for &type_id in types {
             // Hash TypeId efficiently using its Hash implementation
-            use std::hash::{Hash, Hasher as _};
+            use std::hash::Hash;
             
             // Create a temporary hasher to get the hash value, then feed it to our main hasher
             let mut temp_hasher = Xxh3::new();

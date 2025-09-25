@@ -19,7 +19,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 /// Statistics about the reload manager
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ReloadStats {
     pub files_watched: usize,
     pub handlers_registered: usize,
@@ -182,6 +182,33 @@ impl ReloadManager {
     /// Get statistics
     pub fn stats(&self) -> ReloadStats {
         self.stats.lock().clone()
+    }
+
+    /// Get read access to handlers for inspection
+    pub fn get_handlers(&self) -> parking_lot::MutexGuard<Vec<Box<dyn ReloadHandler>>> {
+        self.handlers.lock()
+    }
+
+    /// Get a specific handler by name (debug builds only)
+    #[cfg(debug_assertions)]
+    pub fn get_handler(&self, name: &str) -> Option<Box<dyn std::any::Any>> {
+        let handlers = self.handlers.lock();
+        for handler in handlers.iter() {
+            if handler.name() == name {
+                // This is a workaround since we can't directly return a reference
+                // In practice, you'd need to restructure this to return a reference
+                // or use a different approach for accessing specific handlers
+                break;
+            }
+        }
+        None
+    }
+
+    /// Execute a function with access to handlers (debug builds only)
+    #[cfg(debug_assertions)]
+    pub fn with_handlers<T>(&self, f: impl FnOnce(&[Box<dyn ReloadHandler>]) -> T) -> T {
+        let handlers = self.handlers.lock();
+        f(&*handlers)
     }
 
     /// Handle file system events

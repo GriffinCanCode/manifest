@@ -5,17 +5,15 @@ use tauri::Manager;
 use tracing::info;
 
 use manifest::{
-    AppState, greet, get_game_state, initialize_game, 
-    save_game, load_game, list_saves, get_scheduler_metrics,
     ecs::{GameWorld, SaveSystem},
     core::{
-        logging::{LoggingSystem, LoggingConfig, game_logging},
+        logging::{LoggingSystem, LoggingConfig},
         caching::{GameCacheBuilder},
     },
 };
 
-#[cfg(debug_assertions)]
-use manifest::get_reload_stats;
+// Import commands module directly to ensure proper macro expansion
+use manifest::commands::{self, AppState};
 
 #[cfg(feature = "bench")]
 use manifest::core::benchmarks;
@@ -101,21 +99,21 @@ fn main() {
             info!(
                 target: "manifest::main",
                 status = "ready",
-                components = ["ecs", "saves", "ui"],
+                components = ?["ecs", "saves", "ui"],
                 "✅ Game ready to launch!"
             );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
-            get_game_state,
-            initialize_game,
-            save_game,
-            load_game,
-            list_saves,
-            get_scheduler_metrics,
+            commands::greet,
+            commands::get_game_state,
+            commands::initialize_game,
+            commands::save_game,
+            commands::load_game,
+            commands::list_saves,
+            commands::get_scheduler_metrics,
             #[cfg(debug_assertions)]
-            get_reload_stats,
+            commands::get_reload_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

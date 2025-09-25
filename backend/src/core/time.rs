@@ -8,6 +8,7 @@ use ordered_float::OrderedFloat;
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
 use spin_sleep::SpinSleeper;
 use std::{
@@ -282,7 +283,7 @@ impl DeterministicTimer {
 }
 
 /// Thread-safe global simulation state
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct SimulationState {
     /// Deterministic timer
     pub timer: Arc<Mutex<DeterministicTimer>>,

@@ -13,15 +13,11 @@ use indexmap::IndexMap;
 
 use crate::core::{
     zig_ffi::HexCoord,
-    hashing::{FastHashMap, FastHashSet},
     caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority}
 };
 use crate::world::tiles::{
     chunks::{TileId, ChunkCoord, ChunkManager},
-    components::{TileComponentManager, TerrainType, Tile},
-    ownership::{PlayerId, TileOwnershipLayer},
-    improvements::{TileImprovementManager, ImprovementType, ImprovementKey},
-    modifiers::{TileModifiers, ModifierType}
+    components::TileComponentManager
 };
 use tracing::{debug, instrument, warn};
 
@@ -578,16 +574,79 @@ impl TileLayerManager {
             LayerFeature::new(feature_id, feature_type, intensity)
         };
 
-        // This is a simplified implementation - in reality would interact with ECS
-        debug!("Added feature {:?} (ID: {}) to tile {}", feature_type, feature_id, tile_id);
+        // Find tile entity and add feature to appropriate layer
+        if let Some(tile_entity) = self.tile_manager.get_bevy_entity(tile_id) {
+            // Get or create layer stack component
+            if let Some(mut layer_stack) = world.get_mut::<TileLayerStack>(tile_entity) {
+                layer_stack.add_feature(feature)?;
+            } else {
+                // Create new layer stack if it doesn't exist
+                let mut layer_stack = TileLayerStack::new(tile_id);
+                layer_stack.add_feature(feature)?;
+                world.entity_mut(tile_entity).insert(layer_stack);
+            }
+            
+            debug!("Added feature {:?} (ID: {}) to tile {} entity {:?}", 
+                   feature_type, feature_id, tile_id, tile_entity);
+        } else {
+            // Try to find tile entity by coordinate lookup
+            let mut tile_query = world.query::<(Entity, &crate::world::tiles::chunks::TileId)>();
+            let mut found_entity = None;
+            
+            for (entity, &component_tile_id) in tile_query.iter(world) {
+                if component_tile_id == tile_id {
+                    found_entity = Some(entity);
+                    break;
+                }
+            }
+            
+            if let Some(tile_entity) = found_entity {
+                // Update tile manager mapping
+                self.tile_manager.register_bevy_entity(tile_id, tile_entity);
+                
+                // Add feature to layer stack
+                if let Some(mut layer_stack) = world.get_mut::<TileLayerStack>(tile_entity) {
+                    layer_stack.add_feature(feature)?;
+                } else {
+                    let mut layer_stack = TileLayerStack::new(tile_id);
+                    layer_stack.add_feature(feature)?;
+                    world.entity_mut(tile_entity).insert(layer_stack);
+                }
+                
+                debug!("Found and added feature {:?} (ID: {}) to tile {} entity {:?}", 
+                       feature_type, feature_id, tile_id, tile_entity);
+            } else {
+                return Err(LayerError::TileNotFound { tile_id });
+            }
+        }
+        
         Ok(feature_id)
     }
 
     /// Remove feature from tile
     pub fn remove_feature_from_tile(&self, world: &mut World, tile_id: TileId, feature_id: u32) -> Result<bool, LayerError> {
-        // Implementation would interact with ECS components
-        debug!("Removed feature {} from tile {}", feature_id, tile_id);
-        Ok(true)
+        // Find tile entity
+        if let Some(tile_entity) = self.tile_manager.get_bevy_entity(tile_id) {
+            if let Some(mut layer_stack) = world.get_mut::<TileLayerStack>(tile_entity) {
+                // Find feature across all layers
+                if let Some((layer_type, _)) = layer_stack.find_feature(feature_id) {
+                    let removed = layer_stack.remove_feature(layer_type, feature_id);
+                    
+                    if removed.is_some() {
+                        debug!("Removed feature {} from tile {} layer {:?}", feature_id, tile_id, layer_type);
+                        return Ok(true);
+                    }
+                }
+                
+                debug!("Feature {} not found in tile {} layers", feature_id, tile_id);
+                Ok(false)
+            } else {
+                debug!("No layer stack found for tile {}", tile_id);
+                Ok(false)
+            }
+        } else {
+            Err(LayerError::TileNotFound { tile_id })
+        }
     }
 
     /// Get features in area
@@ -649,10 +708,10 @@ impl TileLayerManager {
     }
 
     /// Get layer statistics
-    pub fn layer_stats(&self, world: &World) -> LayerStats {
+    pub fn layer_stats(&self, world: &mut World) -> LayerStats {
         let mut stats = LayerStats::default();
         
-        let query = world.query::<&TileLayerStack>();
+        let mut query = world.query::<&TileLayerStack>();
         
         for layer_stack in query.iter(world) {
             stats.tiles_with_layers += 1;
@@ -684,8 +743,8 @@ impl TileLayerManager {
     }
 
     /// Get memory usage statistics
-    pub fn memory_usage(&self, world: &World) -> usize {
-        let query = world.query::<&TileLayerStack>();
+    pub fn memory_usage(&self, world: &mut World) -> usize {
+        let mut query = world.query::<&TileLayerStack>();
         query.iter(world).map(|stack| stack.memory_size()).sum::<usize>() +
         std::mem::size_of::<Self>()
     }
@@ -744,18 +803,172 @@ pub enum LayerError {
 /// System for processing layer turns
 pub fn process_layers_system(
     layer_manager: Res<TileLayerManager>,
-    world: ResMut<World>,
-    // Would include turn/time resources
+    mut layers_query: Query<(Entity, &mut TileLayerStack)>,
+    game_state: Res<crate::core::game_state::CoreGameState>,
 ) {
-    // Implementation would process layers each turn
+    let current_turn = game_state.turn;
+    let mut processed_tiles = 0;
+    let mut features_updated = 0;
+    let mut features_expired = 0;
+    
+    // Process each tile's layer stack
+    for (entity, mut layer_stack) in layers_query.iter_mut() {
+        processed_tiles += 1;
+        let stack_generation_before = layer_stack.generation();
+        
+        // Process temporal features and cleanup
+        for layer in layer_stack.layers.iter_mut() {
+            let mut expired_features = Vec::new();
+            
+            // Check for expired features (if they have duration metadata)
+            for (index, feature) in layer.features.iter().enumerate() {
+                if let Some(ref metadata) = feature.metadata {
+                    // Parse expiration from metadata (format: "expires:turn_number")
+                    if let Some(expires_str) = metadata.strip_prefix("expires:") {
+                        if let Ok(expire_turn) = expires_str.parse::<u32>() {
+                            if current_turn >= expire_turn {
+                                expired_features.push(index);
+                            }
+                        }
+                    }
+                }
+                
+                // Check for feature intensity decay (temporal features fade)
+                if feature.feature_type.affects_tile_properties() && feature.intensity < 0.1 {
+                    expired_features.push(index);
+                }
+            }
+            
+            // Remove expired features (in reverse order to preserve indices)
+            for &index in expired_features.iter().rev() {
+                if index < layer.features.len() {
+                    layer.features.swap_remove(index);
+                    layer.generation += 1;
+                    features_expired += 1;
+                }
+            }
+            
+            // Update feature intensities for temporal effects
+            for feature in layer.features.iter_mut() {
+                let old_intensity = feature.intensity;
+                
+                // Apply time-based intensity decay for certain feature types
+                match feature.feature_type {
+                    FeatureType::Pollution | FeatureType::Radiation | FeatureType::Disease => {
+                        // Environmental hazards decay over time
+                        feature.intensity *= 0.95; // 5% decay per turn
+                        if feature.intensity < 0.01 {
+                            feature.intensity = 0.0;
+                        }
+                    },
+                    FeatureType::Weather => {
+                        // Weather patterns change
+                        feature.intensity *= 0.8; // 20% decay per turn for weather
+                    },
+                    FeatureType::Caravan | FeatureType::Pilgrimage => {
+                        // Moving features have dynamic intensity
+                        let turn_age = current_turn.saturating_sub(feature.last_modified);
+                        if turn_age > 5 {
+                            feature.intensity *= 0.9; // Fade after 5 turns
+                        }
+                    },
+                    _ => {
+                        // Most features are stable
+                    }
+                }
+                
+                if old_intensity != feature.intensity {
+                    feature.last_modified = current_turn;
+                    layer.generation += 1;
+                    features_updated += 1;
+                }
+            }
+        }
+        
+        // Update stack generation if any layers changed
+        if layer_stack.generation() != stack_generation_before {
+            layer_stack.generation += 1;
+        }
+    }
+    
+    // Log processing results periodically
+    if current_turn % 10 == 0 || features_expired > 0 {
+        debug!("Layer processing (Turn {}): {} tiles, {} features updated, {} expired", 
+               current_turn, processed_tiles, features_updated, features_expired);
+    }
 }
 
 /// System for updating layer visibility based on player settings
 pub fn update_layer_visibility_system(
     layer_manager: Res<TileLayerManager>,
-    // Would include player preference queries
+    mut layers_query: Query<&mut TileLayerStack>,
+    game_state: Res<crate::core::game_state::CoreGameState>,
+    // In a real implementation, would have player preference queries
 ) {
-    // Implementation would update layer visibility based on player preferences
+    // Only update visibility settings periodically to avoid overhead
+    if game_state.tick % 600 != 0 {  // ~10 seconds at 60 FPS
+        return;
+    }
+    
+    let current_turn = game_state.turn;
+    let mut updated_stacks = 0;
+    
+    // Update layer visibility based on game state and player preferences
+    for mut layer_stack in layers_query.iter_mut() {
+        let mut changed = false;
+        
+        // Apply automatic visibility rules based on game state
+        for layer_type in LayerType::all() {
+            let should_be_visible = match layer_type {
+                LayerType::Terrain => true, // Always visible
+                LayerType::Resources => true, // Always visible
+                LayerType::Political => true, // Always visible for strategy games
+                LayerType::Military => true, // Always visible for strategy games
+                LayerType::Cultural => current_turn > 10, // Show after early game
+                LayerType::Religious => current_turn > 20, // Show after religions develop
+                LayerType::Economic => current_turn > 5, // Show after economy develops
+                LayerType::Environmental => true, // Show environmental effects
+            };
+            
+            // Update layer visibility and opacity based on importance
+            if let Some(layer) = layer_stack.get_layer_mut(*layer_type) {
+                let was_active = layer.active;
+                layer.active = should_be_visible;
+                
+                // Set opacity based on layer type and game state
+                let target_opacity = if should_be_visible {
+                    match layer_type {
+                        LayerType::Terrain | LayerType::Resources => 1.0,
+                        LayerType::Political | LayerType::Military => 0.8,
+                        LayerType::Cultural | LayerType::Religious => 0.6,
+                        LayerType::Economic => 0.7,
+                        LayerType::Environmental => 0.5,
+                    }
+                } else {
+                    0.0
+                };
+                
+                if (layer.opacity - target_opacity).abs() > 0.01 {
+                    layer.opacity = target_opacity;
+                    changed = true;
+                }
+                
+                if was_active != layer.active {
+                    changed = true;
+                    debug!("Layer {:?} visibility changed to {} for tile", layer_type, layer.active);
+                }
+            }
+        }
+        
+        if changed {
+            updated_stacks += 1;
+        }
+    }
+    
+    if updated_stacks > 0 {
+        debug!("Updated layer visibility for {} tile stacks on turn {}", 
+               updated_stacks, current_turn);
+    }
 }
 
 #[cfg(test)]

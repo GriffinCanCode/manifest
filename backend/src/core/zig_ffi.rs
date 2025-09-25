@@ -4,6 +4,7 @@
 //! and SIMD operations for cross-platform reproducible calculations.
 
 use std::os::raw::{c_float, c_int};
+use serde::{Serialize, Deserialize};
 
 // External C function declarations from Zig
 extern "C" {
@@ -176,7 +177,7 @@ struct PixelPosC {
 }
 
 /// Hex coordinate structure
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct HexCoord {
     pub q: i32,
     pub r: i32,

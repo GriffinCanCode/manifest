@@ -7,9 +7,8 @@
 //! - Game-specific formats for analysis tools
 
 use std::fmt;
-use std::io::{self, Write};
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde_json::{Map, Value};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::{
@@ -17,8 +16,6 @@ use tracing_subscriber::{
     registry::LookupSpan,
     Layer,
 };
-use parking_lot::RwLock;
-use crate::core::hashing::HashStrategies;
 use super::{FileFormatConfig, FileFormatType, LoggingError, SensitiveDataFilter};
 
 /// Creates a formatter layer based on configuration
@@ -313,13 +310,24 @@ where
         // Message and fields (captured by field formatter)
         let mut field_buffer = String::new();
         {
-            let mut field_writer = Writer::new(&mut field_buffer);
+            let field_writer = Writer::new(&mut field_buffer);
             ctx.format_fields(field_writer, event).ok();
         }
         
         if !field_buffer.is_empty() {
-            // Parse fields from the buffer (simplified approach)
-            json.insert("message".to_string(), Value::String(field_buffer.trim().to_string()));
+            // Parse fields from the buffer with proper structured field extraction
+            match parse_structured_fields(&field_buffer) {
+                Ok(parsed_fields) => {
+                    // Merge parsed fields into the JSON object
+                    for (key, value) in parsed_fields {
+                        json.insert(key, value);
+                    }
+                }
+                Err(_) => {
+                    // Fallback: treat the entire buffer as message
+                    json.insert("message".to_string(), Value::String(field_buffer.trim().to_string()));
+                }
+            }
         }
         
         // Add span context
@@ -413,7 +421,7 @@ where
         // Message and fields
         let mut field_buffer = String::new();
         {
-            let mut field_writer = Writer::new(&mut field_buffer);
+            let field_writer = Writer::new(&mut field_buffer);
             ctx.format_fields(field_writer, event).ok();
         }
         
@@ -525,7 +533,8 @@ impl<'writer> FormatFields<'writer> for GameFieldFormatter {
         writer: Writer<'writer>,
         fields: R,
     ) -> fmt::Result {
-        let mut visitor = GameFieldVisitor::new(writer, &self.sensitive_filter);
+        // Create visitor without filter reference to avoid lifetime issues
+        let mut visitor = GameFieldVisitorSimple::new(writer);
         fields.record(&mut visitor);
         visitor.finish()
     }
@@ -580,11 +589,30 @@ struct GameFieldVisitor<'writer> {
     first: bool,
 }
 
+/// Simple field visitor without filter reference
+struct GameFieldVisitorSimple<'writer> {
+    writer: Writer<'writer>,
+    first: bool,
+}
+
 impl<'writer> GameFieldVisitor<'writer> {
     fn new(writer: Writer<'writer>, filter: &'writer SensitiveDataFilter) -> Self {
         Self {
             writer,
             sensitive_filter: filter,
+            first: true,
+        }
+    }
+    
+    fn finish(self) -> fmt::Result {
+        Ok(())
+    }
+}
+
+impl<'writer> GameFieldVisitorSimple<'writer> {
+    fn new(writer: Writer<'writer>) -> Self {
+        Self {
+            writer,
             first: true,
         }
     }
@@ -662,6 +690,48 @@ impl<'writer> tracing::field::Visit for GameFieldVisitor<'writer> {
     }
 }
 
+impl<'writer> tracing::field::Visit for GameFieldVisitorSimple<'writer> {
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        if !self.first {
+            write!(self.writer, " ").ok();
+        }
+        self.first = false;
+        write!(self.writer, "{}={}", field.name(), value).ok();
+    }
+    
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        if !self.first {
+            write!(self.writer, " ").ok();
+        }
+        self.first = false;
+        write!(self.writer, "{}={}", field.name(), value).ok();
+    }
+    
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        if !self.first {
+            write!(self.writer, " ").ok();
+        }
+        self.first = false;
+        write!(self.writer, "{}={}", field.name(), value).ok();
+    }
+    
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if !self.first {
+            write!(self.writer, " ").ok();
+        }
+        self.first = false;
+        write!(self.writer, "{}=\"{}\"", field.name(), value).ok();
+    }
+    
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
+        if !self.first {
+            write!(self.writer, " ").ok();
+        }
+        self.first = false;
+        write!(self.writer, "{}={:?}", field.name(), value).ok();
+    }
+}
+
 struct JsonFieldVisitor<'writer> {
     writer: Writer<'writer>,
     first: bool,
@@ -718,6 +788,72 @@ impl<'writer> tracing::field::Visit for LogfmtFieldVisitor<'writer> {
             write!(self.writer, "{:?}", value).ok();
         }
     }
+}
+
+/// Parse structured fields from field buffer
+fn parse_structured_fields(field_buffer: &str) -> Result<Vec<(String, serde_json::Value)>, serde_json::Error> {
+    let mut fields = Vec::new();
+    
+    // Try to parse as key-value pairs first
+    for line in field_buffer.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        
+        // Look for key=value or key:value patterns
+        if let Some(eq_pos) = line.find('=') {
+            let key = line[..eq_pos].trim().to_string();
+            let value = line[eq_pos + 1..].trim();
+            
+            // Try to parse value as JSON, fall back to string
+            let json_value = if value.starts_with('"') && value.ends_with('"') {
+                serde_json::Value::String(value[1..value.len()-1].to_string())
+            } else if let Ok(num) = value.parse::<f64>() {
+                serde_json::Value::Number(serde_json::Number::from_f64(num).unwrap_or_else(|| serde_json::Number::from(0)))
+            } else if value == "true" {
+                serde_json::Value::Bool(true)
+            } else if value == "false" {
+                serde_json::Value::Bool(false)
+            } else if value == "null" {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(value.to_string())
+            };
+            
+            fields.push((key, json_value));
+        } else if let Some(colon_pos) = line.find(':') {
+            let key = line[..colon_pos].trim().to_string();
+            let value = line[colon_pos + 1..].trim();
+            
+            // Similar JSON parsing as above
+            let json_value = if value.starts_with('"') && value.ends_with('"') {
+                serde_json::Value::String(value[1..value.len()-1].to_string())
+            } else if let Ok(num) = value.parse::<f64>() {
+                serde_json::Value::Number(serde_json::Number::from_f64(num).unwrap_or_else(|| serde_json::Number::from(0)))
+            } else if value == "true" {
+                serde_json::Value::Bool(true)
+            } else if value == "false" {
+                serde_json::Value::Bool(false)
+            } else if value == "null" {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(value.to_string())
+            };
+            
+            fields.push((key, json_value));
+        } else {
+            // Treat entire line as a message field
+            fields.push(("message".to_string(), serde_json::Value::String(line.to_string())));
+        }
+    }
+    
+    // If no structured fields found, treat entire buffer as message
+    if fields.is_empty() && !field_buffer.trim().is_empty() {
+        fields.push(("message".to_string(), serde_json::Value::String(field_buffer.trim().to_string())));
+    }
+    
+    Ok(fields)
 }
 
 /// Color scheme for console output

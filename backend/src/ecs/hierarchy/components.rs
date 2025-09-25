@@ -7,7 +7,6 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::ecs::components::{ComponentError, Validate};
 use crate::core::hashing::{FastHashSet, HashStrategies};
-use super::graph::{EntityGraph, HierarchyError};
 
 /// Stable entity identifier for serialization
 /// Uses the entity's index and generation for a stable ID across save/load
@@ -32,6 +31,21 @@ impl From<StableEntityId> for Entity {
         // Generation is in the high 32 bits, index is in the low 32 bits
         let bits = ((stable_id.generation as u64) << 32) | (stable_id.index as u64);
         Entity::from_bits(bits)
+    }
+}
+
+impl StableEntityId {
+    /// Create stable ID from entity
+    pub fn from_entity(entity: Entity) -> Option<Self> {
+        Some(Self {
+            index: entity.index(),
+            generation: entity.generation(),
+        })
+    }
+
+    /// Create stable ID from components
+    pub fn from_entity_id(index: u32, generation: u32) -> Self {
+        Self { index, generation }
     }
 }
 

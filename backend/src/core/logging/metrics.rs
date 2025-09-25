@@ -14,8 +14,7 @@ use parking_lot::RwLock;
 use tracing::{Metadata, Event, Subscriber};
 use tracing_subscriber::{Layer, registry::LookupSpan};
 use serde::{Serialize, Deserialize};
-use crate::core::hashing::{collections, FastHashMap, HashStrategies};
-use super::{RateLimitStats, SamplingStats, AppenderStats};
+use crate::core::hashing::{collections, FastHashMap};
 
 /// Main logging metrics collector
 pub struct LoggingMetrics {
@@ -69,7 +68,7 @@ impl LoggingMetrics {
         
         // Update per-level metrics
         {
-            let mut levels = self.level_metrics.write();
+            let levels = self.level_metrics.write();
             let level_index = match *metadata.level() {
                 tracing::Level::TRACE => 0,
                 tracing::Level::DEBUG => 1,
@@ -85,8 +84,8 @@ impl LoggingMetrics {
     }
     
     /// Record a filtered event (event that was not logged due to filtering)
-    pub fn record_filtered(&self, metadata: &Metadata, filter_type: FilterType) {
-        let mut system = self.system_metrics.write();
+    pub fn record_filtered(&self, _metadata: &Metadata, filter_type: FilterType) {
+        let system = self.system_metrics.write();
         system.filtered_events.fetch_add(1, Ordering::Relaxed);
         
         match filter_type {

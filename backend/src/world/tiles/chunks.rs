@@ -3,11 +3,12 @@
 //! Provides memory-efficient chunk-based storage for large worlds using
 //! optimized ndarray operations with SIMD acceleration where possible.
 
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, Axis, s};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, s};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use glam::IVec2;
 use parking_lot::RwLock;
+use bevy_ecs::prelude::Component;
 use crate::core::zig_ffi::HexCoord;
 use tracing::{debug, warn, instrument};
 
@@ -18,10 +19,55 @@ pub const CHUNK_SIZE: usize = 64;
 pub type ChunkCoord = IVec2;
 
 /// Tile identifier within a chunk
-pub type TileId = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Component, Serialize, Deserialize)]
+pub struct TileId(pub u32);
+
+impl TileId {
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+}
+
+impl std::fmt::Display for TileId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl num_traits::Zero for TileId {
+    fn zero() -> Self {
+        TileId(0)
+    }
+    
+    fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl std::ops::AddAssign<u32> for TileId {
+    fn add_assign(&mut self, rhs: u32) {
+        self.0 += rhs;
+    }
+}
+
+impl std::ops::Add<u32> for TileId {
+    type Output = TileId;
+
+    fn add(self, rhs: u32) -> Self::Output {
+        TileId(self.0 + rhs)
+    }
+}
+
+impl std::ops::Add<TileId> for TileId {
+    type Output = TileId;
+
+    fn add(self, rhs: TileId) -> Self::Output {
+        TileId(self.0 + rhs.0)
+    }
+}
 
 /// Invalid tile constant
-pub const INVALID_TILE: TileId = 0;
+pub const INVALID_TILE: TileId = TileId(0);
 
 /// Chunk storage container using ndarray for optimal SIMD operations
 #[derive(Debug, Clone, Serialize, Deserialize)]

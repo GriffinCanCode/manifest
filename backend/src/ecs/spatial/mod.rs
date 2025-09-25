@@ -6,15 +6,16 @@
 use rstar::{RTree, RTreeObject, AABB};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::Resource;
-use tracing::{info, debug, warn, error, instrument, Span};
+use tracing::{info, debug, warn, instrument};
 use glam::IVec2;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::Instant;
 use crate::core::{hashing::{FastHashMap, collections}, logging::{LoggingSystem, game_logging}};
-use crate::core::caching::{GameCache, CacheKey, SpatialCacheKey, SpatialQueryResult, CachePriority};
+use crate::core::caching::GameCache;
 use crate::core::zig_ffi::{hex_distance as zig_hex_distance, HexCoord};
 use crate::ecs::components::{Position, Owner, Movement};
+use crate::ecs::resources::GameTime;
 
 /// Spatial entity wrapper for R-tree insertion
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -33,6 +34,39 @@ impl RTreeObject for SpatialEntity {
         AABB::from_point(point)
     }
 }
+
+impl rstar::Point for SpatialEntity {
+    type Scalar = i32;
+    const DIMENSIONS: usize = 2;
+    
+    fn generate(mut generator: impl FnMut(usize) -> Self::Scalar) -> Self {
+        let x = generator(0);
+        let y = generator(1);
+        Self {
+            entity: Entity::PLACEHOLDER, // Placeholder entity for point generation
+            position: IVec2::new(x, y),
+            player_id: None,
+            is_movable: false,
+        }
+    }
+    
+    fn nth(&self, index: usize) -> Self::Scalar {
+        match index {
+            0 => self.position.x,
+            1 => self.position.y,
+            _ => panic!("Point index out of bounds: {}", index),
+        }
+    }
+    
+    fn nth_mut(&mut self, index: usize) -> &mut Self::Scalar {
+        match index {
+            0 => &mut self.position.x,
+            1 => &mut self.position.y,
+            _ => panic!("Point index out of bounds: {}", index),
+        }
+    }
+}
+
 
 /// High-performance spatial index using R-tree with incremental updates
 #[derive(Debug, Clone, Resource)]
@@ -250,6 +284,18 @@ impl OptimalSpatialIndex {
             .map(|spatial_entity| spatial_entity.entity)
             .collect()
     }
+
+    /// Get all entities currently in the spatial index
+    pub fn all_entities(&self) -> Vec<Entity> {
+        let lookup = self.entity_lookup.read();
+        lookup.keys().cloned().collect()
+    }
+
+    /// Get all entities with their spatial data
+    pub fn all_entities_with_data(&self) -> Vec<(Entity, SpatialEntity)> {
+        let lookup = self.entity_lookup.read();
+        lookup.iter().map(|(&entity, &spatial_entity)| (entity, spatial_entity)).collect()
+    }
     
     /// Get owned units at specific position
     pub fn owned_units_at_position(&self, pos: IVec2, player_id: u32) -> Vec<Entity> {
@@ -264,18 +310,55 @@ impl OptimalSpatialIndex {
             .map(|spatial_entity| spatial_entity.entity)
             .collect()
     }
+
+    /// Get entities within a rectangular area (min corner to max corner)
+    pub fn entities_in_rectangle(&self, min: IVec2, max: IVec2) -> Vec<Entity> {
+        let rtree = self.rtree.read();
+        let aabb = AABB::from_corners([min.x, min.y], [max.x, max.y]);
+        
+        rtree.locate_in_envelope_intersecting(&aabb)
+            .map(|se| se.entity)
+            .collect()
+    }
+
+    /// Find the nearest entity to a position
+    pub fn nearest_entity(&self, pos: IVec2) -> Option<Entity> {
+        let rtree = self.rtree.read();
+        let query_point = [pos.x, pos.y];
+        
+        rtree.nearest_neighbor(&query_point)
+            .map(|se| se.entity)
+    }
+
+    /// Count entities at a specific position
+    pub fn count_entities_at_position(&self, position: IVec2) -> usize {
+        self.entities_at_position(position).len()
+    }
+
+    /// Count entities within range of a center point
+    pub fn count_entities_in_range(&self, center: IVec2, radius: u32) -> usize {
+        self.entities_in_range(center, radius).len()
+    }
     
     /// Get statistics for monitoring
     pub fn stats(&self) -> SpatialStats {
         let rtree = self.rtree.read();
         let lookup = self.entity_lookup.read();
-        // Stats for cache handled via the GameCache
+        
+        // Estimate memory usage
+        let entity_size = std::mem::size_of::<SpatialEntity>();
+        let estimated_memory = (rtree.size() * entity_size * 2) as u64; // rough estimate
         
         SpatialStats {
             total_entities: rtree.size(),
             lookup_entries: lookup.len(),
             cache_entries: 0, // Cache managed by GameCache
             rtree_depth: 0, // R-tree depth not directly accessible
+            empty_buckets: 0, // Not applicable for R-tree
+            total_buckets: 1, // Single R-tree structure
+            memory_usage_bytes: estimated_memory,
+            cache_hits: 0, // Cache stats managed by GameCache
+            cache_misses: 0, // Cache stats managed by GameCache
         }
     }
     
@@ -300,7 +383,7 @@ impl OptimalSpatialIndex {
     }
     
     fn get_cached_result(&self, key: u64) -> Option<Vec<Entity>> {
-        use crate::core::caching::{CacheKey, CachePriority};
+        use crate::core::caching::CacheKey;
         use tokio::runtime::Handle;
         
         // Try to get current runtime, if none available return None (no caching)
@@ -348,6 +431,24 @@ impl OptimalSpatialIndex {
     pub fn clear_cache_if_dirty(&self) {
         // No-op - cache managed by GameCache
     }
+    
+    /// Rebuild the entire spatial index (for maintenance)
+    pub fn rebuild_index(&mut self) {
+        let mut rtree = self.rtree.write();
+        let lookup = self.entity_lookup.read();
+        
+        // Collect all current entities
+        let entities: Vec<SpatialEntity> = lookup.values().cloned().collect();
+        
+        // Clear and rebuild the R-tree
+        *rtree = RTree::new();
+        for entity in entities {
+            rtree.insert(entity);
+        }
+        
+        // Mark cache as dirty
+        self.mark_cache_dirty();
+    }
 }
 
 /// Statistics for spatial index performance monitoring
@@ -357,19 +458,26 @@ pub struct SpatialStats {
     pub lookup_entries: usize,
     pub cache_entries: usize,
     pub rtree_depth: usize,
+    pub empty_buckets: usize,
+    pub total_buckets: usize,
+    pub memory_usage_bytes: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
 }
 
 // === INCREMENTAL SYNC SYSTEM ===
 
 /// Resource to track when spatial sync is needed
 #[derive(Resource, Default)]
-pub struct SpatialSyncNeeded;
+pub struct SpatialSyncNeeded {
+    pub full_rebuild: bool,
+}
 
 /// System that incrementally updates spatial index
 #[instrument(name = "incremental_spatial_sync", skip_all)]
 pub fn incremental_spatial_sync(
     mut commands: Commands,
-    mut spatial_index: ResMut<OptimalSpatialIndex>,
+    spatial_index: ResMut<OptimalSpatialIndex>,
     
     // Added entities with positions
     added_query: Query<(Entity, &Position, Option<&Owner>, Option<&Movement>), Added<Position>>,
@@ -390,7 +498,7 @@ pub fn incremental_spatial_sync(
     
     // Handle new entities
     for (entity, position, owner, movement) in added_query.iter() {
-        let player_id = owner.map(|o| o.player_id());
+        let player_id = owner.map(|o| o.player_id);
         let is_movable = movement.is_some();
         let hex_pos = position.hex();
         
@@ -452,7 +560,7 @@ pub fn incremental_spatial_sync(
     }
     
     if updates_made {
-        commands.insert_resource(SpatialSyncNeeded);
+        commands.insert_resource(SpatialSyncNeeded { full_rebuild: false });
         
         let sync_duration = sync_start.elapsed().as_secs_f64() * 1000.0;
         let total_changes = added_count + changed_count + removed_count;
@@ -476,7 +584,7 @@ pub fn incremental_spatial_sync(
 #[instrument(name = "spatial_cache_maintenance", skip_all)]
 pub fn spatial_cache_maintenance(
     mut commands: Commands,
-    mut spatial_index: ResMut<OptimalSpatialIndex>,
+    spatial_index: ResMut<OptimalSpatialIndex>,
     sync_needed: Option<Res<SpatialSyncNeeded>>,
 ) {
     if sync_needed.is_some() {
@@ -497,6 +605,101 @@ pub fn spatial_cache_maintenance(
         
         game_logging::log_performance_event("spatial_cache_maintenance", maintenance_duration, 1);
     }
+}
+
+/// Full spatial index rebuild check system
+/// Monitors index fragmentation and triggers full rebuilds when beneficial
+#[instrument(name = "full_spatial_rebuild_check", skip_all)]
+pub fn full_spatial_rebuild_check(
+    mut spatial_index: ResMut<OptimalSpatialIndex>,
+    game_time: Res<GameTime>,
+    mut last_rebuild: Local<Option<std::time::Instant>>,
+    mut commands: Commands,
+) {
+    let start_time = std::time::Instant::now();
+    
+    // Only check every 300 seconds (5 minutes) to avoid overhead
+    if let Some(last) = *last_rebuild {
+        if last.elapsed().as_secs() < 300 {
+            return;
+        }
+    }
+    
+    let stats = spatial_index.stats();
+    let should_rebuild = {
+        // Rebuild conditions:
+        // 1. High fragmentation (empty buckets > 50% of total)
+        let empty_bucket_ratio = stats.empty_buckets as f64 / stats.total_buckets.max(1) as f64;
+        let high_fragmentation = empty_bucket_ratio > 0.5;
+        
+        // 2. Memory usage is excessive (> 100MB for spatial index)
+        let excessive_memory = stats.memory_usage_bytes > 100 * 1024 * 1024;
+        
+        // 3. Very large number of cache misses recently
+        let high_cache_miss_ratio = stats.cache_misses as f64 / (stats.cache_hits + stats.cache_misses).max(1) as f64;
+        let poor_cache_performance = high_cache_miss_ratio > 0.8 && stats.cache_misses > 1000;
+        
+        // 4. Long time since last rebuild (> 1 hour) and significant entity count
+        let stale_index = last_rebuild.map_or(true, |last| last.elapsed().as_secs() > 3600) && stats.total_entities > 1000;
+        
+        high_fragmentation || excessive_memory || poor_cache_performance || stale_index
+    };
+    
+    if should_rebuild {
+        info!(
+            target: "game::spatial::rebuild",
+            turn = game_time.turn,
+            tick = game_time.tick,
+            total_entities = stats.total_entities,
+            empty_buckets = stats.empty_buckets,
+            total_buckets = stats.total_buckets,
+            memory_mb = stats.memory_usage_bytes / (1024 * 1024),
+            cache_hit_ratio = stats.cache_hits as f64 / (stats.cache_hits + stats.cache_misses).max(1) as f64,
+            "Triggering full spatial index rebuild"
+        );
+        
+        let rebuild_start = std::time::Instant::now();
+        
+        // Perform full rebuild
+        spatial_index.rebuild_index();
+        
+        let rebuild_duration = rebuild_start.elapsed().as_millis() as f64;
+        
+        // Log rebuild completion
+        let new_stats = spatial_index.stats();
+        info!(
+            target: "game::spatial::rebuild", 
+            rebuild_duration_ms = rebuild_duration,
+            old_memory_mb = stats.memory_usage_bytes / (1024 * 1024),
+            new_memory_mb = new_stats.memory_usage_bytes / (1024 * 1024),
+            old_empty_buckets = stats.empty_buckets,
+            new_empty_buckets = new_stats.empty_buckets,
+            entities_processed = new_stats.total_entities,
+            "Spatial index rebuild completed"
+        );
+        
+        // Log performance event
+        game_logging::log_performance_event("spatial_full_rebuild", rebuild_duration, new_stats.total_entities);
+        
+        // Mark sync as completed
+        commands.insert_resource(SpatialSyncNeeded { full_rebuild: false });
+        
+        *last_rebuild = Some(std::time::Instant::now());
+    } else {
+        // Periodic stats logging without rebuild
+        debug!(
+            target: "game::spatial::rebuild",
+            turn = game_time.turn,
+            total_entities = stats.total_entities,
+            empty_bucket_ratio = stats.empty_buckets as f64 / stats.total_buckets.max(1) as f64,
+            memory_mb = stats.memory_usage_bytes / (1024 * 1024),
+            cache_hit_ratio = stats.cache_hits as f64 / (stats.cache_hits + stats.cache_misses).max(1) as f64,
+            "Spatial index health check - no rebuild needed"
+        );
+    }
+    
+    let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+    game_logging::log_performance_event("spatial_rebuild_check", duration_ms, if should_rebuild { 1 } else { 0 });
 }
 
 #[cfg(test)]

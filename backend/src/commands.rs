@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::State;
-use tracing::{info, error, warn, debug, instrument};
+use tracing::{info, error, debug};
 
 use crate::ecs::{GameWorld, SaveInfo, SaveSystem};
-use crate::core::{logging::{LoggingSystem, game_logging}, caching::{GameCache, GameCacheBuilder, CacheKey, PlayerCacheKey, CachePriority}};
+use crate::core::{logging::LoggingSystem, caching::{GameCache, CacheKey, PlayerCacheKey, CachePriority}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
@@ -35,7 +35,6 @@ impl Default for GameState {
 }
 
 #[tauri::command]
-#[instrument(name = "greet_command", fields(player_name = name))]
 pub fn greet(name: &str) -> String {
     let correlation_id = LoggingSystem::generate_correlation_id();
     
@@ -51,7 +50,6 @@ pub fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-#[instrument(name = "get_game_state")]
 pub async fn get_game_state(app_state: State<'_, AppState>) -> Result<GameState, String> {
     let correlation_id = LoggingSystem::generate_correlation_id();
     
@@ -62,8 +60,16 @@ pub async fn get_game_state(app_state: State<'_, AppState>) -> Result<GameState,
         "Retrieving current game state"
     );
     
-    // Try cache first for game state
-    let cache_key = CacheKey::Player(PlayerCacheKey::resources(1, 1)); // Simplified - would use actual turn
+    // Try cache first for game state using proper cache key generation
+    let cache_key = {
+        let world = app_state.world.lock().unwrap();
+        let current_turn = world.get_turn();
+        let current_player = world.world().get_resource::<crate::ecs::resources::Players>()
+            .map(|players| players.current_player)
+            .unwrap_or(1);
+        
+        CacheKey::Player(PlayerCacheKey::game_state(current_player, current_turn))
+    };
     if let Ok(Some(cached_state)) = app_state.command_cache.get::<GameState>(&cache_key).await {
         debug!(
             target: "manifest::commands",
@@ -75,14 +81,15 @@ pub async fn get_game_state(app_state: State<'_, AppState>) -> Result<GameState,
     
     // Compute fresh state
     let start_time = Instant::now();
-    let world = app_state.world.lock().unwrap();
-    let state = GameState {
-        turn: world.get_turn(),
-        player_name: "Player".to_string(),
-        civilization: "Ancient Empire".to_string(),
-        is_paused: world.is_paused(),
-    };
-    drop(world);
+    let state = {
+        let world = app_state.world.lock().unwrap();
+        GameState {
+            turn: world.get_turn(),
+            player_name: "Player".to_string(),
+            civilization: "Ancient Empire".to_string(),
+            is_paused: world.is_paused(),
+        }
+    }; // MutexGuard is dropped here
     
     // Cache the result
     let computation_time = start_time.elapsed();
@@ -103,8 +110,7 @@ pub async fn get_game_state(app_state: State<'_, AppState>) -> Result<GameState,
 }
 
 #[tauri::command]
-#[instrument(name = "initialize_game", fields(player_name = %player_name, civilization = %civilization))]
-pub async fn initialize_game(player_name: String, civilization: String, app_state: State<'_, AppState>) -> Result<GameState, String> {
+pub async fn initialize_game(player_name: String, civilization: String, _app_state: State<'_, AppState>) -> Result<GameState, String> {
     let correlation_id = LoggingSystem::generate_correlation_id();
     
     info!(
@@ -137,7 +143,6 @@ pub async fn initialize_game(player_name: String, civilization: String, app_stat
 }
 
 #[tauri::command]
-#[instrument(name = "save_game", fields(save_name = %save_name))]
 pub async fn save_game(
     save_name: String, 
     state: State<'_, AppState>
@@ -187,7 +192,6 @@ pub async fn save_game(
 }
 
 #[tauri::command]
-#[instrument(name = "load_game", fields(save_name = %save_name))]
 pub async fn load_game(
     save_name: String,
     state: State<'_, AppState>
@@ -243,7 +247,7 @@ pub async fn load_game(
         turn: world_state.game_time.turn,
         player_name: save_file.metadata.name.clone(),
         civilization: save_file.metadata.civilization.clone(),
-        is_paused: world_state.game_time.paused,
+        is_paused: world_state.game_time.is_paused(),
     };
     
     info!(
@@ -259,7 +263,6 @@ pub async fn load_game(
 }
 
 #[tauri::command]
-#[instrument(name = "list_saves")]
 pub async fn list_saves(state: State<'_, AppState>) -> Result<Vec<SaveInfo>, String> {
     let correlation_id = LoggingSystem::generate_correlation_id();
     
@@ -294,7 +297,6 @@ pub async fn list_saves(state: State<'_, AppState>) -> Result<Vec<SaveInfo>, Str
 
 /// Get hot reload statistics (debug builds only)
 #[tauri::command]
-#[instrument(name = "get_reload_stats")]
 #[cfg(debug_assertions)]
 pub async fn get_reload_stats(state: State<'_, AppState>) -> Result<Option<crate::core::reloader::ReloadStats>, String> {
     let correlation_id = LoggingSystem::generate_correlation_id();
@@ -306,17 +308,19 @@ pub async fn get_reload_stats(state: State<'_, AppState>) -> Result<Option<crate
         "Retrieving hot reload statistics"
     );
     
-    let world = state.world.lock().map_err(|e| {
-        error!(
-            target: "manifest::commands",
-            correlation_id = correlation_id,
-            error = %e,
-            "Failed to acquire world lock for reload stats"
-        );
-        format!("Failed to lock world: {}", e)
-    })?;
-    
-    let stats = world.reload_stats();
+    let stats = {
+        let world = state.world.lock().map_err(|e| {
+            error!(
+                target: "manifest::commands",
+                correlation_id = correlation_id,
+                error = %e,
+                "Failed to acquire world lock for reload stats"
+            );
+            format!("Failed to lock world: {}", e)
+        })?;
+        
+        world.reload_stats()
+    }; // MutexGuard is dropped here
     
     debug!(
         target: "manifest::commands",
@@ -330,7 +334,6 @@ pub async fn get_reload_stats(state: State<'_, AppState>) -> Result<Option<crate
 
 /// Get scheduler performance metrics  
 #[tauri::command]
-#[instrument(name = "get_scheduler_metrics")]
 pub async fn get_scheduler_metrics(state: State<'_, AppState>) -> Result<crate::core::SchedulerMetrics, String> {
     let correlation_id = LoggingSystem::generate_correlation_id();
     
@@ -341,24 +344,26 @@ pub async fn get_scheduler_metrics(state: State<'_, AppState>) -> Result<crate::
         "Retrieving scheduler performance metrics"
     );
     
-    let world = state.world.lock().map_err(|e| {
-        error!(
-            target: "manifest::commands", 
-            correlation_id = correlation_id,
-            error = %e,
-            "Failed to acquire world lock for scheduler metrics"
-        );
-        format!("Failed to lock world: {}", e)
-    })?;
-    
-    let metrics = world.scheduler_metrics();
+    let metrics = {
+        let world = state.world.lock().map_err(|e| {
+            error!(
+                target: "manifest::commands", 
+                correlation_id = correlation_id,
+                error = %e,
+                "Failed to acquire world lock for scheduler metrics"
+            );
+            format!("Failed to lock world: {}", e)
+        })?;
+        
+        world.scheduler_metrics()
+    }; // MutexGuard is dropped here
     
     debug!(
         target: "manifest::commands",
         correlation_id = correlation_id,
         tasks_executed = metrics.tasks_executed,
-        avg_task_time_ms = metrics.average_task_time.as_millis(),
-        last_frame_time_ms = metrics.last_frame_time.as_millis(),
+        avg_task_time_ms = metrics.average_task_time_ms,
+        last_frame_time_ms = metrics.last_frame_time_ms,
         "Scheduler metrics retrieved"
     );
     

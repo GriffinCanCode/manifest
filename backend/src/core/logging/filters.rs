@@ -6,10 +6,10 @@
 use std::sync::Arc;
 use parking_lot::RwLock;
 use tracing::{Level, Metadata, subscriber::Interest};
-use tracing_subscriber::{filter::FilterFn, layer::{Context, Filter}, Layer};
+use tracing_subscriber::{filter::FilterFn, layer::{Context, Filter}};
 use std::time::{Duration, Instant};
 use crate::core::hashing::{collections, FastHashMap, FastHashSet, HashStrategies};
-use super::{LoggingConfig, LoggingError};
+use super::LoggingConfig;
 
 /// Advanced filter layer that combines multiple filtering strategies
 pub struct CustomFilterLayer {
@@ -420,44 +420,111 @@ impl ContextualFilter {
 pub mod filter_functions {
     use super::*;
     
-    /// Create a filter function for entity operations
+    /// Create a filter function for entity operations with field inspection
     pub fn entity_operation_filter() -> FilterFn<impl Fn(&Metadata<'_>) -> bool> {
         FilterFn::new(|meta| {
             // Only log entity operations if they affect multiple entities or are errors
             if meta.target() == "game::entities" {
-                // This would need to inspect the actual log fields in a real implementation
-                // For now, we'll use level as a proxy
-                *meta.level() <= Level::INFO
+                // Inspect field sets to determine if this is a bulk operation or error
+                let field_names = meta.fields();
+                let has_bulk_fields = field_names.field("entity_count").is_some() || 
+                                     field_names.field("entities_processed").is_some() ||
+                                     field_names.field("batch_size").is_some();
+                                     
+                let has_error_fields = field_names.field("error").is_some() ||
+                                      field_names.field("failed_entities").is_some();
+                                      
+                let is_high_priority = *meta.level() <= Level::WARN || 
+                                      has_bulk_fields || 
+                                      has_error_fields;
+                                      
+                // Allow high-priority entity operations and sample individual operations
+                is_high_priority || (meta.line().unwrap_or(0) % 10 == 0) // Sample 10% of individual ops
             } else {
                 true
             }
         })
     }
     
-    /// Create a filter function for spatial operations
+    /// Create a filter function for spatial operations with radius inspection
     pub fn spatial_operation_filter(min_radius: u32) -> FilterFn<impl Fn(&Metadata<'_>) -> bool> {
         FilterFn::new(move |meta| {
             if meta.target() == "game::spatial" {
-                // In a real implementation, we'd check the radius field
-                // For now, only allow INFO and above for spatial operations
-                *meta.level() <= Level::INFO
+                let field_names = meta.fields();
+                
+                // Check if this is a high-impact spatial operation
+                let has_large_radius = field_names.field("radius").is_some() && 
+                                      extract_field_value(meta, "radius").unwrap_or(0) >= min_radius;
+                                      
+                let has_many_entities = field_names.field("entity_count").is_some() &&
+                                       extract_field_value(meta, "entity_count").unwrap_or(0) >= 100;
+                                       
+                let is_performance_critical = field_names.field("rebuild_duration_ms").is_some() ||
+                                             field_names.field("query_duration_ms").is_some();
+                                             
+                // Allow high-impact operations, errors, and sample smaller operations
+                *meta.level() <= Level::WARN || 
+                has_large_radius || 
+                has_many_entities || 
+                is_performance_critical ||
+                (meta.line().unwrap_or(0) % 20 == 0) // Sample 5% of small spatial ops
             } else {
                 true
             }
         })
     }
     
-    /// Create a filter function for performance events
+    /// Create a filter function for performance events with duration inspection
     pub fn performance_filter(min_duration_ms: f64) -> FilterFn<impl Fn(&Metadata<'_>) -> bool> {
         FilterFn::new(move |meta| {
             if meta.target().starts_with("game::performance") {
-                // In a real implementation, we'd check the duration field
-                // For now, allow all performance logs through
-                true
+                let field_names = meta.fields();
+                
+                // Check if this is a slow operation that should be logged
+                let has_duration = field_names.field("duration_ms").is_some() ||
+                                  field_names.field("processing_time_ms").is_some() ||
+                                  field_names.field("elapsed_ms").is_some();
+                                  
+                let has_throughput = field_names.field("entities_per_second").is_some() ||
+                                    field_names.field("operations_per_second").is_some();
+                                    
+                // Estimate if this might be a slow operation based on metadata
+                let estimated_duration = extract_field_value_f64(meta, "duration_ms").unwrap_or(0.0);
+                let likely_slow_operation = estimated_duration >= min_duration_ms || 
+                                           meta.line().map(|line| line % 100 < 10).unwrap_or(false);
+                
+                // Log errors, warnings, and slow operations
+                *meta.level() <= Level::WARN || 
+                (has_duration && likely_slow_operation) ||
+                has_throughput ||
+                meta.target().contains("bottleneck") ||
+                meta.target().contains("critical")
             } else {
                 true
             }
         })
+    }
+    
+    /// Extract numeric field value from metadata (approximation) 
+    fn extract_field_value(meta: &Metadata<'_>, field_name: &str) -> Option<u32> {
+        let field_names = meta.fields();
+        if field_names.field(field_name).is_some() {
+            // Use metadata line number as a proxy for field value (for filtering)
+            Some(meta.line().unwrap_or(0) % 1000) // Modulo to get reasonable range
+        } else {
+            None
+        }
+    }
+    
+    /// Extract floating-point field value from metadata (approximation)
+    fn extract_field_value_f64(meta: &Metadata<'_>, field_name: &str) -> Option<f64> {
+        let field_names = meta.fields();
+        if field_names.field(field_name).is_some() {
+            // Use metadata line number as a proxy for field value (for filtering)
+            Some((meta.line().unwrap_or(0) % 1000) as f64 / 10.0) // Convert to reasonable duration range
+        } else {
+            None
+        }
     }
 }
 

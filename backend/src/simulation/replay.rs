@@ -6,13 +6,13 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    fs::{File, OpenOptions},
+    fs::File,
     io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 use thiserror::Error;
 use tracing::{debug, info, warn};
-use crate::simulation::commands::{SimulationCommand, ScheduledCommand};
+use crate::simulation::commands::SimulationCommand;
 
 /// Replay event with timestamp and command data
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,6 +310,13 @@ impl ReplayManager {
 
         let header_bytes = bincode::serialize(&header)
             .map_err(|e| ReplayError::SerializationError(e.to_string()))?;
+        
+        // Write header size first (4 bytes)
+        let header_size = header_bytes.len() as u32;
+        writer.write_all(&header_size.to_le_bytes())
+            .map_err(|e| ReplayError::IoError(e.to_string()))?;
+        
+        // Write header data
         writer.write_all(&header_bytes)
             .map_err(|e| ReplayError::IoError(e.to_string()))?;
 
@@ -327,6 +334,13 @@ impl ReplayManager {
             for event in events {
                 let event_bytes = bincode::serialize(event)
                     .map_err(|e| ReplayError::SerializationError(e.to_string()))?;
+                
+                // Write event size first (4 bytes)
+                let event_size = event_bytes.len() as u32;
+                writer.write_all(&event_size.to_le_bytes())
+                    .map_err(|e| ReplayError::IoError(e.to_string()))?;
+                
+                // Write event data
                 writer.write_all(&event_bytes)
                     .map_err(|e| ReplayError::IoError(e.to_string()))?;
             }
@@ -337,60 +351,97 @@ impl ReplayManager {
         Ok(())
     }
 
-    /// Load replay from file
+    /// Load replay from file with proper binary deserialization
     fn load_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<ReplayHeader, ReplayError> {
         let file = File::open(path).map_err(|e| ReplayError::IoError(e.to_string()))?;
         let mut reader = BufReader::new(file);
 
-        // Read header - for now, we'll need to know the size or use a different approach
-        // This is simplified - in a real implementation, we'd store the header size first
-        let mut header_buffer = Vec::new();
-        reader.read_to_end(&mut header_buffer)
-            .map_err(|e| ReplayError::IoError(e.to_string()))?;
+        // Step 1: Read header size (first 4 bytes)
+        let mut header_size_bytes = [0u8; 4];
+        reader.read_exact(&mut header_size_bytes)
+            .map_err(|e| ReplayError::IoError(format!("Failed to read header size: {}", e)))?;
+        let header_size = u32::from_le_bytes(header_size_bytes) as usize;
         
-        // For now, just create a default header - this would need proper implementation
-        let header = ReplayHeader {
-            version: 1,
-            game_version: "0.1.0".to_string(),
-            seed: 0,
-            start_tick: 0,
-            end_tick: 0,
-            event_count: 0,
-            created_at: 0,
-            checksum: 0,
-            name: "Loaded Replay".to_string(),
-            description: String::new(),
-        };
+        // Sanity check header size
+        if header_size > 1024 * 1024 { // 1MB max header size
+            return Err(ReplayError::CorruptedFile("Header size too large".to_string()));
+        }
+
+        // Step 2: Read and deserialize header
+        let mut header_buffer = vec![0u8; header_size];
+        reader.read_exact(&mut header_buffer)
+            .map_err(|e| ReplayError::IoError(format!("Failed to read header data: {}", e)))?;
+        
+        let header: ReplayHeader = bincode::deserialize(&header_buffer)
+            .map_err(|e| ReplayError::SerializationError(format!("Failed to deserialize header: {}", e)))?;
+
+        // Validate header
+        if header.version != 1 {
+            return Err(ReplayError::VersionMismatch { 
+                expected: 1, 
+                found: header.version 
+            });
+        }
 
         // Clear existing events
         self.events.clear();
 
-        // Read events
+        // Step 3: Read events
         let mut events_read = 0u64;
         while events_read < header.event_count {
+            // Read tick (8 bytes)
             let mut tick_bytes = [0u8; 8];
             if reader.read_exact(&mut tick_bytes).is_err() {
-                break; // End of file
+                debug!("Reached end of file while reading tick at event {}/{}", events_read, header.event_count);
+                break; // End of file - might be truncated replay
             }
             let tick = u64::from_le_bytes(tick_bytes);
 
+            // Read event count for this tick (4 bytes)
             let mut count_bytes = [0u8; 4];
             reader
                 .read_exact(&mut count_bytes)
-                .map_err(|e| ReplayError::IoError(e.to_string()))?;
-            let event_count = u32::from_le_bytes(count_bytes);
+                .map_err(|e| ReplayError::IoError(format!("Failed to read event count at tick {}: {}", tick, e)))?;
+            let tick_event_count = u32::from_le_bytes(count_bytes);
 
-            let mut events = Vec::new();
-            for _ in 0..event_count {
-                // For now, create placeholder events - this would need proper implementation
-                // In a real implementation, we'd deserialize the actual event bytes
+            // Read all events for this tick
+            let mut tick_events = Vec::with_capacity(tick_event_count as usize);
+            for event_idx in 0..tick_event_count {
+                // Read event size (4 bytes)
+                let mut event_size_bytes = [0u8; 4];
+                reader.read_exact(&mut event_size_bytes)
+                    .map_err(|e| ReplayError::IoError(format!("Failed to read event size at tick {}, event {}: {}", tick, event_idx, e)))?;
+                let event_size = u32::from_le_bytes(event_size_bytes) as usize;
+                
+                // Sanity check event size
+                if event_size > 1024 * 1024 { // 1MB max event size
+                    return Err(ReplayError::CorruptedFile(format!("Event size too large: {} bytes", event_size)));
+                }
+
+                // Read event data
+                let mut event_buffer = vec![0u8; event_size];
+                reader.read_exact(&mut event_buffer)
+                    .map_err(|e| ReplayError::IoError(format!("Failed to read event data at tick {}, event {}: {}", tick, event_idx, e)))?;
+                
+                // Deserialize event
+                let event: ReplayEvent = bincode::deserialize(&event_buffer)
+                    .map_err(|e| ReplayError::SerializationError(format!("Failed to deserialize event at tick {}, event {}: {}", tick, event_idx, e)))?;
+                
+                tick_events.push(event);
                 events_read += 1;
             }
 
-            self.events.insert(tick, events);
+            self.events.insert(tick, tick_events);
         }
 
-        info!("Loaded replay: {} events from {} to {}", header.event_count, header.start_tick, header.end_tick);
+        // Validate that we read expected number of events
+        let actual_events_read = self.events.values().map(|events| events.len() as u64).sum::<u64>();
+        if actual_events_read != events_read {
+            warn!("Event count mismatch: expected {}, actually read {}", header.event_count, actual_events_read);
+        }
+
+        info!("Loaded replay '{}': {} events from tick {} to {}", 
+              header.name, actual_events_read, header.start_tick, header.end_tick);
         Ok(header)
     }
 }
@@ -422,6 +473,10 @@ pub enum ReplayError {
     DeserializationError(String),
     #[error("File format error: {0}")]
     FormatError(String),
+    #[error("Corrupted file: {0}")]
+    CorruptedFile(String),
+    #[error("Version mismatch: expected {expected}, found {found}")]
+    VersionMismatch { expected: u32, found: u32 },
 }
 
 #[cfg(test)]

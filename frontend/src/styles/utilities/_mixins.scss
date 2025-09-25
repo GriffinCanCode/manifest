@@ -79,7 +79,11 @@
 
 @mixin btn-primary {
   @include btn-base;
-  background: linear-gradient(135deg, vars.$color-primary, vars.$color-secondary);
+  background: linear-gradient(
+    135deg,
+    vars.$color-primary,
+    vars.$color-secondary
+  );
   color: white;
   box-shadow: vars.$shadow-md;
 
@@ -133,28 +137,48 @@
 // Media query mixins
 @mixin media-up($breakpoint) {
   @if $breakpoint == sm {
-    @media (min-width: vars.$breakpoint-sm) { @content; }
+    @media (min-width: vars.$breakpoint-sm) {
+      @content;
+    }
   } @else if $breakpoint == md {
-    @media (min-width: vars.$breakpoint-md) { @content; }
+    @media (min-width: vars.$breakpoint-md) {
+      @content;
+    }
   } @else if $breakpoint == lg {
-    @media (min-width: vars.$breakpoint-lg) { @content; }
+    @media (min-width: vars.$breakpoint-lg) {
+      @content;
+    }
   } @else if $breakpoint == xl {
-    @media (min-width: vars.$breakpoint-xl) { @content; }
+    @media (min-width: vars.$breakpoint-xl) {
+      @content;
+    }
   } @else if $breakpoint == xxl {
-    @media (min-width: vars.$breakpoint-xxl) { @content; }
+    @media (min-width: vars.$breakpoint-xxl) {
+      @content;
+    }
   }
 }
 
 @mixin media-down($breakpoint) {
   @if $breakpoint == sm {
-    @media (max-width: #{vars.$breakpoint-sm - 1px}) { @content; }
+    @media (max-width: #{vars.$breakpoint-sm - 1px}) {
+      @content;
+    }
   } @else if $breakpoint == md {
-    @media (max-width: #{vars.$breakpoint-md - 1px}) { @content; }
+    @media (max-width: #{vars.$breakpoint-md - 1px}) {
+      @content;
+    }
   } @else if $breakpoint == lg {
-    @media (max-width: #{vars.$breakpoint-lg - 1px}) { @content; }
+    @media (max-width: #{vars.$breakpoint-lg - 1px}) {
+      @content;
+    }
   } @else if $breakpoint == xl {
-    @media (max-width: #{vars.$breakpoint-xl - 1px}) { @content; }
+    @media (max-width: #{vars.$breakpoint-xl - 1px}) {
+      @content;
+    }
   } @else if $breakpoint == xxl {
-    @media (max-width: #{vars.$breakpoint-xxl - 1px}) { @content; }
+    @media (max-width: #{vars.$breakpoint-xxl - 1px}) {
+      @content;
+    }
   }
 }

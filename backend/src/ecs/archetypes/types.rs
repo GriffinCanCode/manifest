@@ -6,7 +6,7 @@
 use slotmap::{SlotMap, DefaultKey as SlotKey};
 use bevy_ecs::prelude::*;
 use serde::{Serialize, Deserialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::any::TypeId;
 use crate::core::hashing::{collections, HashStrategies, FastHashMap, FastHashSet};
 
@@ -73,7 +73,7 @@ impl ComponentSignature {
 }
 
 /// Archetype metadata and entity storage reference
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Archetype {
     /// Unique identifier for this archetype
     pub id: ArchetypeId,
@@ -153,7 +153,7 @@ impl Archetype {
 }
 
 /// Error types for archetype operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, thiserror::Error)]
 pub enum ArchetypeError {
     #[error("Archetype not found: {0:?}")]
     NotFound(ArchetypeId),

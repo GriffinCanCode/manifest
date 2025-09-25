@@ -54,7 +54,7 @@ impl Default for ControlConfig {
 }
 
 /// High-precision time control system
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimeController {
     /// Current playback mode
     mode: Arc<RwLock<PlaybackMode>>,
@@ -72,6 +72,12 @@ pub struct TimeController {
     error_state: Arc<AtomicBool>,
     /// Statistics
     stats: Arc<RwLock<ControlStats>>,
+}
+
+impl Default for TimeController {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TimeController {
@@ -141,10 +147,10 @@ impl TimeController {
         let speed = det_f32(speed);
         
         if speed < self.config.min_speed {
-            return Err(ControlError::SpeedTooSlow(speed.into_inner()));
+            return Err(ControlError::SpeedTooSlow(speed.into_inner(), self.config.min_speed.into_inner()));
         }
         if speed > self.config.max_speed {
-            return Err(ControlError::SpeedTooFast(speed.into_inner()));
+            return Err(ControlError::SpeedTooFast(speed.into_inner(), self.config.max_speed.into_inner()));
         }
 
         *self.speed.write() = speed;
@@ -174,7 +180,7 @@ impl TimeController {
     }
 
     /// Check if simulation should advance this frame
-    pub fn should_advance(&self, simulation: &SimulationState) -> bool {
+    pub fn should_advance(&self, _simulation: &SimulationState) -> bool {
         // Check error state
         if self.error_state.load(Ordering::Relaxed) && self.config.auto_pause_on_error {
             return false;
@@ -319,9 +325,9 @@ impl ControlStats {
 #[derive(Error, Debug)]
 pub enum ControlError {
     #[error("Speed {0} is too slow (minimum: {1})")]
-    SpeedTooSlow(f32),
+    SpeedTooSlow(f32, f32),
     #[error("Speed {0} is too fast (maximum: {1})")]  
-    SpeedTooFast(f32),
+    SpeedTooFast(f32, f32),
     #[error("Frame stepping is disabled")]
     SteppingDisabled,
     #[error("Cannot perform operation in current mode")]

@@ -127,7 +127,7 @@ impl VerificationSystem {
     }
 
     /// Calculate checksum for world state at given tick
-    pub fn calculate_checksum(&self, world: &World, tick: u64) -> u64 {
+    pub fn calculate_checksum(&self, world: &mut World, tick: u64) -> u64 {
         if !self.enabled {
             return 0;
         }
@@ -277,35 +277,202 @@ impl VerificationSystem {
         info!("Imported {} expected checksums", expected.len());
     }
 
-    /// Fast hash of entities - simplified implementation
-    fn hash_entities(&self, _world: &World) -> u64 {
+    /// Fast hash of entities - deterministic implementation
+    fn hash_entities(&self, world: &World) -> u64 {
+        use std::hash::Hash;
+        use crate::ecs::components::{Position, Movement, Health, Owner, Name, Renderable};
+        use crate::ecs::hierarchy::{Relationships, Hierarchical};
+        
         let mut hasher = SeaHasher::new();
         
-        // This would need proper ECS integration to hash all entities
-        // For now, return a placeholder based on world state
-        0u64.hash(&mut hasher); // Placeholder
+        // Collect all entities and sort them by ID for deterministic ordering
+        let mut entities: Vec<Entity> = world.entities().iter().collect();
+        entities.sort_by_key(|e| (e.index(), e.generation()));
+        
+        // Hash each entity's ID and components in sorted order
+        for entity in entities {
+            // Hash entity ID (for structure integrity)
+            entity.index().hash(&mut hasher);
+            entity.generation().hash(&mut hasher);
+            
+            // Hash components in deterministic order
+            // Position component
+            if let Some(position) = world.get::<Position>(entity) {
+                "Position".hash(&mut hasher);
+                position.hex().x.hash(&mut hasher);
+                position.hex().y.hash(&mut hasher);
+            }
+            
+            // Movement component
+            if let Some(movement) = world.get::<Movement>(entity) {
+                "Movement".hash(&mut hasher);
+                movement.speed.to_bits().hash(&mut hasher);
+                movement.remaining_moves.hash(&mut hasher);
+                movement.max_moves.hash(&mut hasher);
+                movement.can_move_diagonal.hash(&mut hasher);
+                (movement.movement_type as u8).hash(&mut hasher);
+            }
+            
+            // Health component
+            if let Some(health) = world.get::<Health>(entity) {
+                "Health".hash(&mut hasher);
+                health.current.to_bits().hash(&mut hasher);
+                health.max.to_bits().hash(&mut hasher);
+                health.regen_rate.to_bits().hash(&mut hasher);
+                health.armor.to_bits().hash(&mut hasher);
+            }
+            
+            // Owner component
+            if let Some(owner) = world.get::<Owner>(entity) {
+                "Owner".hash(&mut hasher);
+                owner.player_id.hash(&mut hasher);
+                // Note: is_controllable method doesn't exist, skip for now
+                // owner.is_controllable().hash(&mut hasher);
+            }
+            
+            // Name component
+            if let Some(name) = world.get::<Name>(entity) {
+                "Name".hash(&mut hasher);
+                name.value().hash(&mut hasher);
+                name.is_immutable().hash(&mut hasher);
+            }
+            
+            // Renderable component
+            if let Some(renderable) = world.get::<Renderable>(entity) {
+                "Renderable".hash(&mut hasher);
+                renderable.sprite.hash(&mut hasher);
+                renderable.color.r.to_bits().hash(&mut hasher);
+                renderable.color.g.to_bits().hash(&mut hasher);
+                renderable.color.b.to_bits().hash(&mut hasher);
+                renderable.color.a.to_bits().hash(&mut hasher);
+                renderable.layer.hash(&mut hasher);
+                renderable.scale.to_bits().hash(&mut hasher);
+                renderable.rotation.to_bits().hash(&mut hasher);
+                renderable.visible.hash(&mut hasher);
+                renderable.alpha.to_bits().hash(&mut hasher);
+            }
+            
+            // Relationships component (for hierarchical entities)
+            if let Some(relationships) = world.get::<Relationships>(entity) {
+                "Relationships".hash(&mut hasher);
+                // Hash relationships in deterministic order
+                let mut parent_ids: Vec<u32> = relationships.parents().iter().map(|e| e.index()).collect();
+                let mut child_ids: Vec<u32> = relationships.children().iter().map(|e| e.index()).collect();
+                parent_ids.sort();
+                child_ids.sort();
+                
+                parent_ids.hash(&mut hasher);
+                child_ids.hash(&mut hasher);
+            }
+            
+            // Hierarchical marker
+            if world.get::<Hierarchical>(entity).is_some() {
+                "Hierarchical".hash(&mut hasher);
+            }
+        }
         
         hasher.finish()
     }
 
     /// Fast hash of resources
-    fn hash_resources(&self, _world: &World) -> u64 {
+    fn hash_resources(&self, world: &World) -> u64 {
+        use std::hash::Hash;
+        use crate::ecs::resources::{GameTime, Players};
+        
         let mut hasher = SeaHasher::new();
         
-        // This would need proper resource iteration and hashing
-        // For now, return a placeholder
-        0u64.hash(&mut hasher); // Placeholder
+        // Hash game resources in deterministic order
+        "Resources".hash(&mut hasher);
+        
+        // Hash GameTime resource
+        if let Some(game_time) = world.get_resource::<GameTime>() {
+            "GameTime".hash(&mut hasher);
+            game_time.turn.hash(&mut hasher);
+            game_time.tick.hash(&mut hasher);
+            game_time.delta_time.to_bits().hash(&mut hasher);
+            game_time.paused.hash(&mut hasher);
+            game_time.interpolation_factor.into_inner().to_bits().hash(&mut hasher);
+        }
+        
+        // Hash Players resource
+        if let Some(players) = world.get_resource::<Players>() {
+            "Players".hash(&mut hasher);
+            // Hash player data in deterministic order (by player ID)
+            let mut player_ids: Vec<u32> = players.data.keys().copied().collect();
+            player_ids.sort();
+            
+            for player_id in player_ids {
+                if let Some(player) = players.data.get(&player_id) {
+                    player_id.hash(&mut hasher);
+                    player.name.hash(&mut hasher);
+                    player.civilization.hash(&mut hasher);
+                    player.is_human.hash(&mut hasher);
+                    player.is_active.hash(&mut hasher);
+                    // Hash color components
+                    player.color[0].to_bits().hash(&mut hasher);
+                    player.color[1].to_bits().hash(&mut hasher);
+                    player.color[2].to_bits().hash(&mut hasher);
+                }
+            }
+            players.current_player.hash(&mut hasher);
+            players.turn_order.hash(&mut hasher);
+        }
         
         hasher.finish()
     }
 
     /// Fast hash of components
-    fn hash_components(&self, _world: &World) -> u64 {
+    fn hash_components(&self, world: &mut World) -> u64 {
+        use std::hash::Hash;
+        
         let mut hasher = SeaHasher::new();
         
-        // This would need proper component iteration and hashing
-        // For now, return a placeholder
-        0u64.hash(&mut hasher); // Placeholder
+        // Component-level hashing provides aggregate component data statistics
+        // This is different from entity hashing - it focuses on component type counts and totals
+        "Components".hash(&mut hasher);
+        
+        // Count components of each type for aggregate statistics
+        let position_count = world.query::<&crate::ecs::components::Position>().iter(world).count();
+        let movement_count = world.query::<&crate::ecs::components::Movement>().iter(world).count();
+        let health_count = world.query::<&crate::ecs::components::Health>().iter(world).count();
+        let owner_count = world.query::<&crate::ecs::components::Owner>().iter(world).count();
+        let name_count = world.query::<&crate::ecs::components::Name>().iter(world).count();
+        let renderable_count = world.query::<&crate::ecs::components::Renderable>().iter(world).count();
+        let hierarchical_count = world.query::<&crate::ecs::hierarchy::Hierarchical>().iter(world).count();
+        let relationships_count = world.query::<&crate::ecs::hierarchy::Relationships>().iter(world).count();
+        
+        // Hash component counts (structural integrity)
+        "position_count".hash(&mut hasher);
+        position_count.hash(&mut hasher);
+        "movement_count".hash(&mut hasher);
+        movement_count.hash(&mut hasher);
+        "health_count".hash(&mut hasher);
+        health_count.hash(&mut hasher);
+        "owner_count".hash(&mut hasher);
+        owner_count.hash(&mut hasher);
+        "name_count".hash(&mut hasher);
+        name_count.hash(&mut hasher);
+        "renderable_count".hash(&mut hasher);
+        renderable_count.hash(&mut hasher);
+        "hierarchical_count".hash(&mut hasher);
+        hierarchical_count.hash(&mut hasher);
+        "relationships_count".hash(&mut hasher);
+        relationships_count.hash(&mut hasher);
+        
+        // Hash aggregate component values (for cross-validation)
+        let mut total_health = 0.0f32;
+        for health in world.query::<&crate::ecs::components::Health>().iter(world) {
+            total_health += health.current + health.max;
+        }
+        "total_health".hash(&mut hasher);
+        total_health.to_bits().hash(&mut hasher);
+        
+        let mut total_moves = 0u32;
+        for movement in world.query::<&crate::ecs::components::Movement>().iter(world) {
+            total_moves += movement.remaining_moves + movement.max_moves;
+        }
+        "total_moves".hash(&mut hasher);
+        total_moves.hash(&mut hasher);
         
         hasher.finish()
     }

@@ -121,6 +121,7 @@ pub enum ConfigType {
     Json,
     Toml,
     Yaml,
+    Ron,
 }
 
 /// Handler for configuration files (TOML, JSON, etc.)
@@ -158,13 +159,34 @@ impl ConfigHandler {
                     })?;
                 
                 let data = match json_value {
-                    serde_json::Value::Object(map) => map,
+                    serde_json::Value::Object(map) => map.into_iter().collect(),
                     _ => return Err(ReloadError::Failed {
                         reason: format!("Config file {} must contain a JSON object", path.display()),
                     }),
                 };
                 
                 Ok((ConfigType::Json, data))
+            }
+            "ron" => {
+                let ron_value: ron::Value = ron::from_str(content)
+                    .map_err(|e| ReloadError::Failed {
+                        reason: format!("Invalid RON in {}: {}", path.display(), e),
+                    })?;
+                
+                // Convert RON to JSON for uniform handling
+                let json_value: serde_json::Value = serde_json::to_value(ron_value)
+                    .map_err(|e| ReloadError::Failed {
+                        reason: format!("Failed to convert RON to JSON for {}: {}", path.display(), e),
+                    })?;
+                
+                let data = match json_value {
+                    serde_json::Value::Object(map) => map.into_iter().collect(),
+                    _ => return Err(ReloadError::Failed {
+                        reason: format!("Config file {} must contain a RON mapping", path.display()),
+                    }),
+                };
+                
+                Ok((ConfigType::Ron, data))
             }
             "toml" => {
                 let toml_value: toml::Value = toml::from_str(content)
@@ -184,7 +206,7 @@ impl ConfigHandler {
                     })?;
                 
                 let data = match json_value {
-                    serde_json::Value::Object(map) => map,
+                    serde_json::Value::Object(map) => map.into_iter().collect(),
                     _ => return Err(ReloadError::Failed {
                         reason: format!("Config file {} must contain a TOML table", path.display()),
                     }),
@@ -205,7 +227,7 @@ impl ConfigHandler {
                     })?;
                 
                 let data = match json_value {
-                    serde_json::Value::Object(map) => map,
+                    serde_json::Value::Object(map) => map.into_iter().collect(),
                     _ => return Err(ReloadError::Failed {
                         reason: format!("Config file {} must contain a YAML mapping", path.display()),
                     }),
@@ -234,7 +256,7 @@ impl ReloadHandler for ConfigHandler {
     fn handles(&self, path: &PathBuf) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext| matches!(ext, "toml" | "json" | "yaml" | "yml"))
+            .map(|ext| matches!(ext, "toml" | "json" | "yaml" | "yml" | "ron"))
             .unwrap_or(false)
     }
 
@@ -365,7 +387,7 @@ impl ReloadHandler for AssetHandler {
         // Create asset change notification
         let change = AssetChange {
             path: path.clone(),
-            asset_type,
+            asset_type: asset_type.clone(),
             size_bytes: metadata.len(),
         };
 
@@ -396,7 +418,7 @@ mod tests {
         let handler = LuaHandler::new();
         assert!(handler.is_ok());
         
-        let handler = handler.unwrap();
+        let handler = handler.expect("Failed to create LuaHandler for test");
         assert_eq!(handler.name(), "lua");
     }
 
@@ -411,11 +433,11 @@ mod tests {
 
     #[test]
     fn lua_handler_reload() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory for Lua handler test");
         let script_path = temp_dir.path().join("test.lua");
-        std::fs::write(&script_path, "x = 42\nfunction get_x() return x end").unwrap();
+        std::fs::write(&script_path, "x = 42\nfunction get_x() return x end").expect("Failed to write test Lua script");
 
-        let mut handler = LuaHandler::new().unwrap();
+        let mut handler = LuaHandler::new().expect("Failed to create LuaHandler for reload test");
         let result = handler.reload(&script_path);
         assert!(result.is_ok());
 

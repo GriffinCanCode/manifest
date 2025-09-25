@@ -4,7 +4,6 @@
 //! including performance tuning, output destinations, and runtime adjustment.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use crate::core::hashing::{collections, FastHashMap};
 use super::LoggingError;

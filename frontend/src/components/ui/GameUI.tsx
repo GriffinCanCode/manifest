@@ -1,53 +1,48 @@
-import React from 'react'
-import { useGameStore } from '@/stores/gameStore'
+import React from 'react';
+
+import { useGameStore } from '@/stores/gameStore';
 
 interface GameUIProps {
-  onSave: () => void
-  onLoad: (saveName: string) => void
+  onSave: () => void;
+  onLoad: (saveName: string) => void;
 }
 
 const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
-  const { gameState } = useGameStore()
+  const { gameState } = useGameStore();
 
   if (!gameState) {
-    return null
+    return null;
   }
 
   return (
-    <div className="game-ui">
+    <div className='game-ui'>
       {/* Top HUD */}
-      <div className="top-hud">
-        <div className="game-info">
-          <div className="info-item">
-            <span className="label">Turn:</span>
-            <span className="value">{gameState.turn}</span>
+      <div className='top-hud'>
+        <div className='game-info'>
+          <div className='info-item'>
+            <span className='label'>Turn:</span>
+            <span className='value'>{gameState.turn}</span>
           </div>
-          <div className="info-item">
-            <span className="label">Civilization:</span>
-            <span className="value">{gameState.civilization}</span>
+          <div className='info-item'>
+            <span className='label'>Civilization:</span>
+            <span className='value'>{gameState.civilization}</span>
           </div>
-          <div className="info-item">
-            <span className="label">Leader:</span>
-            <span className="value">{gameState.player_name}</span>
+          <div className='info-item'>
+            <span className='label'>Leader:</span>
+            <span className='value'>{gameState.player_name}</span>
           </div>
         </div>
-        
-        <div className="game-controls">
-          <button 
-            className="ui-button"
-            onClick={onSave}
-          >
+
+        <div className='game-controls'>
+          <button className='ui-button' onClick={onSave}>
             Save Game
           </button>
-          <button 
-            className="ui-button"
-            onClick={() => onLoad('test_save')}
-          >
+          <button className='ui-button' onClick={() => onLoad('test_save')}>
             Load Game
           </button>
-          <button 
-            className="ui-button pause-button"
-            onClick={() => console.log('Pause toggle')}
+          <button
+            className='ui-button pause-button'
+            onClick={() => console.warn('Pause toggle')}
           >
             {gameState.is_paused ? 'Resume' : 'Pause'}
           </button>
@@ -55,12 +50,12 @@ const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
       </div>
 
       {/* Bottom HUD */}
-      <div className="bottom-hud">
-        <div className="action-panel">
-          <button className="action-button">Build City</button>
-          <button className="action-button">Train Unit</button>
-          <button className="action-button">Research Tech</button>
-          <button className="action-button">Diplomacy</button>
+      <div className='bottom-hud'>
+        <div className='action-panel'>
+          <button className='action-button'>Build City</button>
+          <button className='action-button'>Train Unit</button>
+          <button className='action-button'>Research Tech</button>
+          <button className='action-button'>Diplomacy</button>
         </div>
       </div>
 
@@ -185,7 +180,7 @@ const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
         }
       `}</style>
     </div>
-  )
-}
+  );
+};
 
-export default GameUI
+export default GameUI;

@@ -1,0 +1,175 @@
+// Biome definitions configuration file
+// Loaded by the Tile Properties System for biome determination
+
+{
+    "arctic_tundra": BiomeDefinition(
+        name: "Arctic Tundra",
+        description: "Frozen wasteland with permafrost and sparse vegetation",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (-50, -5),
+            rainfall_range: (0, 100),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["tundra", "snow"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 1.5,
+            defense_bonus: 0.1,
+            agriculture_yield: 0.3,
+            mining_yield: 0.8,
+            population_capacity: 0.3,
+        ),
+        special_resources: ["furs", "seal", "whale"],
+    ),
+    
+    "boreal_forest": BiomeDefinition(
+        name: "Boreal Forest",
+        description: "Cold coniferous forests with abundant timber",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (-5, 10),
+            rainfall_range: (50, 200),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["forest", "hills"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 1.2,
+            defense_bonus: 0.15,
+            agriculture_yield: 0.7,
+            mining_yield: 1.0,
+            population_capacity: 0.8,
+        ),
+        special_resources: ["lumber", "game", "furs"],
+    ),
+    
+    "temperate_grassland": BiomeDefinition(
+        name: "Temperate Grassland",
+        description: "Fertile plains ideal for agriculture and grazing",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (5, 20),
+            rainfall_range: (30, 100),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["grassland", "plains"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 0.9,
+            defense_bonus: 0.0,
+            agriculture_yield: 1.5,
+            mining_yield: 1.0,
+            population_capacity: 1.3,
+        ),
+        special_resources: ["wheat", "cattle", "horses"],
+    ),
+    
+    "temperate_forest": BiomeDefinition(
+        name: "Temperate Forest",
+        description: "Dense deciduous forests with rich biodiversity",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (0, 25),
+            rainfall_range: (80, 250),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["forest", "hills"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 1.3,
+            defense_bonus: 0.2,
+            agriculture_yield: 0.8,
+            mining_yield: 1.0,
+            population_capacity: 1.0,
+        ),
+        special_resources: ["lumber", "game", "berries"],
+    ),
+    
+    "mediterranean": BiomeDefinition(
+        name: "Mediterranean",
+        description: "Warm, dry climate ideal for trade and specialized crops",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (10, 25),
+            rainfall_range: (40, 80),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["hills", "plains"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 1.0,
+            defense_bonus: 0.05,
+            agriculture_yield: 1.2,
+            mining_yield: 1.0,
+            population_capacity: 1.2,
+        ),
+        special_resources: ["olives", "grapes", "fish"],
+    ),
+    
+    "hot_desert": BiomeDefinition(
+        name: "Hot Desert",
+        description: "Harsh, arid environment with valuable mineral deposits",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (20, 50),
+            rainfall_range: (0, 25),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["desert"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 1.4,
+            defense_bonus: 0.1,
+            agriculture_yield: 0.1,
+            mining_yield: 1.5,
+            population_capacity: 0.2,
+        ),
+        special_resources: ["oil", "gold", "precious_stones"],
+    ),
+    
+    "tropical_rainforest": BiomeDefinition(
+        name: "Tropical Rainforest",
+        description: "Dense jungle with incredible biodiversity but difficult terrain",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (18, 35),
+            rainfall_range: (200, 500),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["jungle", "forest"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 2.0,
+            defense_bonus: 0.25,
+            agriculture_yield: 0.6,
+            mining_yield: 0.8,
+            population_capacity: 0.7,
+        ),
+        special_resources: ["exotic_woods", "spices", "medicinal_plants"],
+    ),
+    
+    "tropical_savanna": BiomeDefinition(
+        name: "Tropical Savanna",
+        description: "Warm grasslands with seasonal rainfall and diverse wildlife",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (18, 30),
+            rainfall_range: (50, 150),
+            elevation_range: None,
+        ),
+        terrain_preferences: ["grassland", "plains"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 1.1,
+            defense_bonus: 0.0,
+            agriculture_yield: 1.0,
+            mining_yield: 1.0,
+            population_capacity: 0.9,
+        ),
+        special_resources: ["ivory", "exotic_animals", "cattle"],
+    ),
+    
+    "mountain_alpine": BiomeDefinition(
+        name: "Alpine",
+        description: "High altitude terrain with rich mineral deposits",
+        climate_requirements: ClimateRequirements(
+            temperature_range: (-10, 15),
+            rainfall_range: (50, 300),
+            elevation_range: Some((1000.0, 5000.0)),
+        ),
+        terrain_preferences: ["mountain", "hills"],
+        modifiers: BiomeModifiers(
+            movement_cost_multiplier: 2.5,
+            defense_bonus: 0.4,
+            agriculture_yield: 0.2,
+            mining_yield: 2.0,
+            population_capacity: 0.3,
+        ),
+        special_resources: ["precious_metals", "stone", "mineral_water"],
+    ),
+}

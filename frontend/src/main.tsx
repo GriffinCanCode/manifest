@@ -1,7 +1,8 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import '@styles/index.scss'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
+import App from './App';
+import '@styles/index.scss';
 
 // Hide loading screen once React is ready
 const hideLoadingScreen = () => {
@@ -19,7 +20,7 @@ const hideLoadingScreen = () => {
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
+  </React.StrictMode>
 );
 
 // Hide loading screen after initial render

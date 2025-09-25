@@ -45,10 +45,18 @@
 }
 
 // Gap utilities
-.gap-1 { gap: vars.$space-1; }
-.gap-2 { gap: vars.$space-2; }
-.gap-3 { gap: vars.$space-3; }
-.gap-4 { gap: vars.$space-4; }
+.gap-1 {
+  gap: vars.$space-1;
+}
+.gap-2 {
+  gap: vars.$space-2;
+}
+.gap-3 {
+  gap: vars.$space-3;
+}
+.gap-4 {
+  gap: vars.$space-4;
+}
 
 // Size utilities
 .w-full {
@@ -80,11 +88,21 @@
 }
 
 // Z-index utilities
-.z-10 { z-index: 10; }
-.z-20 { z-index: 20; }
-.z-30 { z-index: 30; }
-.z-40 { z-index: 40; }
-.z-50 { z-index: 50; }
+.z-10 {
+  z-index: 10;
+}
+.z-20 {
+  z-index: 20;
+}
+.z-30 {
+  z-index: 30;
+}
+.z-40 {
+  z-index: 40;
+}
+.z-50 {
+  z-index: 50;
+}
 
 // Glass morphism utilities
 .glass {

@@ -13,12 +13,12 @@ use rayon::prelude::*;
 
 use crate::core::{
     zig_ffi::HexCoord,
-    hashing::{FastHashMap, FastHashSet, HashStrategies},
+    hashing::{FastHashMap, FastHashSet},
     caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority}
 };
 use crate::world::tiles::{
-    chunks::{TileId, ChunkCoord, ChunkManager},
-    components::{Tile, TerrainType},
+    chunks::TileId,
+    components::TerrainType,
     spatial::{TileSpatialIndex}
 };
 use tracing::{debug, instrument, warn};
@@ -85,7 +85,7 @@ impl HexDirection {
 }
 
 /// Adjacency relationship between two tiles
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TileAdjacency {
     /// Source tile ID
     pub from_tile: TileId,
@@ -154,7 +154,7 @@ impl TileAdjacency {
 }
 
 /// High-performance adjacency graph using indexmap for deterministic ordering
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct TileAdjacencyGraph {
     /// Adjacency list with deterministic ordering (indexmap preserves insertion order)
     adjacencies: Arc<RwLock<IndexMap<TileId, IndexMap<HexDirection, TileAdjacency>>>>,
@@ -267,14 +267,14 @@ impl TileAdjacencyGraph {
         }
 
         // Cache miss - compute neighbors
-        let neighbors = {
+        let neighbors: Vec<TileId> = {
             let adjacencies = self.adjacencies.read();
             adjacencies.get(&tile_id)
                 .map(|directions| {
                     directions.values()
                         .filter(|adj| adj.is_passable())
                         .map(|adj| adj.to_tile)
-                        .collect()
+                        .collect::<Vec<TileId>>()
                 })
                 .unwrap_or_default()
         };
@@ -367,10 +367,23 @@ impl TileAdjacencyGraph {
     {
         let mut adjacencies = self.adjacencies.write();
         
-        // This would require terrain type lookups - simplified for now
-        // In practice, this would integrate with the tile component manager
-        for (_tile_id, directions) in adjacencies.iter_mut() {
-            for (_direction, adjacency) in directions.iter_mut() {
+        // Proper terrain type lookups with integration to tile component manager
+        // Access terrain information through the spatial index and ECS
+        for (tile_id, directions) in adjacencies.iter_mut() {
+            // Look up terrain type for the current tile
+            let current_terrain = self.get_terrain_type(*tile_id).unwrap_or(TerrainType::Plains);
+            
+            for (direction, adjacency) in directions.iter_mut() {
+                // Look up terrain type for the adjacent tile
+                let adjacent_terrain = if let Some(adjacent_id) = adjacency.tile {
+                    self.get_terrain_type(adjacent_id).unwrap_or(TerrainType::Plains)
+                } else {
+                    continue; // Skip if no adjacent tile
+                };
+                
+                // Calculate terrain-aware weights based on movement rules
+                let terrain_modifier = self.calculate_terrain_modifier(current_terrain, adjacent_terrain, *direction);
+                adjacency.weight = adjacency.base_weight * terrain_modifier;
                 // Apply terrain-based modifications
                 // adjacency.connection_strength *= terrain_modifier(from_terrain, to_terrain);
             }

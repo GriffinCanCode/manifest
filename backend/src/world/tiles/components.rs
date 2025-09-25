@@ -3,15 +3,15 @@
 //! Provides efficient sparse component storage for tiles using hecs ECS,
 //! integrated with the main bevy_ecs world for optimal performance.
 
-use hecs::{World as HecsWorld, Entity as HecsEntity, Bundle, Component, Query, With, Without};
+use hecs::{World as HecsWorld, Entity as HecsEntity, Component, Query};
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
-use glam::{Vec2, Vec3, IVec2};
+use glam::{Vec2, Vec3};
 use parking_lot::RwLock;
 use std::sync::Arc;
+use modular_bitfield::prelude::*;
 use crate::core::zig_ffi::HexCoord;
 use crate::world::tiles::chunks::{TileId, ChunkCoord};
-use crate::ecs::components::{Position, Name};
 use tracing::{debug, instrument};
 
 /// Core tile component representing a single hex tile
@@ -76,6 +76,9 @@ pub enum TerrainType {
     Jungle = 7,
     Hills = 8,
     Mountain = 9,
+    Mountains = 10, // Alias for Mountain for backward compatibility
+    River = 11,
+    Coast = 12,
     // Add more terrain types as needed
 }
 
@@ -167,13 +170,81 @@ impl Default for Fertility {
     }
 }
 
+/// River flow directions bitfield for compact storage
+#[bitfield(bits = 8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RiverFlowDirections {
+    /// East direction flow
+    east: bool,
+    /// Northeast direction flow
+    northeast: bool,
+    /// Northwest direction flow
+    northwest: bool,
+    /// West direction flow
+    west: bool,
+    /// Southwest direction flow
+    southwest: bool,
+    /// Southeast direction flow
+    southeast: bool,
+    /// Reserved for future use
+    #[bits = 2]
+    reserved: B2,
+}
+
+impl Default for RiverFlowDirections {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RiverFlowDirections {
+    /// Set flow direction using HexDirection enum
+    pub fn set_direction(&mut self, direction: crate::world::tiles::adjacency::HexDirection, flowing: bool) {
+        use crate::world::tiles::adjacency::HexDirection;
+        match direction {
+            HexDirection::East => self.set_east(flowing),
+            HexDirection::Northeast => self.set_northeast(flowing),
+            HexDirection::Northwest => self.set_northwest(flowing),
+            HexDirection::West => self.set_west(flowing),
+            HexDirection::Southwest => self.set_southwest(flowing),
+            HexDirection::Southeast => self.set_southeast(flowing),
+        }
+    }
+    
+    /// Check if flowing in specific direction
+    pub fn is_flowing(&self, direction: crate::world::tiles::adjacency::HexDirection) -> bool {
+        use crate::world::tiles::adjacency::HexDirection;
+        match direction {
+            HexDirection::East => self.east(),
+            HexDirection::Northeast => self.northeast(),
+            HexDirection::Northwest => self.northwest(),
+            HexDirection::West => self.west(),
+            HexDirection::Southwest => self.southwest(),
+            HexDirection::Southeast => self.southeast(),
+        }
+    }
+    
+    /// Get all flowing directions
+    pub fn get_flowing_directions(&self) -> Vec<crate::world::tiles::adjacency::HexDirection> {
+        use crate::world::tiles::adjacency::HexDirection;
+        let mut directions = Vec::new();
+        if self.east() { directions.push(HexDirection::East); }
+        if self.northeast() { directions.push(HexDirection::Northeast); }
+        if self.northwest() { directions.push(HexDirection::Northwest); }
+        if self.west() { directions.push(HexDirection::West); }
+        if self.southwest() { directions.push(HexDirection::Southwest); }
+        if self.southeast() { directions.push(HexDirection::Southeast); }
+        directions
+    }
+}
+
 /// River component for tiles with water flow
 #[derive(Debug, Clone, Component, Serialize, Deserialize)]
 pub struct River {
     /// River strength/flow rate (0-255)
     pub flow_rate: u8,
-    /// Directions where river flows (bitfield)
-    pub flow_directions: u8,
+    /// Directions where river flows (using bitfield)
+    pub flow_directions: RiverFlowDirections,
     /// Whether this is a river source
     pub is_source: bool,
     /// River system ID for connected waterways
@@ -201,36 +272,145 @@ impl Default for MovementCost {
     }
 }
 
-/// Visibility component for fog of war
+/// Player visibility bitfield for efficient storage
+#[bitfield(bits = 64)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayerVisibilityFlags {
+    /// Players who have discovered this tile (32 players max)
+    #[bits = 32]
+    pub discovered_by: u32,
+    /// Players who currently have vision (32 players max)
+    #[bits = 32] 
+    pub visible_to: u32,
+}
+
+impl Default for PlayerVisibilityFlags {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PlayerVisibilityFlags {
+    /// Check if player has discovered this tile
+    pub fn is_discovered_by_player(&self, player_id: u8) -> bool {
+        if player_id >= 32 { return false; }
+        (self.discovered_by() & (1 << player_id)) != 0
+    }
+    
+    /// Set discovery status for player
+    pub fn set_discovered_by_player(&mut self, player_id: u8, discovered: bool) {
+        if player_id >= 32 { return; }
+        let mask = 1 << player_id;
+        if discovered {
+            self.set_discovered_by(self.discovered_by() | mask);
+        } else {
+            self.set_discovered_by(self.discovered_by() & !mask);
+        }
+    }
+    
+    /// Check if player has vision of this tile
+    pub fn is_visible_to_player(&self, player_id: u8) -> bool {
+        if player_id >= 32 { return false; }
+        (self.visible_to() & (1 << player_id)) != 0
+    }
+    
+    /// Set visibility for player
+    pub fn set_visible_to_player(&mut self, player_id: u8, visible: bool) {
+        if player_id >= 32 { return; }
+        let mask = 1 << player_id;
+        if visible {
+            self.set_visible_to(self.visible_to() | mask);
+        } else {
+            self.set_visible_to(self.visible_to() & !mask);
+        }
+    }
+}
+
+/// Visibility component for fog of war with improved bitfield storage
 #[derive(Debug, Clone, Component, Serialize, Deserialize)]
 pub struct Visibility {
-    /// Players who have discovered this tile (bitfield)
-    pub discovered_by: u64,
-    /// Players who currently have vision (bitfield) 
-    pub visible_to: u64,
+    /// Player visibility flags (discovered and visible)
+    pub player_flags: PlayerVisibilityFlags,
     /// Last turn this tile was seen by each player
-    pub last_seen: [u16; 8], // Support up to 8 players
+    pub last_seen: [u16; 8], // Support up to 8 players for tracking
 }
 
 impl Default for Visibility {
     fn default() -> Self {
         Self {
-            discovered_by: 0,
-            visible_to: 0,
+            player_flags: PlayerVisibilityFlags::default(),
             last_seen: [0; 8],
         }
     }
 }
 
+impl Visibility {
+    /// Check if player has discovered this tile
+    pub fn is_discovered_by(&self, player_id: u8) -> bool {
+        self.player_flags.is_discovered_by_player(player_id)
+    }
+    
+    /// Set discovery status for player
+    pub fn set_discovered_by(&mut self, player_id: u8, discovered: bool) {
+        self.player_flags.set_discovered_by_player(player_id, discovered);
+        if discovered && player_id < 8 {
+            // Update last_seen when discovered
+            self.last_seen[player_id as usize] = 1; // Would use current turn in real implementation
+        }
+    }
+    
+    /// Check if player has vision of this tile
+    pub fn is_visible_to(&self, player_id: u8) -> bool {
+        self.player_flags.is_visible_to_player(player_id)
+    }
+    
+    /// Set visibility for player
+    pub fn set_visible_to(&mut self, player_id: u8, visible: bool) {
+        self.player_flags.set_visible_to_player(player_id, visible);
+        if visible && player_id < 8 {
+            // Update last_seen when visible
+            self.last_seen[player_id as usize] = 1; // Would use current turn in real implementation
+        }
+    }
+    
+    /// Get last turn this tile was seen by player
+    pub fn last_seen_by(&self, player_id: u8) -> u16 {
+        if player_id < 8 {
+            self.last_seen[player_id as usize]
+        } else {
+            0
+        }
+    }
+    
+    /// Set last seen turn for player
+    pub fn set_last_seen(&mut self, player_id: u8, turn: u16) {
+        if player_id < 8 {
+            self.last_seen[player_id as usize] = turn;
+        }
+    }
+}
+
 /// High-performance tile component manager using hecs
-#[derive(Debug)]
 pub struct TileComponentManager {
     /// Hecs world for sparse tile components
     hecs_world: Arc<RwLock<HecsWorld>>,
     /// Mapping from tile ID to hecs entity
     tile_entity_map: Arc<RwLock<std::collections::HashMap<TileId, HecsEntity>>>,
+    /// Mapping from tile ID to bevy entity (for ECS system integration)
+    bevy_entity_map: Arc<RwLock<std::collections::HashMap<TileId, bevy_ecs::entity::Entity>>>,
+    /// Reverse mapping from bevy entity to tile ID
+    bevy_reverse_map: Arc<RwLock<std::collections::HashMap<bevy_ecs::entity::Entity, TileId>>>,
     /// Next available tile ID
     next_tile_id: Arc<RwLock<TileId>>,
+}
+
+impl std::fmt::Debug for TileComponentManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TileComponentManager")
+            .field("tile_entity_count", &self.tile_entity_map.read().len())
+            .field("next_tile_id", &self.next_tile_id)
+            .finish()
+    }
 }
 
 impl TileComponentManager {
@@ -239,7 +419,9 @@ impl TileComponentManager {
         Self {
             hecs_world: Arc::new(RwLock::new(HecsWorld::new())),
             tile_entity_map: Arc::new(RwLock::new(std::collections::HashMap::new())),
-            next_tile_id: Arc::new(RwLock::new(1)), // Start at 1, 0 is reserved for INVALID_TILE
+            bevy_entity_map: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            bevy_reverse_map: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            next_tile_id: Arc::new(RwLock::new(TileId(1))), // Start at 1, 0 is reserved for INVALID_TILE
         }
     }
 
@@ -287,29 +469,29 @@ impl TileComponentManager {
     }
 
     /// Get component from tile
-    pub fn get_component<T: Component>(&self, tile_id: TileId) -> Result<T, TileError> 
-    where
-        T: Clone
-    {
+    pub fn get_component<T: Component + Clone>(&self, tile_id: TileId) -> Result<T, TileError> {
         let entity = self.get_entity(tile_id)?;
         
         let world = self.hecs_world.read();
-        world.get::<&T>(entity)
-            .map(|comp| comp.clone())
-            .map_err(|_| TileError::ComponentNotFound)
+        let result = if let Ok(component_ref) = world.get::<&T>(entity) {
+            Ok((*component_ref).clone())
+        } else {
+            Err(TileError::ComponentNotFound)
+        };
+        result
     }
 
-    /// Query tiles with specific components
-    pub fn query_tiles<Q: Query>(&self) -> Vec<(TileId, Q::Item<'_>)> {
+    /// Query tiles with specific components - returns tile IDs only to avoid lifetime issues
+    pub fn query_tiles<Q: Query>(&self) -> Vec<TileId> {
         let world = self.hecs_world.read();
         let entity_map = self.tile_entity_map.read();
         
         let mut results = Vec::new();
         
-        for (entity, item) in world.query::<Q>().iter() {
+        for (entity, _item) in world.query::<Q>().iter() {
             // Find tile ID for this entity
             if let Some((tile_id, _)) = entity_map.iter().find(|(_, &e)| e == entity) {
-                results.push((*tile_id, item));
+                results.push(*tile_id);
             }
         }
         
@@ -360,9 +542,72 @@ impl TileComponentManager {
             world.despawn(entity).map_err(|_| TileError::TileNotFound)?;
         }
         
+        // Clean up mappings
         self.tile_entity_map.write().remove(&tile_id);
+        
+        // Clean up Bevy entity mappings if they exist
+        if let Some(bevy_entity) = self.bevy_entity_map.write().remove(&tile_id) {
+            self.bevy_reverse_map.write().remove(&bevy_entity);
+        }
+        
         debug!("Deleted tile {}", tile_id);
         
+        Ok(())
+    }
+
+    /// Get tile entity for a tile ID (hecs version)
+    pub fn get_tile_entity(&self, tile_id: TileId) -> Option<HecsEntity> {
+        self.tile_entity_map.read().get(&tile_id).copied()
+    }
+
+    /// Get Bevy ECS entity for a tile ID
+    pub fn get_bevy_entity(&self, tile_id: TileId) -> Option<bevy_ecs::entity::Entity> {
+        self.bevy_entity_map.read().get(&tile_id).copied()
+    }
+
+    /// Get tile ID from Bevy entity
+    pub fn get_tile_id_from_bevy_entity(&self, entity: bevy_ecs::entity::Entity) -> Option<TileId> {
+        self.bevy_reverse_map.read().get(&entity).copied()
+    }
+
+    /// Create tile entity in Bevy ECS world (for ECS system integration)
+    pub fn create_bevy_tile_entity(&self, tile_id: TileId, world: &mut bevy_ecs::world::World) -> Result<bevy_ecs::entity::Entity, TileError> {
+        // Get tile data from hecs world
+        let hecs_entity = self.get_entity(tile_id)?;
+        let tile_data = {
+            let hecs_world_guard = self.hecs_world.read();
+            let tile_ref = hecs_world_guard.get::<&Tile>(hecs_entity)
+                .map_err(|_| TileError::ComponentNotFound)?;
+            tile_ref.clone()
+        };
+
+        // Create corresponding entity in Bevy world
+        let bevy_entity = world.spawn((
+            tile_data,
+            // Add Hierarchical marker for hierarchy system integration
+            crate::ecs::hierarchy::components::Hierarchical,
+        )).id();
+
+        // Store mappings
+        self.bevy_entity_map.write().insert(tile_id, bevy_entity);
+        self.bevy_reverse_map.write().insert(bevy_entity, tile_id);
+
+        debug!("Created Bevy entity {:?} for tile {}", bevy_entity, tile_id);
+        Ok(bevy_entity)
+    }
+
+    /// Remove Bevy entity mapping for a tile
+    pub fn remove_bevy_entity(&self, tile_id: TileId, world: &mut bevy_ecs::world::World) -> Result<(), TileError> {
+        if let Some(bevy_entity) = self.bevy_entity_map.write().remove(&tile_id) {
+            self.bevy_reverse_map.write().remove(&bevy_entity);
+            
+            // Despawn from Bevy world
+            if let Some(entity_mut) = world.get_entity_mut(bevy_entity) {
+                entity_mut.despawn();
+            }
+            
+            debug!("Removed Bevy entity {:?} for tile {}", bevy_entity, tile_id);
+        }
         Ok(())
     }
 
@@ -439,7 +684,7 @@ mod tests {
         let tile_id = manager.create_tile(hex, chunk, 10, 20, TerrainType::Grassland);
         assert_ne!(tile_id, 0);
         
-        let tile = manager.get_component::<Tile>(tile_id).unwrap();
+        let tile = manager.get_component::<Tile>(tile_id).expect("Tile component should exist after creation");
         assert_eq!(tile.hex, hex);
         assert_eq!(tile.terrain_type, TerrainType::Grassland);
     }
@@ -463,7 +708,7 @@ mod tests {
         assert!(manager.add_component(tile_id, resource.clone()).is_ok());
         
         // Get resource component
-        let retrieved = manager.get_component::<TileResource>(tile_id).unwrap();
+        let retrieved = manager.get_component::<TileResource>(tile_id).expect("TileResource component should exist after being added");
         assert_eq!(retrieved.resource_type, ResourceType::Iron);
         assert_eq!(retrieved.quantity, 100);
     }

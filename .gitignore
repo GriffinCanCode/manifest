@@ -10,12 +10,12 @@ ehthumbs.db
 Thumbs.db
 
 # IDE and Editor files
-.vscode/
 .idea/
 *.swp
 *.swo
 *~
 .vim/
+.zig-cache/
 
 # Logs
 *.log
@@ -50,3 +50,5 @@ coverage/
 # Backup files
 *.bak
 *.backup
+
+zig-out/

@@ -7,7 +7,6 @@
 //! - Performance impact measurement
 
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
 use crate::core::hashing::FastHashMap;

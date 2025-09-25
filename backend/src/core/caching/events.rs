@@ -4,14 +4,14 @@
 //! Provides invalidation coordination and unified metrics collection.
 
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
-use std::time::{Instant, Duration};
+use std::time::Instant;
 use tokio::sync::{broadcast, RwLock};
 use bevy_ecs::prelude::Entity;
 use glam::IVec2;
-use tracing::{debug, warn, instrument};
+use tracing::{warn, instrument};
 
 use crate::core::hashing::FastHashMap;
-use super::{CacheStats, CachePriority};
+use super::CacheStats;
 
 /// Lightweight cache coordination events
 #[derive(Debug, Clone)]
@@ -34,6 +34,8 @@ pub enum CacheInvalidationEvent {
     PlayerStateChanged { player_id: u32 },
     /// Save operation - invalidate save metadata cache
     SaveOperation { save_name: String },
+    /// Tile updated - invalidate tile-related caches
+    TileUpdated { tile_id: u32, batch_size: u32 },
 }
 
 /// Lightweight cache coordination service
@@ -139,6 +141,9 @@ impl UnifiedMetrics {
             }
             CacheInvalidationEvent::SaveOperation { .. } => {
                 self.global_stats.save_invalidations.fetch_add(1, Ordering::Relaxed);
+            }
+            CacheInvalidationEvent::TileUpdated { .. } => {
+                self.global_stats.spatial_invalidations.fetch_add(1, Ordering::Relaxed);
             }
         }
         

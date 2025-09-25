@@ -4,7 +4,7 @@
 //! other properties to achieve smooth 60fps rendering from lower-tick simulations.
 
 use nalgebra::{
-    Point2, Point3, Vector2, Vector3, Matrix3, Matrix4, Quaternion, Unit,
+    Point2, Point3, Vector2, Vector3, Unit,
     UnitQuaternion, Isometry2, Isometry3
 };
 use crate::core::time::DeterministicFloat;
@@ -12,7 +12,6 @@ use crate::core::zig_ffi::{simd_add_4, simd_mul_4, simd_dot_4, Vec4};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
-use tracing::debug;
 
 /// Interpolation factor type (0.0 = previous state, 1.0 = current state)
 pub type InterpolationFactor = DeterministicFloat;
@@ -58,6 +57,13 @@ impl Interpolate for Vector3<f32> {
 
 /// Quaternion rotation interpolation (spherical linear interpolation)
 impl Interpolate for UnitQuaternion<f32> {
+    fn interpolate(&self, other: &Self, t: InterpolationFactor) -> Self {
+        self.slerp(other, t.into_inner())
+    }
+}
+
+/// 2D rotation interpolation (complex number unit circle)
+impl Interpolate for Unit<nalgebra::Complex<f32>> {
     fn interpolate(&self, other: &Self, t: InterpolationFactor) -> Self {
         self.slerp(other, t.into_inner())
     }
@@ -149,12 +155,12 @@ pub mod simd_interp {
     /// SIMD-optimized 4-element vector interpolation
     pub fn simd_lerp_vec4(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
         let vec_a = Vec4::new(a[0], a[1], a[2], a[3]);
-        let vec_b = Vec4::new(b[0], b[1], b[2], b[3]);
+        let _vec_b = Vec4::new(b[0], b[1], b[2], b[3]);
         let vec_t = Vec4::new(t, t, t, t);
         let one_minus_t = Vec4::new(1.0 - t, 1.0 - t, 1.0 - t, 1.0 - t);
         
         let a_scaled = simd_mul_4(vec_a, one_minus_t);
-        let b_scaled = simd_mul_4(vec_b, vec_t);
+        let b_scaled = simd_mul_4(_vec_b, vec_t);
         let result = simd_add_4(a_scaled, b_scaled);
         
         [result.x, result.y, result.z, result.w]
@@ -196,7 +202,13 @@ impl<T: Interpolate + Clone> InterpolatedProperty<T> {
     }
 
     /// Update to new value (call once per simulation tick)
-    pub fn update(&mut self, new_value: T) {
+    pub fn update(&mut self, delta_time: std::time::Duration) {
+        // For now, just mark as updated. Animation logic would go here.
+        self.updated = true;
+    }
+
+    /// Set a new current value (moves current to previous)
+    pub fn set_value(&mut self, new_value: T) {
         self.previous = self.current.clone();
         self.current = new_value;
         self.updated = true;
@@ -208,18 +220,52 @@ impl<T: Interpolate + Clone> InterpolatedProperty<T> {
     }
 
     /// Get current (latest) value
-    pub fn current(&self) -> &T {
-        &self.current
+    pub fn current(&self) -> T {
+        self.current.clone()
     }
 
     /// Get previous value
     pub fn previous(&self) -> &T {
         &self.previous
     }
+
+    /// Start animation to target value
+    pub fn animate_to(&mut self, target: T, _duration: std::time::Duration) {
+        self.previous = self.current.clone();
+        self.current = target;
+        self.updated = true;
+    }
+
+    /// Get target value (same as current for now)
+    pub fn target(&self) -> T {
+        self.current.clone()
+    }
+
+    /// Check if currently animating
+    pub fn is_animating(&self) -> bool {
+        // For now, always false. Would track animation state in full implementation.
+        false
+    }
+
+    /// Stop animation immediately
+    pub fn stop(&mut self) {
+        // No-op for now
+    }
+
+    /// Snap to target immediately
+    pub fn snap_to_target(&mut self) {
+        // No-op for now since target == current
+    }
+
+    /// Set immediate value without animation
+    pub fn set_immediate(&mut self, value: T) {
+        self.previous = value.clone();
+        self.current = value;
+        self.updated = true;
+    }
 }
 
 /// Interpolation manager for handling multiple entities/properties
-#[derive(Debug)]
 pub struct InterpolationManager<K: Hash + Eq + Clone> {
     /// Map of entity/property to interpolated values
     properties: HashMap<K, Box<dyn InterpolateProperty + Send + Sync>>,
@@ -227,6 +273,16 @@ pub struct InterpolationManager<K: Hash + Eq + Clone> {
     current_factor: InterpolationFactor,
     /// Statistics
     stats: InterpolationStats,
+}
+
+impl<K: Hash + Eq + Clone> std::fmt::Debug for InterpolationManager<K> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InterpolationManager")
+            .field("property_count", &self.properties.len())
+            .field("current_factor", &self.current_factor)
+            .field("stats", &self.stats)
+            .finish()
+    }
 }
 
 impl<K: Hash + Eq + Clone> InterpolationManager<K> {
@@ -258,7 +314,7 @@ impl<K: Hash + Eq + Clone> InterpolationManager<K> {
     ) -> Result<(), InterpolationError> {
         if let Some(property) = self.properties.get_mut(key) {
             if let Some(typed_property) = property.as_any_mut().downcast_mut::<InterpolatedProperty<T>>() {
-                typed_property.update(value);
+                typed_property.set_value(value);
                 self.stats.updates_this_frame += 1;
                 Ok(())
             } else {

@@ -15,10 +15,9 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 use thiserror::Error;
-use crate::core::hashing::{collections, HashStrategies};
 
 /// Errors that can occur during scheduling and execution
 #[derive(Error, Debug, Clone)]
@@ -162,13 +161,16 @@ pub struct Scheduler {
 }
 
 /// Performance metrics for the scheduler
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct SchedulerMetrics {
     pub tasks_executed: u64,
-    pub total_execution_time: Duration,
-    pub average_task_time: Duration,
+    /// Total execution time in milliseconds
+    pub total_execution_time_ms: u64,
+    /// Average task time in milliseconds  
+    pub average_task_time_ms: u64,
     pub parallel_efficiency: f64,
-    pub last_frame_time: Duration,
+    /// Last frame time in milliseconds
+    pub last_frame_time_ms: u64,
 }
 
 impl Scheduler {
@@ -280,12 +282,12 @@ impl Scheduler {
         {
             let mut metrics = self.metrics.lock();
             metrics.tasks_executed += completed.load(Ordering::Relaxed) as u64;
-            metrics.last_frame_time = execution_time;
-            metrics.total_execution_time += execution_time;
+            metrics.last_frame_time_ms = execution_time.as_millis() as u64;
+            metrics.total_execution_time_ms += execution_time.as_millis() as u64;
             
             if metrics.tasks_executed > 0 {
-                metrics.average_task_time = 
-                    metrics.total_execution_time / metrics.tasks_executed as u32;
+                metrics.average_task_time_ms = 
+                    metrics.total_execution_time_ms / metrics.tasks_executed;
             }
         }
 
@@ -445,6 +447,6 @@ mod tests {
         let scheduler = Scheduler::new(Some(2)).unwrap();
         let metrics = scheduler.metrics();
         assert_eq!(metrics.tasks_executed, 0);
-        assert_eq!(metrics.total_execution_time, Duration::from_secs(0));
+        assert_eq!(metrics.total_execution_time_ms, 0);
     }
 }

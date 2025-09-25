@@ -3,10 +3,10 @@
 //! Focuses purely on entity storage organization by component signature,
 //! designed to work WITH the OptimalSpatialIndex system for efficient queries.
 
-use super::types::{Archetype, ArchetypeId, ComponentSignature, ArchetypeError, ArchetypeResult};
+use super::types::{ArchetypeId, ComponentSignature, ArchetypeResult};
 use super::storage::ArchetypeStorage;
 use bevy_ecs::prelude::*;
-use tracing::{info, debug, warn, error, instrument, Span};
+use tracing::{debug, warn, instrument};
 use slotmap::Key;
 use std::any::TypeId;
 use std::collections::HashSet;
@@ -74,6 +74,16 @@ impl BundleComponentExtractor for MovableEntityBundle {
     }
 }
 
+/// Implement for TileBundle
+impl BundleComponentExtractor for crate::ecs::entities::TileBundle {
+    fn extract_component_types() -> HashSet<TypeId> {
+        let mut types = HashSet::new();
+        types.insert(TypeId::of::<Position>());
+        types.insert(TypeId::of::<Name>());
+        types
+    }
+}
+
 /// Implement for common tuple bundles used in the game
 impl BundleComponentExtractor for (Position, Renderable, Name, Owner) {
     fn extract_component_types() -> HashSet<TypeId> {
@@ -87,7 +97,7 @@ impl BundleComponentExtractor for (Position, Renderable, Name, Owner) {
 }
 
 /// High-level archetype manager that integrates with existing ECS infrastructure
-#[derive(Debug)]
+#[derive(Debug, Clone, bevy_ecs::system::Resource)]
 pub struct ArchetypeManager {
     /// Core archetype storage
     storage: ArchetypeStorage,
@@ -123,16 +133,28 @@ impl ArchetypeManager {
     /// Register entity with its component signature
     /// This organizes entities by their component layout for optimal storage
     #[instrument(name = "archetype_register", skip(self), fields(entity = ?entity))]
-    pub fn register_entity<T: BundleComponentExtractor>(&self, entity: Entity) -> ArchetypeId {
+    pub fn register_entity<T: BundleComponentExtractor>(&self, entity: Entity) -> ArchetypeResult<ArchetypeId> {
         let register_start = Instant::now();
         let correlation_id = LoggingSystem::generate_correlation_id();
         
         let signature = self.create_signature_for_bundle::<T>();
         let archetype_id = self.storage.get_or_create_archetype(signature.clone());
         
-        // Add entity to archetype (ignoring errors for now - entity might already be there)
+        // Add entity to archetype
         let add_result = self.storage.add_entity_to_archetype(entity, archetype_id);
         let register_duration = register_start.elapsed().as_secs_f64() * 1000.0;
+        
+        let success = add_result.is_ok();
+        if let Err(ref error) = add_result {
+            warn!(
+                target: "game::archetypes",
+                correlation_id = correlation_id,
+                entity = ?entity,
+                archetype_id = ?archetype_id,
+                error = %error,
+                "Failed to add entity to archetype"
+            );
+        }
         
         debug!(
             target: "game::archetypes",
@@ -141,16 +163,17 @@ impl ArchetypeManager {
             archetype_id = ?archetype_id,
             component_count = signature.components().len(),
             register_duration_ms = register_duration,
-            success = add_result.is_ok(),
+            success = success,
             "Entity registered to archetype"
         );
         
         // Convert archetype_id to u64 for logging - use the key's underlying data
         let archetype_id_u64 = u64::from(archetype_id.data().as_ffi());
-        game_logging::log_archetype_operation(archetype_id_u64, "entity_registered", 1);
+        game_logging::log_archetype_operation(archetype_id_u64, "entity_registered", if success { 1 } else { 0 });
         game_logging::log_performance_event("archetype_register", register_duration, 1);
         
-        archetype_id
+        // Return result
+        add_result.map(|_| archetype_id)
     }
     
     /// Move entity to new archetype when components change
@@ -246,9 +269,10 @@ impl ArchetypeManager {
         entities
     }
 
-    /// Get entities for player with specific components using QueryCacheKey system
-    #[instrument(name = "archetype_player_query_cached", skip(self))]
-    pub async fn get_player_entities_cached(&self, player_id: u32, component_types: &[TypeId]) -> Vec<Entity> {
+    /// Get entities for player with specific components (requires World access)
+    /// Note: This method requires World access to check Owner components
+    #[instrument(name = "archetype_player_query_cached", skip(self, world))]
+    pub async fn get_player_entities_cached_with_world(&self, player_id: u32, component_types: &[TypeId], world: &World) -> Vec<Entity> {
         use crate::core::caching::{QueryResult, QueryType};
         use crate::core::hashing::HashStrategies;
 
@@ -270,11 +294,20 @@ impl ArchetypeManager {
         let component_set: HashSet<TypeId> = component_types.iter().copied().collect();
         let matching_archetypes = self.find_archetypes_with_components(&component_set);
         
-        let mut entities = Vec::new();
+        let mut candidates = Vec::new();
         for archetype_id in matching_archetypes {
-            // Filter by player ownership - would need access to world for full implementation
-            // For now, return all entities from matching archetypes
-            entities.extend(self.get_archetype_entities(archetype_id));
+            candidates.extend(self.get_archetype_entities(archetype_id));
+        }
+        
+        // Filter by player ownership using World access
+        let mut entities = Vec::new();
+        for entity in candidates {
+            if let Some(owner) = world.get::<crate::ecs::components::Owner>(entity) {
+                if owner.player_id == player_id {
+                    entities.push(entity);
+                }
+            }
+            // If entity has no Owner component, it doesn't belong to any player
         }
 
         // Cache the result
@@ -288,6 +321,22 @@ impl ArchetypeManager {
         entities
     }
 
+    /// Get entities for player with specific components (DEPRECATED - use get_player_entities_cached_with_world)
+    /// 
+    /// This method cannot actually filter by player without World access.
+    /// It returns all entities with the specified components.
+    #[deprecated(note = "Use get_player_entities_cached_with_world for actual player filtering")]
+    pub async fn get_player_entities_cached(&self, player_id: u32, component_types: &[TypeId]) -> Vec<Entity> {
+        warn!(
+            target: "game::archetypes", 
+            player_id = player_id,
+            "Using deprecated get_player_entities_cached - no actual player filtering performed"
+        );
+        
+        // Just return all entities with the components
+        self.get_entities_with_components_cached(component_types).await
+    }
+
     /// Invalidate cache when world generation changes
     pub async fn advance_world_generation(&mut self) {
         self.world_generation += 1;
@@ -295,7 +344,7 @@ impl ArchetypeManager {
     }
 
     /// Invalidate cache for specific archetype changes
-    pub async fn invalidate_archetype_cache(&self, archetype_id: ArchetypeId) {
+    pub async fn invalidate_archetype_cache(&self, _archetype_id: ArchetypeId) {
         // For a more sophisticated implementation, we'd track which cache entries
         // depend on specific archetypes and invalidate only those
         let invalidation_event = CacheInvalidationEvent::Manual(
@@ -306,20 +355,36 @@ impl ArchetypeManager {
         self.cache.handle_invalidation(&invalidation_event).await;
     }
 
-    /// Report cache metrics to the global metrics system
-    pub async fn report_metrics(&self) {
+    /// Clear all caches in the archetype manager
+    pub async fn clear_caches(&self) {
+        self.cache.clear().await;
+        // Also invalidate archetype-specific cache entries
+        let invalidation_event = CacheInvalidationEvent::Manual(
+            Box::new(move |key| {
+                matches!(key, CacheKey::Query(query_key) if query_key.query_type == QueryType::ArchetypeQuery)
+            })
+        );
+        self.cache.handle_invalidation(&invalidation_event).await;
+    }
+    
+    /// Get cache statistics for monitoring
+    pub async fn cache_stats(&self) -> SubsystemStats {
         let cache_stats = self.cache.stats().await;
         let archetype_stats = self.stats();
         
-        let subsystem_stats = SubsystemStats {
+        SubsystemStats {
             hits: cache_stats.total_hits,
             misses: cache_stats.total_misses,
             entries: archetype_stats.total_archetypes,
             memory_usage_bytes: cache_stats.memory_usage_bytes,
             avg_access_time_micros: cache_stats.avg_access_time_micros,
             last_updated: std::time::Instant::now(),
-        };
+        }
+    }
 
+    /// Report cache metrics to the global metrics system
+    pub async fn report_metrics(&self) {
+        let subsystem_stats = self.cache_stats().await;
         global_cache_events().register_subsystem_metrics("archetypes", subsystem_stats).await;
     }
     
@@ -369,7 +434,8 @@ impl ArchetypeManager {
 
 /// Integration traits for working with existing query system
 
-/// Trait for archetype-aware querying (integrates with OptimalSpatialIndex)
+/// Trait for archetype-aware querying
+/// Note: This is superseded by ArchetypeSpatialBridge for spatial integration
 pub trait ArchetypeAware {
     /// Get entities from specific archetypes only
     fn from_archetypes(&self, archetype_ids: Vec<ArchetypeId>) -> Vec<Entity>;
@@ -377,18 +443,6 @@ pub trait ArchetypeAware {
     /// Get archetype distribution of query results
     fn archetype_distribution(&self) -> std::collections::HashMap<ArchetypeId, usize>;
 }
-
-// Example integration would be with OptimalSpatialIndex:
-// impl ArchetypeAware for crate::ecs::spatial::OptimalSpatialIndex {
-//     fn from_archetypes(&self, archetype_ids: Vec<ArchetypeId>) -> Vec<Entity> {
-//         // Use R-tree spatial index but limit to entities from specific archetypes
-//         todo!()
-//     }
-//     
-//     fn archetype_distribution(&self) -> std::collections::HashMap<ArchetypeId, usize> {
-//         todo!()
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -408,7 +462,7 @@ mod tests {
         let manager = ArchetypeManager::new();
         let entity = Entity::from_raw(42);
         
-        let archetype_id = manager.register_entity::<UnitBundle>(entity);
+        let archetype_id = manager.register_entity::<UnitBundle>(entity).unwrap();
         let entities = manager.get_archetype_entities(archetype_id);
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&entity));
@@ -419,7 +473,7 @@ mod tests {
         let manager = ArchetypeManager::new();
         let entity = Entity::from_raw(123);
         
-        manager.register_entity::<UnitBundle>(entity);
+        manager.register_entity::<UnitBundle>(entity).unwrap();
         assert!(manager.unregister_entity(entity).is_ok());
         
         let stats = manager.stats();
@@ -431,7 +485,7 @@ mod tests {
         let manager = ArchetypeManager::new();
         let entity = Entity::from_raw(456);
         
-        manager.register_entity::<UnitBundle>(entity);
+        manager.register_entity::<UnitBundle>(entity).unwrap();
         manager.unregister_entity(entity).unwrap();
         
         let removed = manager.cleanup();
@@ -444,7 +498,7 @@ mod tests {
         assert!(manager.validate().is_ok());
         
         let entity = Entity::from_raw(789);
-        manager.register_entity::<UnitBundle>(entity);
+        manager.register_entity::<UnitBundle>(entity).unwrap();
         assert!(manager.validate().is_ok());
     }
 }

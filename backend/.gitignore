@@ -47,6 +47,8 @@ luac.out
 *.idb
 *.pdb
 
+bin/*
+
 # Profiling
 *.prof
 perf.data*
@@ -68,8 +70,5 @@ config.local.*
 
 # CLion
 cmake-build-*/
-
-# Core dumps
-core.*
 
 .zig-cache/

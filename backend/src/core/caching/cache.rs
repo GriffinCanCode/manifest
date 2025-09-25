@@ -8,16 +8,15 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::hash::Hash;
 use dashmap::DashMap;
 use moka::future::Cache as MokaCache;
 use tokio::sync::{RwLock, OnceCell};
 use serde::{Serialize, Deserialize};
-use tracing::{info, debug, warn, error, instrument, Span};
+use tracing::{debug, instrument};
 
-use crate::core::{hashing::{FastHasher, FastHashMap}, logging::{LoggingSystem, game_logging}};
+use crate::core::logging::{LoggingSystem, game_logging};
 use super::{
-    CacheConfig, CacheKey, CacheEntry, CachePriority, CacheResult, CacheError, 
+    CacheConfig, CacheKey, CachePriority, CacheResult, CacheError, 
     CacheInvalidationEvent, CacheStats, WriteStrategy
 };
 
@@ -52,7 +51,7 @@ impl CachedValue {
         let size_bytes = data.len() + std::mem::size_of::<Self>();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time should be after Unix epoch for cache entry creation")
             .as_secs();
 
         Ok(Self {
@@ -73,7 +72,7 @@ impl CachedValue {
     pub fn access(&mut self) {
         self.last_accessed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time should be after Unix epoch for cache access tracking")
             .as_secs();
         self.access_count = self.access_count.saturating_add(1);
     }
@@ -90,7 +89,7 @@ impl CachedValue {
     pub fn age_seconds(&self) -> u64 {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time should be after Unix epoch for cache age calculation")
             .as_secs();
         now.saturating_sub(self.created_at)
     }
@@ -144,7 +143,7 @@ impl Default for EvictionPolicy {
 impl GameCache {
     /// Create a new game cache with the given configuration
     pub fn new(config: CacheConfig) -> Self {
-        let hot_cache_capacity = (config.max_memory_mb as usize * 1024 * 1024) / 2; // 50% for hot cache
+        let _hot_cache_capacity = (config.max_memory_mb as usize * 1024 * 1024) / 2; // 50% for hot cache
         
         let hot_cache = MokaCache::builder()
             .max_capacity(1000) // Number of items, not bytes - moka handles this
@@ -284,7 +283,7 @@ impl GameCache {
                 self.hot_cache.insert(hash, Arc::clone(&cached_value)).await;
                 selected_tier = "hot";
             }
-            CachePriority::Normal | CachePriority::Low => {
+            CachePriority::Normal | CachePriority::Medium | CachePriority::Low => {
                 // Store in warm cache  
                 self.warm_cache.insert(hash, Arc::clone(&cached_value));
                 selected_tier = "warm";
@@ -481,22 +480,79 @@ impl GameCache {
         }
     }
 
-    /// Invalidate entity-related caches
-    async fn invalidate_entity_caches(&self, _entity: bevy_ecs::entity::Entity) {
-        // This would need more sophisticated key tracking in a real implementation
-        // For now, we invalidate spatial and query caches
+    /// Invalidate entity-related caches with sophisticated key tracking
+    async fn invalidate_entity_caches(&self, entity: bevy_ecs::entity::Entity) {
+        let entity_index = entity.index();
+        let entity_string = format!("{}:{}", entity_index, entity.generation());
+        
         let keys_to_remove: Vec<u64> = self.warm_cache.iter()
             .filter_map(|entry| {
-                match &entry.key {
-                    CacheKey::Spatial(_) | CacheKey::Query(_) => Some(*entry.key()),
-                    _ => None,
+                if self.is_entity_related_cache_key(&entry.key, entity_index, &entity_string) {
+                    Some(*entry.key())
+                } else {
+                    None
                 }
             })
             .collect();
 
+        let keys_count = keys_to_remove.len();
         for key in keys_to_remove {
             self.hot_cache.remove(&key).await;
             self.warm_cache.remove(&key);
+        }
+        
+        debug!("Invalidated {} cache entries related to entity {:?}", keys_count, entity);
+    }
+
+    /// Check if a cache key is related to a specific entity
+    fn is_entity_related_cache_key(&self, key: &CacheKey, entity_index: u32, entity_string: &str) -> bool {
+        match key {
+            // AI cache keys contain entity references
+            CacheKey::AI(ai_key) => {
+                // AI keys contain entity information in their context
+                ai_key.entity.index() == entity_index
+            },
+            
+            // Query cache keys may contain results with this entity
+            CacheKey::Query(query_key) => {
+                // For query caches, we need to be conservative and invalidate if:
+                // 1. It's a broad query that might include this entity
+                // 2. The entity might have components that match the query signature
+                use super::query::QueryType;
+                match query_key.query_type {
+                    QueryType::EntitiesByComponents => true, // Conservative - entity might match
+                    QueryType::EntitiesWithData => true,     // Conservative - entity might match
+                    QueryType::ArchetypeQuery => true,       // Conservative - entity might be in archetype
+                    _ => false,
+                }
+            },
+            
+            // Spatial cache keys don't directly reference entities, but might contain results with this entity
+            CacheKey::Spatial(_) => {
+                // Spatial queries return entity lists, so if an entity moves or is deleted,
+                // we should invalidate spatial caches in the area
+                // This is conservative but safe
+                true
+            },
+            
+            // Custom cache keys might contain entity IDs in the string
+            CacheKey::Custom(custom_string) => {
+                // Check if the entity ID appears in the custom key string
+                custom_string.contains(&entity_index.to_string()) || 
+                custom_string.contains(entity_string)
+            },
+            
+            // Pathfinding caches don't directly reference specific entities
+            // but might need invalidation if the entity affects terrain/movement
+            CacheKey::Pathfinding(_) => {
+                // Conservative approach - pathfinding might be affected by entity movement
+                // In a more sophisticated implementation, we could check if the entity
+                // is at the start/end positions or affects the path
+                false // For now, only invalidate pathfinding on broader changes
+            },
+            
+            // Player and Rendering caches are not typically entity-specific
+            CacheKey::Player(_) | CacheKey::Rendering(_) => false,
         }
     }
 

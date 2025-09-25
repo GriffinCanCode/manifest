@@ -1,24 +1,24 @@
-import React from 'react'
+import React from 'react';
 
 interface LoadingScreenProps {
-  message?: string
+  message?: string;
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ 
-  message = 'Loading Manifest...' 
+const LoadingScreen: React.FC<LoadingScreenProps> = ({
+  message = 'Loading Manifest...',
 }) => {
   return (
-    <div className="loading-screen">
-      <div className="loading-content">
-        <div className="loading-logo">
+    <div className='loading-screen'>
+      <div className='loading-content'>
+        <div className='loading-logo'>
           <h1>Manifest</h1>
         </div>
-        <div className="loading-spinner">
-          <div className="spinner"></div>
+        <div className='loading-spinner'>
+          <div className='spinner' />
         </div>
-        <p className="loading-message">{message}</p>
+        <p className='loading-message'>{message}</p>
       </div>
-      
+
       <style>{`
         .loading-screen {
           position: fixed;
@@ -81,7 +81,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
         }
       `}</style>
     </div>
-  )
-}
+  );
+};
 
-export default LoadingScreen
+export default LoadingScreen;

@@ -30,7 +30,10 @@ pub mod metrics;
 pub mod events;
 
 pub use cache::*;
-pub use policies::*;
+pub use policies::{
+    CachePolicy, TTLPolicy, EvictionLevel, GameSpecificEviction, MemoryPolicy, 
+    TurnBasedPolicy, CacheKeyType, PolicyEngine, AccessPattern, AccessTrend
+};
 pub use spatial::*;
 pub use query::*;
 pub use strategies::*;
@@ -38,8 +41,8 @@ pub use metrics::*;
 pub use events::*;
 
 use std::time::{Duration, Instant};
-use tracing::{info, debug, warn, error, instrument, Span};
-use crate::core::{hashing::{FastHasher, HashStrategies}, logging::{LoggingSystem, game_logging}};
+use tracing::error;
+use crate::core::hashing::FastHasher;
 
 /// Global cache configuration for the game
 #[derive(Debug, Clone)]
@@ -91,6 +94,8 @@ pub enum CachePriority {
     High = 75,
     /// Normal game data (entity queries, UI state)
     Normal = 50,
+    /// Medium priority data 
+    Medium = 35,
     /// Nice-to-have data that can be evicted easily
     Low = 25,
 }

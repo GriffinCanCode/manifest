@@ -1,0 +1,208 @@
+# Resource definitions for the tile properties system
+# Loaded by the TilePropertiesSystem for resource generation and management
+
+[resources.wheat]
+name = "Wheat"
+rarity = 0.3
+base_yield = 20
+terrain_preferences = ["grassland", "plains"]
+[resources.wheat.biome_modifiers]
+temperate_grassland = 1.5
+mediterranean = 1.2
+tropical_savanna = 0.8
+
+[resources.iron]
+name = "Iron"
+rarity = 0.15
+base_yield = 15
+terrain_preferences = ["hills", "mountain"]
+[resources.iron.biome_modifiers]
+mountain_alpine = 2.0
+boreal_forest = 1.2
+temperate_forest = 1.0
+
+[resources.coal]
+name = "Coal"
+rarity = 0.12
+base_yield = 25
+terrain_preferences = ["hills", "mountain", "forest"]
+[resources.coal.biome_modifiers]
+boreal_forest = 1.5
+temperate_forest = 1.3
+mountain_alpine = 1.8
+
+[resources.oil]
+name = "Oil"
+rarity = 0.08
+base_yield = 30
+required_tech = "drilling"
+terrain_preferences = ["desert", "ocean"]
+[resources.oil.biome_modifiers]
+hot_desert = 2.0
+arctic_tundra = 1.5
+
+[resources.gold]
+name = "Gold"
+rarity = 0.05
+base_yield = 10
+terrain_preferences = ["hills", "mountain", "desert"]
+[resources.gold.biome_modifiers]
+hot_desert = 1.8
+mountain_alpine = 2.2
+
+[resources.silver]
+name = "Silver"
+rarity = 0.07
+base_yield = 12
+terrain_preferences = ["hills", "mountain"]
+[resources.silver.biome_modifiers]
+mountain_alpine = 2.0
+boreal_forest = 1.1
+
+[resources.copper]
+name = "Copper"
+rarity = 0.18
+base_yield = 18
+terrain_preferences = ["hills", "mountain"]
+[resources.copper.biome_modifiers]
+mountain_alpine = 1.8
+hot_desert = 1.3
+mediterranean = 1.2
+
+[resources.stone]
+name = "Stone"
+rarity = 0.35
+base_yield = 15
+terrain_preferences = ["hills", "mountain", "plains"]
+[resources.stone.biome_modifiers]
+mountain_alpine = 1.5
+mediterranean = 1.2
+
+[resources.lumber]
+name = "Lumber"  
+rarity = 0.25
+base_yield = 22
+terrain_preferences = ["forest", "jungle"]
+[resources.lumber.biome_modifiers]
+boreal_forest = 2.0
+temperate_forest = 1.8
+tropical_rainforest = 1.5
+
+[resources.fish]
+name = "Fish"
+rarity = 0.4
+base_yield = 18
+terrain_preferences = ["ocean"]
+[resources.fish.biome_modifiers]
+arctic_tundra = 1.3
+mediterranean = 1.5
+
+[resources.cattle]
+name = "Cattle"
+rarity = 0.22
+base_yield = 16
+terrain_preferences = ["grassland", "plains"]
+[resources.cattle.biome_modifiers]
+temperate_grassland = 1.6
+tropical_savanna = 1.3
+mediterranean = 1.1
+
+[resources.horses]
+name = "Horses"
+rarity = 0.1
+base_yield = 8
+terrain_preferences = ["grassland", "plains"]
+[resources.horses.biome_modifiers]
+temperate_grassland = 1.8
+tropical_savanna = 1.2
+
+[resources.furs]
+name = "Furs"
+rarity = 0.15
+base_yield = 12
+terrain_preferences = ["forest", "tundra"]
+[resources.furs.biome_modifiers]
+arctic_tundra = 2.0
+boreal_forest = 1.6
+
+[resources.spices]
+name = "Spices"
+rarity = 0.06
+base_yield = 8
+terrain_preferences = ["jungle", "forest"]
+[resources.spices.biome_modifiers]
+tropical_rainforest = 2.5
+tropical_savanna = 1.2
+
+[resources.precious_stones]
+name = "Precious Stones"
+rarity = 0.03
+base_yield = 5
+terrain_preferences = ["mountain", "hills"]
+[resources.precious_stones.biome_modifiers]
+mountain_alpine = 2.5
+hot_desert = 1.8
+tropical_rainforest = 1.3
+
+[resources.exotic_woods]
+name = "Exotic Woods"
+rarity = 0.08
+base_yield = 10
+terrain_preferences = ["jungle", "forest"]
+[resources.exotic_woods.biome_modifiers]
+tropical_rainforest = 2.2
+temperate_forest = 1.1
+
+[resources.game]
+name = "Game"
+rarity = 0.3
+base_yield = 14
+terrain_preferences = ["forest", "hills", "grassland"]
+[resources.game.biome_modifiers]
+boreal_forest = 1.8
+temperate_forest = 1.5
+tropical_savanna = 2.0
+temperate_grassland = 1.2
+
+[resources.medicinal_plants]
+name = "Medicinal Plants"
+rarity = 0.12
+base_yield = 6
+terrain_preferences = ["jungle", "forest"]
+[resources.medicinal_plants.biome_modifiers]
+tropical_rainforest = 2.0
+temperate_forest = 1.3
+
+[resources.ivory]
+name = "Ivory"
+rarity = 0.04
+base_yield = 4
+terrain_preferences = ["grassland", "jungle"]
+[resources.ivory.biome_modifiers]
+tropical_savanna = 2.5
+tropical_rainforest = 1.8
+
+[resources.precious_metals]
+name = "Precious Metals"
+rarity = 0.03
+base_yield = 6
+terrain_preferences = ["mountain"]
+[resources.precious_metals.biome_modifiers]
+mountain_alpine = 3.0
+
+[resources.olives]
+name = "Olives"
+rarity = 0.15
+base_yield = 12
+terrain_preferences = ["hills", "plains"]
+[resources.olives.biome_modifiers]
+mediterranean = 2.0
+
+[resources.grapes]
+name = "Grapes"
+rarity = 0.18
+base_yield = 14
+terrain_preferences = ["hills", "plains"]
+[resources.grapes.biome_modifiers]
+mediterranean = 1.8
+temperate_forest = 1.1

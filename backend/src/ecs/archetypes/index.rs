@@ -4,10 +4,9 @@
 //! in queries.rs, focusing on component signature patterns.
 
 use super::types::{ArchetypeId, ComponentSignature};
-use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use parking_lot::RwLock;
 use crate::core::hashing::{collections, FastHashMap, FastHashSet, HashStrategies};
 

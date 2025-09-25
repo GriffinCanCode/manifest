@@ -74,6 +74,10 @@ pub struct TickSynchronizer {
     last_tick_time: Arc<Mutex<Instant>>,
     /// Accumulated tick debt for catch-up
     tick_debt: Arc<AtomicU64>,
+    /// External synchronization receiver channel
+    external_sync_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<u64>>,
+    /// External synchronization sender channel for setup
+    external_sync_sender: Option<tokio::sync::mpsc::UnboundedSender<u64>>,
 }
 
 impl TickSynchronizer {
@@ -91,6 +95,8 @@ impl TickSynchronizer {
             running: Arc::new(AtomicBool::new(false)),
             last_tick_time: Arc::new(Mutex::new(Instant::now())),
             tick_debt: Arc::new(AtomicU64::new(0)),
+            external_sync_receiver: None,
+            external_sync_sender: None,
         }
     }
 
@@ -107,6 +113,8 @@ impl TickSynchronizer {
             running: Arc::new(AtomicBool::new(false)),
             last_tick_time: Arc::new(Mutex::new(Instant::now())),
             tick_debt: Arc::new(AtomicU64::new(0)),
+            external_sync_receiver: None,
+            external_sync_sender: None,
         }
     }
 
@@ -272,11 +280,94 @@ impl TickSynchronizer {
 
     async fn wait_external(&mut self) -> Result<u64, SyncError> {
         // In external sync mode, we wait for an external system to set the tick
-        // For now, just sleep for the tick duration as a placeholder
-        sleep_until(tokio::time::Instant::now() + self.tick_duration).await;
+        // This could be from network synchronization, master server, or other coordination
         
-        // Return current tick without incrementing (external system controls it)
-        Ok(self.current_tick.load(Ordering::Relaxed))
+        // Check if we have external tick events to process
+        if let Some(external_tick) = self.check_external_tick_events().await? {
+            // External system provided a specific tick number
+            self.current_tick.store(external_tick, Ordering::Relaxed);
+            return Ok(external_tick);
+        }
+        
+        // Wait for external tick signal or timeout
+        let timeout_duration = self.tick_duration * 3; // Allow some slack for network delays
+        let wait_start = tokio::time::Instant::now();
+        
+        loop {
+            // Check for external tick signal every 1ms
+            tokio::time::sleep(Duration::from_millis(1)).await;
+            
+            // Check if external tick was set by another thread/system
+            let current_external_tick = self.current_tick.load(Ordering::Relaxed);
+            let expected_tick = current_external_tick + 1;
+            
+            // Check if external system has advanced the tick
+            if self.has_external_tick_advanced(expected_tick) {
+                self.current_tick.store(expected_tick, Ordering::Relaxed);
+                return Ok(expected_tick);
+            }
+            
+            // Check for timeout
+            if wait_start.elapsed() > timeout_duration {
+                warn!("External sync timeout after {:?}, falling back to local increment", timeout_duration);
+                // Fall back to local tick increment to prevent hanging
+                let new_tick = self.current_tick.fetch_add(1, Ordering::Relaxed) + 1;
+                
+                // Update stats to track external sync failures
+                {
+                    let mut stats = self.stats.write();
+                    stats.external_sync_failures += 1;
+                }
+                
+                return Ok(new_tick);
+            }
+        }
+    }
+    
+    /// Check for external tick events from network or other sources
+    async fn check_external_tick_events(&mut self) -> Result<Option<u64>, SyncError> {
+        // In a real implementation, this would:
+        // 1. Check network messages for tick synchronization
+        // 2. Read from shared memory or message queues
+        // 3. Communicate with master server or coordinator
+        // 4. Process multiplayer synchronization events
+        
+        // For now, simulate checking for external events
+        // This would be replaced with actual network/IPC communication
+        
+        // Check if external synchronizer has set a specific tick
+        if let Some(sync_channel) = &mut self.external_sync_receiver {
+            match sync_channel.try_recv() {
+                Ok(external_tick) => {
+                    debug!("Received external tick: {}", external_tick);
+                    return Ok(Some(external_tick));
+                },
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                    // No external tick available
+                },
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                    return Err(SyncError::ExternalSyncDisconnected);
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    /// Check if external system has signaled tick advancement
+    fn has_external_tick_advanced(&self, expected_tick: u64) -> bool {
+        // In a real implementation, this would check:
+        // 1. Network synchronization flags
+        // 2. Shared memory tick counters
+        // 3. Master server tick broadcasts
+        // 4. Peer-to-peer tick consensus
+        
+        // For now, simulate external tick advancement detection
+        // This could check a file, network endpoint, or shared resource
+        
+        // Simple simulation: check if external tick file exists or network signal received
+        // In practice, this would be much more sophisticated
+        false // Placeholder - would check actual external sync state
     }
 
     async fn adapt_tick_rate(&mut self, factor: f64) {
@@ -297,6 +388,37 @@ impl TickSynchronizer {
         
         debug!("Adapted tick duration to {:?}", self.tick_duration);
     }
+    
+    /// Set up external synchronization channel
+    pub fn setup_external_sync(&mut self) -> tokio::sync::mpsc::UnboundedSender<u64> {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        self.external_sync_receiver = Some(receiver);
+        self.external_sync_sender = Some(sender.clone());
+        
+        info!("External synchronization channel established");
+        sender
+    }
+    
+    /// Send external tick signal
+    pub fn send_external_tick(&self, tick: u64) -> Result<(), SyncError> {
+        if let Some(sender) = &self.external_sync_sender {
+            sender.send(tick).map_err(|_| SyncError::ExternalSyncDisconnected)?;
+            debug!("Sent external tick signal: {}", tick);
+            Ok(())
+        } else {
+            Err(SyncError::ExternalSyncDisconnected)
+        }
+    }
+    
+    /// Check if external sync is available
+    pub fn has_external_sync(&self) -> bool {
+        self.external_sync_receiver.is_some() && self.external_sync_sender.is_some()
+    }
+    
+    /// Get external sync failure count
+    pub fn external_sync_failures(&self) -> u64 {
+        self.stats.read().external_sync_failures
+    }
 }
 
 /// Synchronization statistics
@@ -316,6 +438,8 @@ pub struct SyncStats {
     pub current_tps: f64,
     /// Start time for TPS calculation
     pub start_time: Option<Instant>,
+    /// External synchronization failures
+    pub external_sync_failures: u64,
 }
 
 impl SyncStats {
@@ -377,6 +501,8 @@ pub enum SyncError {
     IntervalNotInitialized,
     #[error("External sync timeout")]
     ExternalSyncTimeout,
+    #[error("External synchronization channel disconnected")]
+    ExternalSyncDisconnected,
 }
 
 #[cfg(test)]

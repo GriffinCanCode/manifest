@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BinaryHeap,
     sync::Arc,
-    cmp::{Ordering, Reverse},
+    cmp::Ordering,
 };
 use tracing::{debug, warn};
 use crate::core::scheduler::Stage;

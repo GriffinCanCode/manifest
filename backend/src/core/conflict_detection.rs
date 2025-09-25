@@ -6,7 +6,7 @@
 
 use std::any::TypeId;
 use crate::core::{Access, SchedulerError};
-use crate::core::hashing::{collections, FastHashMap};
+use crate::core::hashing::collections;
 
 /// Generic resource access pattern for conflict detection
 pub trait ResourceAccess {

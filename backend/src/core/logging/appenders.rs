@@ -15,10 +15,9 @@ use std::time::{Duration, Instant, SystemTime};
 use parking_lot::{RwLock, Mutex};
 use tokio::sync::mpsc;
 use tracing_subscriber::Layer;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use flate2::{write::GzEncoder, Compression};
-use crate::core::hashing::{collections, FastHashMap, HashStrategies};
-use super::{ConsoleConfig, FileConfig, RotationConfig, RotationStrategy, LoggingError};
+use super::{ConsoleConfig, FileConfig, RotationStrategy, LoggingError};
 
 /// Trait for all log appenders
 pub trait LogAppender: Send + Sync {

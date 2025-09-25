@@ -22,6 +22,7 @@ pub mod ownership;
 pub mod improvements;
 pub mod modifiers;
 pub mod layers;
+pub mod properties;
 
 // Re-export core types
 pub use chunks::*;
@@ -34,6 +35,7 @@ pub use ownership::*;
 pub use improvements::*;
 pub use modifiers::*;
 pub use layers::*;
+pub use properties::*;
 
 #[cfg(test)]
 mod integration_tests {

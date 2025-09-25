@@ -3,7 +3,6 @@
 //! Provides highly optimized ownership tracking for tiles using bitvec for
 //! compact storage and fast bitwise operations on ownership information.
 
-use bitvec::prelude::*;
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use std::collections::HashMap;
@@ -13,15 +12,11 @@ use rayon::prelude::*;
 
 use crate::core::{
     zig_ffi::HexCoord,
-    hashing::{FastHashMap, FastHashSet},
     caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority}
 };
-use crate::world::tiles::{
-    chunks::{TileId, ChunkCoord, ChunkManager, CHUNK_SIZE},
-    components::{Tile, TileComponentManager},
-    spatial::TileSpatialIndex
-};
-use tracing::{debug, instrument, warn};
+
+use crate::world::tiles::chunks::{ChunkCoord, ChunkManager, CHUNK_SIZE};
+use tracing::{debug, instrument};
 
 /// Maximum number of players supported (for bitvec sizing)
 pub const MAX_PLAYERS: usize = 64;
@@ -87,9 +82,9 @@ impl OwnershipStrength {
 #[derive(Debug, Clone)]
 pub struct TileOwnershipClaims {
     /// Bitfield for which players have claims (up to 64 players)
-    claims: BitArr!(for MAX_PLAYERS, in bitvec::order::LocalBits, bitvec::store::usize),
+    claims: bitvec::vec::BitVec,
     /// Strength of each player's claim
-    claim_strengths: [OwnershipStrength; MAX_PLAYERS],
+    claim_strengths: Vec<OwnershipStrength>,
     /// Primary owner (strongest claim)
     primary_owner: Option<PlayerId>,
     /// Whether ownership is currently disputed
@@ -101,8 +96,8 @@ pub struct TileOwnershipClaims {
 impl Default for TileOwnershipClaims {
     fn default() -> Self {
         Self {
-            claims: BitArray::ZERO,
-            claim_strengths: [OwnershipStrength::None; MAX_PLAYERS],
+            claims: bitvec::vec::BitVec::new(),
+            claim_strengths: vec![OwnershipStrength::None; MAX_PLAYERS],
             primary_owner: None,
             is_disputed: false,
             last_updated: 0,
@@ -324,7 +319,7 @@ impl Serialize for TileOwnershipClaims {
             .collect();
         
         state.serialize_field("claims", &claims_bytes)?;
-        state.serialize_field("claim_strengths", &self.claim_strengths)?;
+        state.serialize_field("claim_strengths", &self.claim_strengths.as_slice())?;
         state.serialize_field("primary_owner", &self.primary_owner)?;
         state.serialize_field("is_disputed", &self.is_disputed)?;
         state.end()
@@ -358,7 +353,7 @@ impl<'de> Deserialize<'de> for TileOwnershipClaims {
                 V: MapAccess<'de>,
             {
                 let mut claims_bytes: Option<Vec<u8>> = None;
-                let mut claim_strengths: Option<[OwnershipStrength; MAX_PLAYERS]> = None;
+                let mut claim_strengths: Option<Vec<OwnershipStrength>> = None;
                 let mut primary_owner: Option<Option<PlayerId>> = None;
                 let mut is_disputed: Option<bool> = None;
                 
@@ -368,7 +363,12 @@ impl<'de> Deserialize<'de> for TileOwnershipClaims {
                             claims_bytes = Some(map.next_value()?);
                         }
                         Field::ClaimStrengths => {
-                            claim_strengths = Some(map.next_value()?);
+                            let vec: Vec<OwnershipStrength> = map.next_value()?;
+                            if vec.len() == MAX_PLAYERS {
+                                let mut array = [OwnershipStrength::None; MAX_PLAYERS];
+                                array.copy_from_slice(&vec);
+                                claim_strengths = Some(array.to_vec());
+                            }
                         }
                         Field::PrimaryOwner => {
                             primary_owner = Some(map.next_value()?);
@@ -385,7 +385,7 @@ impl<'de> Deserialize<'de> for TileOwnershipClaims {
                 let is_disputed = is_disputed.ok_or_else(|| de::Error::missing_field("is_disputed"))?;
                 
                 // Reconstruct bitvec from bytes
-                let mut claims = BitArray::ZERO;
+                let mut claims = bitvec::vec::BitVec::new();
                 let words_needed = (MAX_PLAYERS + std::mem::size_of::<usize>() * 8 - 1) / (std::mem::size_of::<usize>() * 8);
                 for (i, chunk) in claims_bytes.chunks(std::mem::size_of::<usize>()).take(words_needed).enumerate() {
                     let mut word_bytes = [0u8; std::mem::size_of::<usize>()];
@@ -417,7 +417,7 @@ pub struct OwnershipChunk {
     /// Ownership claims for each tile in chunk (sparse storage)
     tile_claims: HashMap<(usize, usize), TileOwnershipClaims>,
     /// Quick lookup for which players have claims in this chunk
-    players_in_chunk: BitArr!(for MAX_PLAYERS, in bitvec::order::LocalBits, bitvec::store::usize),
+    players_in_chunk: bitvec::vec::BitVec,
     /// Generation counter for change tracking
     generation: u64,
 }
@@ -428,7 +428,7 @@ impl OwnershipChunk {
         Self {
             chunk_coord,
             tile_claims: HashMap::new(),
-            players_in_chunk: BitArray::ZERO,
+            players_in_chunk: bitvec::vec::BitVec::new(),
             generation: 1,
         }
     }
@@ -504,7 +504,7 @@ impl OwnershipChunk {
         
         if chunk_changed {
             // Rebuild player presence tracking
-            self.players_in_chunk = BitArray::ZERO;
+            self.players_in_chunk = bitvec::vec::BitVec::new();
             for claims in self.tile_claims.values() {
                 for player in claims.get_claimants() {
                     self.players_in_chunk.set(player as usize, true);
@@ -530,7 +530,7 @@ impl OwnershipChunk {
 }
 
 /// High-performance ownership layer manager using bitvec for efficient storage
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct TileOwnershipLayer {
     /// Ownership chunks indexed by chunk coordinate
     chunks: Arc<RwLock<HashMap<ChunkCoord, OwnershipChunk>>>,
@@ -656,7 +656,7 @@ impl TileOwnershipLayer {
                 let mut tiles = Vec::new();
                 for ((local_x, local_y), claims) in &chunk.tile_claims {
                     if claims.has_claim(player_id) {
-                        let hex = ChunkManager::chunk_to_hex(**chunk_coord, *local_x, *local_y);
+                        let hex = ChunkManager::chunk_to_hex(*chunk_coord, *local_x, *local_y);
                         tiles.push(hex);
                     }
                 }

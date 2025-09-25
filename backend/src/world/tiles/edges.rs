@@ -4,26 +4,24 @@
 //! processing algorithms to identify terrain boundaries, political borders,
 //! and other significant transitions between tiles.
 
-use image::{ImageBuffer, Luma, GrayImage, Pixel};
-use ndarray::{Array2, ArrayView2, s};
+use image::{Luma, GrayImage};
+use ndarray::Array2;
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use parking_lot::RwLock;
 use std::sync::Arc;
-use rayon::prelude::*;
 
 use crate::core::{
     zig_ffi::HexCoord,
-    hashing::{FastHashMap, FastHashSet},
     caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority}
 };
 use crate::world::tiles::{
     chunks::{TileId, ChunkCoord, ChunkManager, CHUNK_SIZE},
     components::{Tile, TerrainType, TileComponentManager},
-    adjacency::{TileAdjacencyGraph, HexDirection}
+    adjacency::HexDirection
 };
-use tracing::{debug, instrument, warn};
+use tracing::{debug, instrument};
 
 /// Types of edges that can be detected
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -197,7 +195,7 @@ impl Default for EdgeDetectionConfig {
 }
 
 /// High-performance edge detection system using image processing algorithms
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct TileEdgeDetector {
     /// Detected edges indexed by chunk for spatial locality
     edges: Arc<RwLock<HashMap<ChunkCoord, Vec<TileEdge>>>>,
@@ -313,7 +311,7 @@ impl TileEdgeDetector {
     /// Detect terrain boundary edges using Sobel edge detection
     async fn detect_terrain_edges(&self, terrain_data: &Array2<u8>, chunk_coord: ChunkCoord) -> Result<Vec<TileEdge>, EdgeDetectionError> {
         // Convert to grayscale image for processing
-        let gray_image = self.array_to_gray_image(terrain_data.mapv(|v| v as f32));
+        let gray_image = self.array_to_gray_image(&terrain_data.mapv(|v| v as f32));
         
         // Apply Sobel edge detection
         let edges = self.apply_sobel_filter(&gray_image);
@@ -399,88 +397,227 @@ impl TileEdgeDetector {
         edges
     }
 
-    /// Apply Canny edge detection filter
+    /// Apply complete Canny edge detection filter with all stages
     fn apply_canny_filter(&self, image: &GrayImage) -> Array2<f32> {
-        // Simplified Canny implementation - in practice would use more sophisticated algorithms
-        let sobel_result = self.apply_sobel_filter(image);
+        let (height, width) = (image.height() as usize, image.width() as usize);
         
-        // Apply hysteresis thresholding
-        let mut edges = sobel_result.clone();
-        
-        for ((y, x), value) in edges.indexed_iter_mut() {
-            if *value < self.config.canny_low_threshold {
-                *value = 0.0;
-            } else if *value > self.config.canny_high_threshold {
-                *value = 1.0;
-            } else {
-                // Check if connected to strong edge
-                let mut connected_to_strong = false;
-                for dy in -1i32..=1 {
-                    for dx in -1i32..=1 {
-                        let ny = y as i32 + dy;
-                        let nx = x as i32 + dx;
-                        if ny >= 0 && ny < edges.nrows() as i32 && nx >= 0 && nx < edges.ncols() as i32 {
-                            if sobel_result[[ny as usize, nx as usize]] > self.config.canny_high_threshold {
-                                connected_to_strong = true;
-                                break;
-                            }
-                        }
-                    }
-                    if connected_to_strong { break; }
-                }
-                
-                *value = if connected_to_strong { 0.8 } else { 0.0 };
+        // Step 1: Convert to f32 array
+        let mut data = Array2::zeros((height, width));
+        for y in 0..height {
+            for x in 0..width {
+                data[[y, x]] = image.get_pixel(x as u32, y as u32)[0] as f32 / 255.0;
             }
         }
         
-        edges
+        // Step 2: Apply Gaussian blur to reduce noise
+        let blurred = self.apply_gaussian_blur(&data);
+        
+        // Step 3: Compute gradients using Sobel operators
+        let (grad_x, grad_y, magnitude) = self.compute_gradients(&blurred);
+        
+        // Step 4: Apply non-maxima suppression
+        let thin_edges = self.non_maxima_suppression(&magnitude, &grad_x, &grad_y);
+        
+        // Step 5: Apply hysteresis thresholding
+        let final_edges = self.hysteresis_thresholding(&thin_edges);
+        
+        final_edges
+    }
+    
+    /// Compute gradients using Sobel operators
+    fn compute_gradients(&self, data: &Array2<f32>) -> (Array2<f32>, Array2<f32>, Array2<f32>) {
+        let (height, width) = data.dim();
+        let mut grad_x = Array2::zeros((height, width));
+        let mut grad_y = Array2::zeros((height, width));
+        let mut magnitude = Array2::zeros((height, width));
+        
+        // Sobel kernels
+        let sobel_x = [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]];
+        let sobel_y = [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]];
+        
+        for y in 1..(height - 1) {
+            for x in 1..(width - 1) {
+                let mut gx = 0.0;
+                let mut gy = 0.0;
+                
+                // Apply Sobel kernels
+                for ky in -1i32..=1 {
+                    for kx in -1i32..=1 {
+                        let pixel = data[[(y as i32 + ky) as usize, (x as i32 + kx) as usize]];
+                        gx += pixel * sobel_x[(ky + 1) as usize][(kx + 1) as usize];
+                        gy += pixel * sobel_y[(ky + 1) as usize][(kx + 1) as usize];
+                    }
+                }
+                
+                grad_x[[y, x]] = gx;
+                grad_y[[y, x]] = gy;
+                magnitude[[y, x]] = (gx * gx + gy * gy).sqrt();
+            }
+        }
+        
+        (grad_x, grad_y, magnitude)
+    }
+    
+    /// Apply non-maxima suppression to thin edges
+    fn non_maxima_suppression(&self, magnitude: &Array2<f32>, grad_x: &Array2<f32>, grad_y: &Array2<f32>) -> Array2<f32> {
+        let (height, width) = magnitude.dim();
+        let mut result = Array2::zeros((height, width));
+        
+        for y in 1..(height - 1) {
+            for x in 1..(width - 1) {
+                let mag = magnitude[[y, x]];
+                if mag == 0.0 { continue; }
+                
+                // Calculate gradient direction
+                let gx = grad_x[[y, x]];
+                let gy = grad_y[[y, x]];
+                let angle = gy.atan2(gx);
+                
+                // Quantize angle to one of 4 directions (0, 45, 90, 135 degrees)
+                let angle_deg = angle.to_degrees();
+                let quantized_angle = ((angle_deg + 180.0 + 22.5) / 45.0).floor() as i32 % 4;
+                
+                // Get neighbor pixels based on gradient direction
+                let (dy1, dx1, dy2, dx2) = match quantized_angle {
+                    0 => (0, -1, 0, 1),   // Horizontal
+                    1 => (-1, 1, 1, -1),  // Diagonal /
+                    2 => (-1, 0, 1, 0),   // Vertical
+                    3 => (-1, -1, 1, 1),  // Diagonal \
+                    _ => (0, -1, 0, 1),   // Default to horizontal
+                };
+                
+                let mag1 = magnitude[[(y as i32 + dy1) as usize, (x as i32 + dx1) as usize]];
+                let mag2 = magnitude[[(y as i32 + dy2) as usize, (x as i32 + dx2) as usize]];
+                
+                // Keep pixel only if it's a local maximum along the gradient direction
+                if mag >= mag1 && mag >= mag2 {
+                    result[[y, x]] = mag;
+                }
+            }
+        }
+        
+        result
+    }
+    
+    /// Apply hysteresis thresholding with edge following
+    fn hysteresis_thresholding(&self, edges: &Array2<f32>) -> Array2<f32> {
+        let (height, width) = edges.dim();
+        let mut result = Array2::zeros((height, width));
+        let mut visited = Array2::from_elem((height, width), false);
+        
+        let high_threshold = self.config.canny_high_threshold;
+        let low_threshold = self.config.canny_low_threshold;
+        
+        // First pass: mark strong edges
+        for y in 0..height {
+            for x in 0..width {
+                if edges[[y, x]] >= high_threshold {
+                    result[[y, x]] = 1.0;
+                    visited[[y, x]] = true;
+                }
+            }
+        }
+        
+        // Second pass: follow weak edges connected to strong edges
+        let mut stack = Vec::new();
+        
+        // Find all strong edge pixels
+        for y in 0..height {
+            for x in 0..width {
+                if result[[y, x]] == 1.0 {
+                    stack.push((y as i32, x as i32));
+                }
+            }
+        }
+        
+        // Follow connected weak edges
+        while let Some((y, x)) = stack.pop() {
+            // Check 8-connected neighbors
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    if dy == 0 && dx == 0 { continue; }
+                    
+                    let ny = y + dy;
+                    let nx = x + dx;
+                    
+                    if ny >= 0 && ny < height as i32 && nx >= 0 && nx < width as i32 {
+                        let ny = ny as usize;
+                        let nx = nx as usize;
+                        
+                        if !visited[[ny, nx]] && edges[[ny, nx]] >= low_threshold {
+                            result[[ny, nx]] = 0.8; // Mark as weak edge
+                            visited[[ny, nx]] = true;
+                            stack.push((ny as i32, nx as i32));
+                        }
+                    }
+                }
+            }
+        }
+        
+        result
     }
 
-    /// Apply Gaussian blur to reduce noise
+    /// Apply optimized separable Gaussian blur to reduce noise
     fn apply_gaussian_blur(&self, data: &Array2<f32>) -> Array2<f32> {
-        // Simplified Gaussian blur - could be optimized with separable kernels
         let sigma = self.config.gaussian_blur_sigma;
-        let kernel_size = (6.0 * sigma).ceil() as usize;
-        let kernel_center = kernel_size / 2;
+        let kernel_radius = (3.0 * sigma).ceil() as usize;
+        let kernel_size = 2 * kernel_radius + 1;
         
-        // Generate Gaussian kernel
-        let mut kernel = vec![vec![0.0; kernel_size]; kernel_size];
+        // Generate 1D Gaussian kernel
+        let mut kernel = vec![0.0; kernel_size];
         let mut kernel_sum = 0.0;
         
-        for y in 0..kernel_size {
-            for x in 0..kernel_size {
-                let dx = (x as i32 - kernel_center as i32) as f32;
-                let dy = (y as i32 - kernel_center as i32) as f32;
-                let value = (-0.5 * (dx * dx + dy * dy) / (sigma * sigma)).exp();
-                kernel[y][x] = value;
-                kernel_sum += value;
-            }
+        for i in 0..kernel_size {
+            let x = (i as i32 - kernel_radius as i32) as f32;
+            let value = (-0.5 * x * x / (sigma * sigma)).exp();
+            kernel[i] = value;
+            kernel_sum += value;
         }
         
         // Normalize kernel
-        for y in 0..kernel_size {
-            for x in 0..kernel_size {
-                kernel[y][x] /= kernel_sum;
-            }
+        for value in kernel.iter_mut() {
+            *value /= kernel_sum;
         }
         
-        // Apply convolution
         let (height, width) = data.dim();
-        let mut result = Array2::zeros((height, width));
         
-        for y in kernel_center..(height - kernel_center) {
-            for x in kernel_center..(width - kernel_center) {
+        // First pass: horizontal blur
+        let mut temp = Array2::zeros((height, width));
+        for y in 0..height {
+            for x in 0..width {
                 let mut sum = 0.0;
+                let mut weight_sum = 0.0;
                 
-                for ky in 0..kernel_size {
-                    for kx in 0..kernel_size {
-                        let data_y = y + ky - kernel_center;
-                        let data_x = x + kx - kernel_center;
-                        sum += data[[data_y, data_x]] * kernel[ky][kx];
+                for k in 0..kernel_size {
+                    let sample_x = x as i32 + k as i32 - kernel_radius as i32;
+                    if sample_x >= 0 && sample_x < width as i32 {
+                        let weight = kernel[k];
+                        sum += data[[y, sample_x as usize]] * weight;
+                        weight_sum += weight;
                     }
                 }
                 
-                result[[y, x]] = sum;
+                temp[[y, x]] = if weight_sum > 0.0 { sum / weight_sum } else { data[[y, x]] };
+            }
+        }
+        
+        // Second pass: vertical blur
+        let mut result = Array2::zeros((height, width));
+        for y in 0..height {
+            for x in 0..width {
+                let mut sum = 0.0;
+                let mut weight_sum = 0.0;
+                
+                for k in 0..kernel_size {
+                    let sample_y = y as i32 + k as i32 - kernel_radius as i32;
+                    if sample_y >= 0 && sample_y < height as i32 {
+                        let weight = kernel[k];
+                        sum += temp[[sample_y as usize, x]] * weight;
+                        weight_sum += weight;
+                    }
+                }
+                
+                result[[y, x]] = if weight_sum > 0.0 { sum / weight_sum } else { temp[[y, x]] };
             }
         }
         

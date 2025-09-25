@@ -11,8 +11,8 @@ use glam::IVec2;
 use serde::{Serialize, Deserialize};
 use bevy_ecs::prelude::Entity;
 
-use crate::core::hashing::{FastHashMap, FastHasher};
-use super::{CacheKey, CachePriority};
+use crate::core::hashing::FastHashMap;
+use super::CachePriority;
 
 // =================================================================================================
 // PATHFINDING CACHE
@@ -509,6 +509,14 @@ impl PlayerCacheKey {
         Self {
             player_id,
             data_type: PlayerDataType::Resources,
+            turn,
+        }
+    }
+    
+    pub fn game_state(player_id: u32, turn: u32) -> Self {
+        Self {
+            player_id,
+            data_type: PlayerDataType::Territory, // Use Territory as the closest match to game state
             turn,
         }
     }
