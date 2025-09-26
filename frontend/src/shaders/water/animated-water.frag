@@ -19,7 +19,7 @@ uniform float u_waveHeight;
 uniform float u_waveSpeed;
 uniform float u_foamThreshold;
 uniform float u_transparency;
-uniform vec3 u_cameraPosition;
+// Note: cameraPosition is automatically provided by Three.js
 uniform vec3 u_lightDirection;
 
 // Lighting uniforms
@@ -168,7 +168,7 @@ void main() {
   vec3 finalNormal = normalize(mix(v_normal, waterNormal, 0.7));
   
   // Calculate view direction
-  vec3 viewDir = normalize(u_cameraPosition - v_worldPosition);
+  vec3 viewDir = normalize(cameraPosition - v_worldPosition);
   vec3 lightDir = normalize(-u_lightDirection);
   
   // Base water color based on depth

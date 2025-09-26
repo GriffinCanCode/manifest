@@ -47,10 +47,8 @@ export interface ShaderDefinition {
 }
 
 export interface TerrainShaderUniforms extends ShaderUniforms {
-  // Camera and viewport
-  u_viewMatrix: { value: THREE.Matrix4 };
-  u_projectionMatrix: { value: THREE.Matrix4 };
-  u_cameraPosition: { value: THREE.Vector3 };
+  // Note: Camera matrices and position are automatically provided by Three.js
+  // u_viewMatrix, u_projectionMatrix, cameraPosition are built-in uniforms
 
   // Time and animation
   u_time: { value: number };

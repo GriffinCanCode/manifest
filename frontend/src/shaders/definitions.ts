@@ -42,10 +42,8 @@ export const HEX_TERRAIN_SHADER: ShaderDefinition = {
     u_time: { value: 0 },
     u_deltaTime: { value: 0 },
 
-    // Camera and matrices (set by Three.js)
-    u_viewMatrix: { value: new Matrix4() },
-    u_projectionMatrix: { value: new Matrix4() },
-    u_cameraPosition: { value: new Vector3() },
+    // Note: Camera matrices and position are automatically provided by Three.js
+    // Don't override built-in uniforms: modelMatrix, viewMatrix, projectionMatrix, cameraPosition
 
     // Hex terrain properties
     u_hexSize: { value: 1.0 },
@@ -111,7 +109,7 @@ export const ANIMATED_WATER_SHADER: ShaderDefinition = {
     u_waveSpeed: { value: 1.0 },
     u_foamThreshold: { value: 0.7 },
     u_transparency: { value: 0.8 },
-    u_cameraPosition: { value: new Vector3() },
+    // Note: cameraPosition is automatically provided by Three.js
     u_lightDirection: { value: new Vector3(1, -1, 1).normalize() },
     u_ambientColor: { value: new Color(0x404040) },
     u_ambientIntensity: { value: 0.2 },
@@ -499,11 +497,11 @@ export const getShaderDefinition = (name: ShaderName): ShaderDefinition => {
 export const updateShaderUniforms = (
   uniforms: TerrainShaderUniforms,
   time: number,
-  cameraPosition: Vector3,
+  _cameraPosition: Vector3,
   qualityLevel: number
 ): void => {
   uniforms.u_time.value = time;
-  uniforms.u_cameraPosition.value.copy(cameraPosition);
+  // Note: cameraPosition is automatically provided by Three.js, no need to update manually
   uniforms.u_qualityLevel.value = qualityLevel;
 
   // Adjust LOD distance based on quality

@@ -13,7 +13,7 @@ precision highp float;
 uniform float u_time;
 uniform float u_waveHeight;
 uniform float u_waveSpeed;
-uniform vec3 u_cameraPosition;
+// Note: cameraPosition is automatically provided by Three.js
 
 // Instance attributes
 attribute vec3 a_instancePosition;
@@ -101,7 +101,7 @@ void main() {
   v_viewPosition = viewPosition.xyz;
   
   // Calculate LOD level
-  v_lodLevel = calculateLOD(v_worldPosition, u_cameraPosition);
+  v_lodLevel = calculateLOD(v_worldPosition, cameraPosition);
   
   // LOD-based vertex displacement reduction
   float lodMultiplier = 1.0 - v_lodLevel * 0.5;

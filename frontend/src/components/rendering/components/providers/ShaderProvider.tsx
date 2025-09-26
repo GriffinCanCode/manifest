@@ -206,27 +206,37 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
     // Update hex terrain shader uniforms
     const hexTerrainMaterial = shadersRef.current.get('hex-terrain');
     if (hexTerrainMaterial?.uniforms) {
-      updateShaderUniforms(
-        hexTerrainMaterial.uniforms as TerrainShaderUniforms,
-        timeRef.current,
-        cameraPosition,
-        qualityLevel
-      );
+      try {
+        updateShaderUniforms(
+          hexTerrainMaterial.uniforms as TerrainShaderUniforms,
+          timeRef.current,
+          cameraPosition,
+          qualityLevel
+        );
 
-      // Update performance-based settings
-      hexTerrainMaterial.uniforms.u_wireframe.value =
-        useRenderStore.getState().debug.showWireframe;
-
-      // Update fog color based on time of day (future enhancement)
-      if ((import.meta as ViteImportMeta)?.env?.MODE === 'development') {
-        const dayFactor = Math.sin(timeRef.current * 0.1) * 0.5 + 0.5;
-        const fogColor = hexTerrainMaterial.uniforms.u_fogColor.value as Color;
-        if (fogColor && typeof fogColor.setHSL === 'function') {
-          fogColor.setHSL(0.55, 0.3, 0.7 + dayFactor * 0.2);
+        // Update performance-based settings (only if uniform exists)
+        if (hexTerrainMaterial.uniforms.u_wireframe) {
+          hexTerrainMaterial.uniforms.u_wireframe.value =
+            useRenderStore.getState().debug.showWireframe;
         }
-      }
 
-      hexTerrainMaterial.uniformsNeedUpdate = true;
+        // Update fog color based on time of day (future enhancement)
+        if ((import.meta as ViteImportMeta)?.env?.MODE === 'development') {
+          const dayFactor = Math.sin(timeRef.current * 0.1) * 0.5 + 0.5;
+          const fogColor = hexTerrainMaterial.uniforms.u_fogColor
+            ?.value as Color;
+          if (fogColor && typeof fogColor.setHSL === 'function') {
+            fogColor.setHSL(0.55, 0.3, 0.7 + dayFactor * 0.2);
+          }
+        }
+
+        hexTerrainMaterial.uniformsNeedUpdate = true;
+      } catch (error) {
+        console.error(
+          '🚨 Failed to update hex terrain shader uniforms:',
+          error
+        );
+      }
     }
 
     // Update animated water shader uniforms
@@ -235,14 +245,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
       if (animatedWaterMaterial.uniforms.u_time) {
         animatedWaterMaterial.uniforms.u_time.value = timeRef.current;
       }
-      if (
-        animatedWaterMaterial.uniforms.u_cameraPosition?.value instanceof
-        Vector3
-      ) {
-        animatedWaterMaterial.uniforms.u_cameraPosition.value.copy(
-          cameraPosition
-        );
-      }
+      // Note: Camera position is automatically provided by Three.js for water shader
       animatedWaterMaterial.uniformsNeedUpdate = true;
     }
 
@@ -270,11 +273,8 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
           needsUpdate = true;
         }
 
-        // Update camera position for relevant shaders
-        if (material.uniforms?.u_cameraPosition?.value instanceof Vector3) {
-          material.uniforms.u_cameraPosition.value.copy(cameraPosition);
-          needsUpdate = true;
-        }
+        // Note: Camera position is automatically provided by Three.js for shaders that need it
+        // No need to manually update cameraPosition uniform
 
         // Update resolution for postprocessing shaders
         if (

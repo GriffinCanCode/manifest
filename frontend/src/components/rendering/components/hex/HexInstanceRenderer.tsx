@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Matrix4 } from 'three';
 
+import { shaderManager } from '../../../../shaders/manager';
 import { useRenderStore } from '../../../../stores/render-store';
 import {
   HexUtils,
@@ -52,6 +53,10 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
   streamingConfig,
 }) => {
   const { debug } = useRenderStore();
+
+  // EMERGENCY BYPASS: Force basic material if shader system is broken
+  // Set this to true to temporarily bypass shader system during debugging
+  const FORCE_BASIC_MATERIAL = false;
   const streamerRef = useRef<InstanceDataStreamer | null>(null);
   const { isReady: shadersReady } = useShaders();
   const hexTerrainShader = useShader('hex-terrain');
@@ -151,23 +156,117 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     return geometry;
   }, []);
 
-  // CIV-STYLE: Use hex-terrain custom shader material
+  // CIV-STYLE: Use hex-terrain custom shader material with comprehensive error handling
   const hexMaterial = useMemo(() => {
-    if (!shadersReady || !hexTerrainShader) {
+    // EMERGENCY BYPASS: Use basic material if forced or if shader system fails
+    if (FORCE_BASIC_MATERIAL) {
+      console.warn('🚨 HexRenderer: Using FORCED basic material bypass');
+      return new THREE.MeshBasicMaterial({
+        color: '#00aa33',
+        wireframe: debug.showWireframe,
+      });
+    }
+
+    if (!shadersReady) {
+      console.warn('🎨 HexRenderer: Shaders not ready yet');
       return null;
     }
 
-    // Clone the shader material and configure it
-    const material = hexTerrainShader.clone();
-    material.wireframe = debug.showWireframe;
-
-    // TEMPORARY TEST: Enable biome debug mode to see if shader is running
-    if (material.uniforms?.u_showBiomes) {
-      material.uniforms.u_showBiomes.value = true;
+    if (!hexTerrainShader) {
+      console.error('🚨 HexRenderer: hex-terrain shader failed to load');
+      console.error(
+        '🚨 Available shaders:',
+        Object.keys(shaderManager.getStats())
+      );
+      // Fall back to basic material instead of returning null
+      return new THREE.MeshBasicMaterial({
+        color: '#00ff00',
+        wireframe: debug.showWireframe,
+      });
     }
 
-    return material;
-  }, [shadersReady, hexTerrainShader, debug.showWireframe]);
+    console.warn('✅ HexRenderer: hex-terrain shader loaded successfully');
+
+    try {
+      // Clone the shader material and configure it
+      const material = hexTerrainShader.clone();
+      material.wireframe = debug.showWireframe;
+
+      // CRITICAL: Update uniforms that might conflict with Three.js built-ins
+      if (material.uniforms) {
+        // Three.js automatically provides cameraPosition, modelMatrix, viewMatrix, projectionMatrix
+        // Remove any conflicting uniforms that we might have inadvertently included
+        ['u_cameraPosition', 'u_viewMatrix', 'u_projectionMatrix'].forEach(
+          uniformName => {
+            if (material.uniforms[uniformName]) {
+              delete material.uniforms[uniformName];
+            }
+          }
+        );
+
+        // Set hex-specific uniforms
+        if (material.uniforms.u_hexSize) {
+          material.uniforms.u_hexSize.value = 0.9; // Match geometry size
+        }
+        if (material.uniforms.u_hexSpacing) {
+          material.uniforms.u_hexSpacing.value = 1.0;
+        }
+        if (material.uniforms.u_heightScale) {
+          material.uniforms.u_heightScale.value = 0.5; // Match our elevation scaling
+        }
+        if (material.uniforms.u_time) {
+          material.uniforms.u_time.value = 0; // Will be updated in useFrame
+        }
+
+        // TEMPORARY TEST: Enable biome debug mode to see if shader is running
+        if (material.uniforms.u_showBiomes) {
+          material.uniforms.u_showBiomes.value = true;
+        }
+      }
+
+      // Add compilation error detection and debugging
+      material.onBeforeCompile = (shader, _renderer) => {
+        console.warn('🎨 HexRenderer: Compiling hex-terrain shader...');
+        console.warn('🎨 Defines:', shader.defines);
+        console.warn(
+          '🎨 Vertex shader length:',
+          shader.vertexShader?.length || 0
+        );
+        console.warn(
+          '🎨 Fragment shader length:',
+          shader.fragmentShader?.length || 0
+        );
+
+        // Check for required instanced attributes in vertex shader
+        if (shader.vertexShader.includes('instancePosition')) {
+          console.warn(
+            '✅ HexRenderer: instancePosition attribute found in vertex shader'
+          );
+        } else {
+          console.error(
+            '🚨 HexRenderer: instancePosition attribute missing from vertex shader'
+          );
+        }
+      };
+
+      return material;
+    } catch (error) {
+      console.error(
+        '🚨 HexRenderer: Failed to configure hex-terrain shader:',
+        error
+      );
+      // Fall back to basic material
+      return new THREE.MeshBasicMaterial({
+        color: '#ff0000',
+        wireframe: debug.showWireframe,
+      });
+    }
+  }, [
+    FORCE_BASIC_MATERIAL,
+    shadersReady,
+    hexTerrainShader,
+    debug.showWireframe,
+  ]);
 
   // Simple wireframe border material (disabled for now)
   // const _wireframeMaterial = useMemo(() => {
@@ -247,8 +346,9 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
       const [x, z] = HexUtils.hexToPixel(tile.hex);
       const y = tile.elevation * 0.5;
 
-      // SHADER TEST: Let shader handle positioning, use identity matrix
-      matrix.identity(); // No transformation - let shader do it
+      // For shader-based rendering, still set matrix for basic Three.js compatibility
+      // but keep it simple - let shader handle most positioning
+      matrix.makeTranslation(x, y, z);
       instancedMesh.setMatrixAt(i, matrix);
 
       // Set instanced attributes for hex-terrain shader
@@ -302,7 +402,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
           .array as Float32Array;
         resourceArray[i] = 0.0; // No resources for now
       }
-
     }
 
     // Mark all instanced attributes for update
@@ -332,7 +431,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     // CRITICAL: Force mesh to be visible
     instancedMesh.visible = true;
     instancedMesh.frustumCulled = false; // Disable frustum culling for debugging
-
   }, [tiles, terrainColors, maxInstances]);
 
   // Handle click events using raycasting
@@ -406,24 +504,52 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     }
   }, [tiles, updateInstances, maxInstances]);
 
-  // Simplified frame update - just update instances if needed
-  useFrame(() => {
-    // For now, simple renderer doesn't need per-frame updates
+  // Simplified frame update - update shader uniforms
+  useFrame(({ clock }) => {
+    // Update shader time uniform for animations
+    if (
+      hexMaterial &&
+      'uniforms' in hexMaterial &&
+      hexMaterial.uniforms?.u_time
+    ) {
+      hexMaterial.uniforms.u_time.value = clock.getElapsedTime();
+    }
     // Future: Add LOD, frustum culling, etc. here if needed
   });
 
   // CRITICAL: Wait for shader system to initialize before rendering
   if (!shadersReady) {
+    console.warn('⏳ HexRenderer: Waiting for shader system...');
     return null;
   }
 
   // Don't render if no tiles or material
   if (!hexMaterial) {
+    console.error('🚨 HexRenderer: No material available, cannot render');
     return null;
   }
 
   if (tiles.length === 0) {
+    console.warn('📭 HexRenderer: No tiles to render');
     return null;
+  }
+
+  console.warn(
+    `✅ HexRenderer: Rendering ${tiles.length} tiles with shader system`
+  );
+
+  // SHADER DEBUG: Log material type and check if it's using our custom shader
+  const materialType = hexMaterial.constructor.name;
+  const isCustomShader = materialType === 'ShaderMaterial';
+  console.warn(
+    `🎨 HexRenderer: Using ${materialType} (custom shader: ${isCustomShader})`
+  );
+
+  if (isCustomShader && 'uniforms' in hexMaterial && hexMaterial.uniforms) {
+    console.warn(
+      '🎨 HexRenderer: Available uniforms:',
+      Object.keys(hexMaterial.uniforms)
+    );
   }
 
   return (
