@@ -1,30 +1,49 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react-swc'
-import { resolve } from 'path'
-import { analyzer } from 'vite-bundle-analyzer'
+import react from '@vitejs/plugin-react-swc';
+import { resolve } from 'path';
+import { defineConfig } from 'vite';
+import { analyzer } from 'vite-bundle-analyzer';
+import glsl from 'vite-plugin-glsl';
 
 export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
+
+    // GLSL shader support for hex terrain and effects
+    glsl({
+      include: ['**/*.glsl', '**/*.vert', '**/*.frag', '**/*.vs', '**/*.fs'],
+      exclude: undefined,
+      defaultExtension: 'glsl',
+      warnDuplicatedImports: true,
+      removeDuplicatedImports: true,
+      importKeyword: '#include',
+      minify: mode === 'production',
+      watch: true,
+      root: '/src/shaders',
+    }),
+
     // Bundle analyzer - only in development to avoid slowing down builds
-    ...(mode === 'development' ? [analyzer({ 
-      analyzerMode: 'server',
-      openAnalyzer: false // Set to true if you want it to auto-open
-    })] : []),
+    ...(mode === 'development'
+      ? [
+          analyzer({
+            analyzerMode: 'server',
+            openAnalyzer: false, // Set to true if you want it to auto-open
+          }),
+        ]
+      : []),
   ],
-  
+
   // Tauri expects a fixed port, fail if that port is not available
   server: {
     port: 5173,
     strictPort: true,
     // Enhanced HMR for faster development
     hmr: {
-      overlay: false
+      overlay: false,
     },
     // Pre-transform known dependencies
     fs: {
-      allow: ['..']
-    }
+      allow: ['..'],
+    },
   },
 
   // To make use of `TAURI_DEBUG` and other env variables
@@ -44,19 +63,39 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          three: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-tabs', '@radix-ui/react-tooltip'],
+          three: [
+            'three',
+            '@react-three/fiber',
+            '@react-three/drei',
+            '@react-three/postprocessing',
+          ],
+          ui: [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-tooltip',
+          ],
           utils: ['lodash-es', 'date-fns', 'zod'],
-          data: ['@tanstack/react-query', '@tanstack/react-table', '@tanstack/react-virtual'],
-          visualization: ['d3', '@visx/group', '@visx/scale', '@visx/shape', 'recharts'],
+          data: [
+            '@tanstack/react-query',
+            '@tanstack/react-table',
+            '@tanstack/react-virtual',
+          ],
+          visualization: [
+            'd3',
+            '@visx/group',
+            '@visx/scale',
+            '@visx/shape',
+            'recharts',
+          ],
           audio: ['howler', 'tone'],
           animation: ['framer-motion', 'lottie-react'],
-          state: ['zustand', 'valtio', 'immer']
-        }
-      }
+          state: ['zustand', 'valtio', 'immer'],
+        },
+      },
     },
     // Increase chunk size limit for game assets
-    chunkSizeWarningLimit: 1000
+    chunkSizeWarningLimit: 1000,
   },
 
   resolve: {
@@ -69,8 +108,8 @@ export default defineConfig(({ mode }) => ({
       '@assets': resolve('./src/assets'),
       '@shaders': resolve('./src/shaders'),
       '@workers': resolve('./src/workers'),
-      '@styles': resolve('./src/styles')
-    }
+      '@styles': resolve('./src/styles'),
+    },
   },
 
   define: {
@@ -97,11 +136,11 @@ export default defineConfig(({ mode }) => ({
       'framer-motion',
       'lodash-es',
       'date-fns',
-      'zod'
+      'zod',
     ],
     exclude: ['@tauri-apps/cli'],
     // Force optimization for game-specific libraries
-    force: true
+    force: true,
   },
 
   // Enhanced CSS processing with SCSS optimization
@@ -117,27 +156,27 @@ export default defineConfig(({ mode }) => ({
         `,
         // Enhanced error handling
         logger: {
-          warn: (message: string) => console.warn(`SCSS Warning: ${message}`)
-        }
-      }
+          warn: (message: string) => console.warn(`SCSS Warning: ${message}`),
+        },
+      },
     },
     postcss: {
-      plugins: []
+      plugins: [],
     },
     // Enable CSS modules for component-specific styles
     modules: {
-      localsConvention: 'camelCaseOnly'
-    }
+      localsConvention: 'camelCaseOnly',
+    },
   },
 
   // Enhanced worker support for game computations
   worker: {
-    format: 'es'
+    format: 'es',
   },
 
   // Performance optimizations
   esbuild: {
     // Remove console logs in production
-    drop: mode === 'production' ? ['console', 'debugger'] : []
-  }
-}))
+    drop: mode === 'production' ? ['console', 'debugger'] : [],
+  },
+}));

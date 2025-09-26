@@ -32,7 +32,7 @@ impl GameWorld {
             }
             
             // Cache miss - perform query
-            let mut query = self.world().query_filtered::<Entity, With<Hierarchical>>();
+            let mut query = self.world_mut().query_filtered::<Entity, With<Hierarchical>>();
             let entities: Vec<Entity> = query.iter(self.world()).collect();
             
             // Cache result asynchronously
@@ -47,7 +47,7 @@ impl GameWorld {
             entities
         } else {
             // No tokio runtime - fallback to uncached query
-            let mut query = self.world().query_filtered::<Entity, With<Hierarchical>>();
+            let mut query = self.world_mut().query_filtered::<Entity, With<Hierarchical>>();
             query.iter(self.world()).collect()
         }
     }
@@ -88,7 +88,7 @@ impl GameWorld {
             }
             
             // Cache miss - perform query
-            let mut query = self.world().query::<(Entity, &Relationships)>();
+            let mut query = self.world_mut().query::<(Entity, &Relationships)>();
             let results: Vec<(Entity, Relationships)> = query.iter(self.world())
                 .map(|(entity, rel)| (entity, rel.clone()))
                 .collect();
@@ -116,7 +116,7 @@ impl GameWorld {
             results
         } else {
             // No tokio runtime - fallback to uncached query
-            let mut query = self.world().query::<(Entity, &Relationships)>();
+            let mut query = self.world_mut().query::<(Entity, &Relationships)>();
             query.iter(self.world())
                 .map(|(entity, rel)| (entity, rel.clone()))
                 .collect()
@@ -170,8 +170,9 @@ impl GameWorld {
 
     /// Get the root entities (entities with no parents) in the hierarchy
     pub fn get_root_entities(&mut self) -> Vec<Entity> {
-        let mut query = self.world().query::<(Entity, &Relationships)>();
-        query.iter(self.world())
+        let world = self.world_mut();
+        let mut query = world.query::<(Entity, &Relationships)>();
+        query.iter(world)
             .filter(|(_, relationships)| relationships.parents().is_empty())
             .map(|(entity, _)| entity)
             .collect()
@@ -179,8 +180,9 @@ impl GameWorld {
 
     /// Get leaf entities (entities with no children) in the hierarchy
     pub fn get_leaf_entities(&mut self) -> Vec<Entity> {
-        let mut query = self.world().query::<(Entity, &Relationships)>();
-        query.iter(self.world())
+        let world = self.world_mut();
+        let mut query = world.query::<(Entity, &Relationships)>();
+        query.iter(world)
             .filter(|(_, relationships)| relationships.children().is_empty())
             .map(|(entity, _)| entity)
             .collect()

@@ -74,7 +74,10 @@ pub fn calculateRidgePush(plate: *const TectonicPlate, movement_speed: f64) Vec2
     const base_force = 2.0e12; // Newtons per meter
 
     // Force magnitude calculation
-    const force_magnitude = base_force * age_factor * movement_speed / @sqrt(plate.area);
+    // Convert movement speed from cm/year to proper geological scale factor
+    const speed_factor = movement_speed * 300.0; // Scale up from cm/year to geological forces
+    const area_factor = @sqrt(plate.area / 1e12); // Normalize area to typical plate size
+    const force_magnitude = base_force * age_factor * speed_factor * area_factor;
 
     // Random direction based on plate properties (deterministic)
     const seed = @as(u64, @intFromFloat(plate.center.x * 1000.0)) ^ @as(u64, @intFromFloat(plate.center.y * 1000.0));

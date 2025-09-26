@@ -7,6 +7,7 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, collections::HashMap, path::PathBuf};
 use tracing::{debug, info, error};
+use crate::core::hashing::FastHashMap;
 
 use crate::{
     core::caching::{GameCache, GameCacheBuilder},
@@ -33,7 +34,7 @@ pub struct TilePropertiesSystem {
     /// Lua script manager for scripted effects
     script_manager: Arc<ScriptManager>,
     /// Biome definitions loaded from RON files
-    biome_definitions: HashMap<String, BiomeDefinition>,
+    biome_definitions: FastHashMap<String, BiomeDefinition>,
     /// Resource configurations loaded from TOML files
     resource_config: ResourceConfig,
     /// Properties cache for performance
@@ -93,7 +94,7 @@ impl TilePropertiesSystem {
 
     /// Create with custom parameters
     pub fn with_custom_config(
-        biome_definitions: HashMap<String, BiomeDefinition>,
+        biome_definitions: FastHashMap<String, BiomeDefinition>,
         resource_config: ResourceConfig,
     ) -> ScriptResult<Self> {
         let script_manager = Arc::new(ScriptManager::new()?);
@@ -118,7 +119,7 @@ impl TilePropertiesSystem {
     }
 
     /// Load biome definitions from RON files
-    fn load_biome_definitions() -> ScriptResult<HashMap<String, BiomeDefinition>> {
+    fn load_biome_definitions() -> ScriptResult<FastHashMap<String, BiomeDefinition>> {
         let config_path = PathBuf::from("backend/configs/biomes.ron");
         
         if !config_path.exists() {
@@ -131,7 +132,7 @@ impl TilePropertiesSystem {
                 path: config_path.clone() 
             })?;
         
-        let definitions: HashMap<String, BiomeDefinition> = ron::from_str(&content)
+        let definitions: FastHashMap<String, BiomeDefinition> = ron::from_str(&content)
             .map_err(|e| ScriptError::CompilationFailed {
                 reason: format!("Failed to parse biome definitions from {}: {}", config_path.display(), e)
             })?;
@@ -141,8 +142,8 @@ impl TilePropertiesSystem {
     }
 
     /// Create default biomes if file loading fails
-    fn create_default_biomes() -> HashMap<String, BiomeDefinition> {
-        let mut biomes = HashMap::new();
+    fn create_default_biomes() -> FastHashMap<String, BiomeDefinition> {
+        let mut biomes = crate::core::hashing::collections::fast_hash_map();
         
         biomes.insert("temperate_grassland".to_string(), BiomeDefinition {
             name: "Temperate Grassland".to_string(),
@@ -231,12 +232,12 @@ impl TilePropertiesSystem {
         // Convert terrain enum to string for Lua
         let terrain_str: &'static str = terrain.into();
         
-        // Create argument tuple for Lua function: (tile_id, terrain_str, modifiers_map)
-        let modifiers_vec: Vec<(String, f32)> = modifiers.into_iter().collect();
-        let args = (tile_id, terrain_str, modifiers_vec);
+        // Convert modifiers for fallback use
+        let modifiers_vec: Vec<(String, f32)> = modifiers.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        let tile_id_u64 = tile_id.0 as u64;
         
-        // Try to call Lua function first
-        match self.script_manager.call_function::<(u64, &str, Vec<(String, f32)>), f32>("calculate_movement_cost", args) {
+        // Try to call Lua function - use simpler types that work with IntoLuaMulti
+        match self.script_manager.call_function::<(u64, &str), f32>("calculate_movement_cost", (tile_id_u64, terrain_str)) {
             Ok(cost) => {
                 debug!("Lua movement cost calculation succeeded for tile {}: {}", tile_id, cost);
                 Ok(cost)
@@ -366,7 +367,7 @@ impl TilePropertiesSystem {
     }
 
     /// Get biome definitions
-    pub fn biome_definitions(&self) -> &HashMap<String, BiomeDefinition> {
+    pub fn biome_definitions(&self) -> &FastHashMap<String, BiomeDefinition> {
         &self.biome_definitions
     }
 

@@ -1,0 +1,377 @@
+/**
+ * RenderInitializer component styles
+ * Loading screens, error handling, and dev panels
+ */
+
+.render-initializer {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: #0a0a0a;
+  color: #ffffff;
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* Initialization Loading Screen */
+.initialization-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+
+  .init-content {
+    text-align: center;
+    max-width: 400px;
+    padding: 2rem;
+
+    .init-logo {
+      margin-bottom: 2rem;
+      position: relative;
+
+      .spinner {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 1rem;
+        border: 4px solid rgba(255, 255, 255, 0.1);
+        border-left: 4px solid #64ffda;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      h1 {
+        font-size: 2rem;
+        font-weight: 300;
+        letter-spacing: 0.1em;
+        color: #64ffda;
+        margin: 0;
+        text-shadow: 0 0 20px rgba(100, 255, 218, 0.3);
+      }
+    }
+
+    .init-progress {
+      margin-bottom: 2rem;
+
+      .progress-bar {
+        width: 100%;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+        position: relative;
+
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #64ffda 0%, #3f51b5 100%);
+          transition: width 0.3s ease;
+          position: relative;
+
+          &::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+              90deg,
+              transparent,
+              rgba(255, 255, 255, 0.2),
+              transparent
+            );
+            animation: shimmer 2s infinite;
+          }
+        }
+      }
+
+      .progress-message {
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.8);
+        margin: 0 0 0.5rem;
+        min-height: 1.2rem;
+      }
+
+      .progress-percent {
+        font-size: 0.75rem;
+        color: #64ffda;
+        font-weight: 500;
+      }
+    }
+
+    .init-details {
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.4;
+
+      p {
+        margin-bottom: 1rem;
+      }
+
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+
+        li {
+          padding: 0.25rem 0;
+          position: relative;
+          padding-left: 1rem;
+
+          &::before {
+            content: '•';
+            color: #64ffda;
+            position: absolute;
+            left: 0;
+          }
+        }
+      }
+    }
+  }
+}
+
+/* Error Screen */
+.error-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: linear-gradient(135deg, #1a0a0a 0%, #2e1a1a 50%, #3e1616 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .error-content {
+    text-align: center;
+    max-width: 500px;
+    padding: 2rem;
+
+    h1 {
+      color: #ff5555;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 300;
+    }
+
+    .error-message {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+      background: rgba(255, 85, 85, 0.1);
+      padding: 1rem;
+      border-radius: 8px;
+      border-left: 4px solid #ff5555;
+    }
+
+    .error-details {
+      margin-bottom: 2rem;
+      text-align: left;
+
+      h3 {
+        color: #ffffff;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+      }
+
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.7);
+
+        li {
+          padding: 0.25rem 0;
+          position: relative;
+          padding-left: 1rem;
+
+          &::before {
+            content: '→';
+            color: #ff5555;
+            position: absolute;
+            left: 0;
+          }
+        }
+      }
+    }
+
+    .error-actions {
+      .retry-button {
+        background: linear-gradient(45deg, #ff5555, #ff7777);
+        border: none;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        font-size: 0.9rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-weight: 500;
+
+        &:hover {
+          background: linear-gradient(45deg, #ff7777, #ff9999);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(255, 85, 85, 0.3);
+        }
+
+        &:active {
+          transform: translateY(0);
+        }
+      }
+    }
+  }
+}
+
+/* Device Info Panel (Development) */
+.device-info-panel {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.75rem;
+  color: #ffffff;
+  max-width: 300px;
+  z-index: 999;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    color: #64ffda;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+
+    > div {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      strong {
+        color: rgba(255, 255, 255, 0.7);
+        min-width: 120px;
+      }
+    }
+  }
+}
+
+/* Animations */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .initialization-screen .init-content {
+    padding: 1rem;
+    max-width: 300px;
+
+    .init-logo h1 {
+      font-size: 1.5rem;
+    }
+
+    .init-progress .progress-message {
+      font-size: 0.8rem;
+    }
+  }
+
+  .error-screen .error-content {
+    padding: 1rem;
+    max-width: 350px;
+
+    h1 {
+      font-size: 1.25rem;
+    }
+  }
+
+  .device-info-panel {
+    position: relative;
+    margin: 1rem;
+    bottom: auto;
+    right: auto;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .initialization-screen {
+    background: #000000;
+
+    .init-content .init-logo h1 {
+      color: #ffffff;
+      text-shadow: none;
+    }
+
+    .progress-fill {
+      background: #ffffff;
+    }
+  }
+
+  .error-screen {
+    background: #000000;
+
+    .error-content h1 {
+      color: #ffffff;
+    }
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+
+  .progress-fill::after {
+    animation: none;
+  }
+
+  .retry-button {
+    transition: none;
+
+    &:hover {
+      transform: none;
+    }
+  }
+}

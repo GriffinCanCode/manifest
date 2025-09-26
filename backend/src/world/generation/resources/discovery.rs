@@ -12,7 +12,7 @@ use tracing::{debug, info, warn};
 
 use crate::world::tiles::TileId;
 use crate::core::zig_ffi::HexCoord;
-use crate::scripting::{ComprehensiveLuaHandler, LuaEventData};
+use crate::scripting::{ComprehensiveLuaHandler, LuaEventData, LuaEventValue};
 
 use super::types::*;
 use super::{ResourceResult, ResourceDistributionError};
@@ -99,7 +99,7 @@ pub struct ExplorationEffort {
 #[derive(Debug, Clone)]
 pub struct ExplorationArea {
     /// Center of exploration
-    pub center: TileId,
+    pub center: HexCoord,
     /// Exploration radius
     pub radius: u32,
     /// Priority tiles within area
@@ -180,10 +180,11 @@ impl ResourceDiscoverySystem {
             }
         });
         
-        civ_discovery.technologies = technologies;
+        civ_discovery.technologies = technologies.clone();
         
-        // Calculate efficiency modifiers based on technology
-        civ_discovery.efficiency_modifiers = self.calculate_efficiency_modifiers(&civ_discovery.technologies)?;
+        // Release the mutable borrow, then calculate efficiency modifiers
+        let efficiency_modifiers = self.calculate_efficiency_modifiers(&technologies)?;
+        self.civilization_discovery.get_mut(&civ_id).unwrap().efficiency_modifiers = efficiency_modifiers;
         
         debug!("🧪 Updated discovery capabilities for civilization {}", civ_id);
         Ok(())
@@ -221,7 +222,7 @@ impl ResourceDiscoverySystem {
     }
     
     /// Process discovery attempts for all active explorations
-    pub fn process_discovery_turn(&mut self, world: &World, current_turn: u32) -> ResourceResult<Vec<DiscoveryEvent>> {
+    pub fn process_discovery_turn(&mut self, world: &mut World, current_turn: u32) -> ResourceResult<Vec<DiscoveryEvent>> {
         let mut discovery_events = Vec::new();
         
         // Collect civ IDs to avoid borrowing conflicts
@@ -269,7 +270,7 @@ impl ResourceDiscoverySystem {
     /// Check for resource discoveries in an exploration area
     fn check_area_discoveries(
         &mut self,
-        world: &World,
+        world: &mut World,
         civ_id: u32,
         area: &ExplorationArea,
         method: &DiscoveryMethod,
@@ -286,7 +287,7 @@ impl ResourceDiscoverySystem {
             // Convert TileId to HexCoord for distance calculation
             let id = tile_pos.0;
             let hex_coord = HexCoord::new((id % 1000) as i32, (id / 1000) as i32);
-            let hex_center = crate::core::zig_ffi::HexCoord::new(area.center.0 as i32, area.center.1 as i32);
+            let hex_center = crate::core::zig_ffi::HexCoord::new(area.center.q as i32, area.center.r as i32);
             let distance = self.hex_distance(&hex_center, &hex_coord);
             if distance <= area.radius as f32 {
                 // Check if already discovered by this civilization
@@ -361,14 +362,17 @@ impl ResourceDiscoverySystem {
             discovery_state.discovery_turn = Some(current_turn);
         }
         
+        // Calculate information quality before mutable borrow
+        let information_quality = self.calculate_information_quality(&method, &deposit)?;
+        
         // Add to civilization's discovered resources
         if let Some(civ_discovery) = self.civilization_discovery.get_mut(&civ_id) {
             let discovery_record = DiscoveryRecord {
                 resource_entity,
                 discovery_turn: current_turn,
                 method: method.clone(),
-                information_quality: self.calculate_information_quality(method, &deposit)?,
-                precise_location: matches!(*method, DiscoveryMethod::SystematicSurvey | DiscoveryMethod::RemoteSensing),
+                information_quality,
+                precise_location: matches!(method, DiscoveryMethod::SystematicSurvey | DiscoveryMethod::RemoteSensing),
             };
             
             civ_discovery.discovered_resources.insert(resource_entity, discovery_record);

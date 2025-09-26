@@ -458,14 +458,14 @@ mod tests {
         graph.add_adjacency(adj);
         
         // Test neighbor lookup
-        let neighbors = graph.get_neighbors(1).await;
+        let neighbors = graph.get_neighbors(TileId(1)).await;
         assert_eq!(neighbors.len(), 1);
-        assert!(neighbors.contains(&2));
+        assert!(neighbors.contains(&TileId(2)));
         
         // Test reverse lookup
-        let reverse_neighbors = graph.get_reverse_neighbors(2);
+        let reverse_neighbors = graph.get_reverse_neighbors(TileId(2));
         assert_eq!(reverse_neighbors.len(), 1);
-        assert!(reverse_neighbors.contains(&1));
+        assert!(reverse_neighbors.contains(&TileId(1)));
     }
 
     #[tokio::test]
@@ -474,14 +474,14 @@ mod tests {
         let graph = TileAdjacencyGraph::new(spatial_index);
         
         // Create chain: 1 -> 2 -> 3
-        graph.add_adjacency(TileAdjacency::new(1, 2, HexDirection::East));
-        graph.add_adjacency(TileAdjacency::new(2, 3, HexDirection::East));
+        graph.add_adjacency(TileAdjacency::new(TileId(1), TileId(2), HexDirection::East));
+        graph.add_adjacency(TileAdjacency::new(TileId(2), TileId(3), HexDirection::East));
         
-        let path = graph.find_path(1, 3, 10).await;
+        let path = graph.find_path(TileId(1), TileId(3), 10).await;
         assert!(path.is_some());
         
         let path = path.unwrap();
-        assert_eq!(path, vec![1, 2, 3]);
+        assert_eq!(path, vec![TileId(1), TileId(2), TileId(3)]);
     }
 
     #[test]
@@ -490,7 +490,7 @@ mod tests {
         let graph = TileAdjacencyGraph::new(spatial_index);
         
         // Add bidirectional adjacency
-        let adj = TileAdjacency::new(1, 2, HexDirection::East);
+        let adj = TileAdjacency::new(TileId(1), TileId(2), HexDirection::East);
         graph.add_adjacency(adj);
         
         // Should validate successfully
@@ -508,16 +508,16 @@ mod tests {
         
         // Create 2x2 grid of tiles
         let tiles = vec![
-            (1, HexCoord { q: 0, r: 0 }),
-            (2, HexCoord { q: 1, r: 0 }),
-            (3, HexCoord { q: 0, r: 1 }),
-            (4, HexCoord { q: 1, r: 1 }),
+            (TileId(1), HexCoord { q: 0, r: 0 }),
+            (TileId(2), HexCoord { q: 1, r: 0 }),
+            (TileId(3), HexCoord { q: 0, r: 1 }),
+            (TileId(4), HexCoord { q: 1, r: 1 }),
         ];
         
         graph.build_from_tiles(&tiles).await.unwrap();
         
         // Check that adjacencies were created
-        let neighbors_1 = graph.get_neighbors(1).await;
+        let neighbors_1 = graph.get_neighbors(TileId(1)).await;
         assert!(!neighbors_1.is_empty());
         
         let stats = graph.adjacency_stats();

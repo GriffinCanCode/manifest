@@ -182,10 +182,19 @@ impl OptimalSpatialIndex {
         let results: Vec<Entity> = {
             let rtree = self.rtree.read();
             let radius_i32 = radius as i32;
-            let envelope = AABB::from_corners(
-                [center.x - radius_i32, center.y - radius_i32],
-                [center.x + radius_i32, center.y + radius_i32]
-            );
+            let min_point = SpatialEntity {
+                entity: Entity::PLACEHOLDER,
+                position: IVec2::new(center.x - radius_i32, center.y - radius_i32),
+                player_id: None,
+                is_movable: false,
+            };
+            let max_point = SpatialEntity {
+                entity: Entity::PLACEHOLDER,
+                position: IVec2::new(center.x + radius_i32, center.y + radius_i32),
+                player_id: None,
+                is_movable: false,
+            };
+            let envelope = AABB::from_corners(min_point, max_point);
             
             rtree.locate_in_envelope_intersecting(&envelope)
                 .filter(|spatial_entity| {
@@ -211,10 +220,19 @@ impl OptimalSpatialIndex {
         let results: Vec<Entity> = {
             let rtree = self.rtree.read();
             let radius_i32 = radius as i32;
-            let envelope = AABB::from_corners(
-                [center.x - radius_i32, center.y - radius_i32],
-                [center.x + radius_i32, center.y + radius_i32]
-            );
+            let min_point = SpatialEntity {
+                entity: Entity::PLACEHOLDER,
+                position: IVec2::new(center.x - radius_i32, center.y - radius_i32),
+                player_id: None,
+                is_movable: false,
+            };
+            let max_point = SpatialEntity {
+                entity: Entity::PLACEHOLDER,
+                position: IVec2::new(center.x + radius_i32, center.y + radius_i32),
+                player_id: None,
+                is_movable: false,
+            };
+            let envelope = AABB::from_corners(min_point, max_point);
             
             rtree.locate_in_envelope_intersecting(&envelope)
                 .filter(|spatial_entity| {
@@ -232,7 +250,12 @@ impl OptimalSpatialIndex {
     /// Fast exact position queries
     pub fn entities_at_position(&self, position: IVec2) -> Vec<Entity> {
         let rtree = self.rtree.read();
-        let point = [position.x, position.y];
+        let point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position,
+            player_id: None,
+            is_movable: false,
+        };
         
         let envelope = AABB::from_point(point);
         rtree.locate_in_envelope_intersecting(&envelope)
@@ -244,10 +267,19 @@ impl OptimalSpatialIndex {
     pub fn movable_entities_in_range(&self, center: IVec2, radius: u32) -> Vec<Entity> {
         let rtree = self.rtree.read();
         let radius_i32 = radius as i32;
-        let envelope = AABB::from_corners(
-            [center.x - radius_i32, center.y - radius_i32],
-            [center.x + radius_i32, center.y + radius_i32]
-        );
+        let min_point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position: IVec2::new(center.x - radius_i32, center.y - radius_i32),
+            player_id: None,
+            is_movable: false,
+        };
+        let max_point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position: IVec2::new(center.x + radius_i32, center.y + radius_i32),
+            player_id: None,
+            is_movable: false,
+        };
+        let envelope = AABB::from_corners(min_point, max_point);
         
         rtree.locate_in_envelope_intersecting(&envelope)
             .filter(|spatial_entity| {
@@ -291,7 +323,12 @@ impl OptimalSpatialIndex {
     /// Get owned units at specific position
     pub fn owned_units_at_position(&self, pos: IVec2, player_id: u32) -> Vec<Entity> {
         let rtree = self.rtree.read();
-        let point = [pos.x, pos.y];
+        let point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position: pos,
+            player_id: None,
+            is_movable: false,
+        };
         
         let envelope = AABB::from_point(point);
         rtree.locate_in_envelope_intersecting(&envelope)
@@ -305,7 +342,19 @@ impl OptimalSpatialIndex {
     /// Get entities within a rectangular area (min corner to max corner)
     pub fn entities_in_rectangle(&self, min: IVec2, max: IVec2) -> Vec<Entity> {
         let rtree = self.rtree.read();
-        let aabb = AABB::from_corners([min.x, min.y], [max.x, max.y]);
+        let min_point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position: min,
+            player_id: None,
+            is_movable: false,
+        };
+        let max_point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position: max,
+            player_id: None,
+            is_movable: false,
+        };
+        let aabb = AABB::from_corners(min_point, max_point);
         
         rtree.locate_in_envelope_intersecting(&aabb)
             .map(|se| se.entity)
@@ -315,7 +364,12 @@ impl OptimalSpatialIndex {
     /// Find the nearest entity to a position
     pub fn nearest_entity(&self, pos: IVec2) -> Option<Entity> {
         let rtree = self.rtree.read();
-        let query_point = [pos.x, pos.y];
+        let query_point = SpatialEntity {
+            entity: Entity::PLACEHOLDER,
+            position: pos,
+            player_id: None,
+            is_movable: false,
+        };
         
         rtree.nearest_neighbor(&query_point)
             .map(|se| se.entity)

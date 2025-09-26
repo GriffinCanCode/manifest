@@ -51,17 +51,17 @@ mod integration_tests {
         let spatial_index = Arc::new(TileSpatialIndex::new(1.0));
         
         // Test basic tile creation and storage
-        let hex = HexCoord { q: 10, r: 20 };
+        let hex = crate::core::zig_ffi::HexCoord { q: 10, r: 20 };
         let chunk_coord = ChunkManager::hex_to_chunk(hex);
         
         // Set up tile in chunk
         let tile_id = 123;
-        chunk_manager.set_tile(hex, tile_id).unwrap();
-        assert_eq!(chunk_manager.get_tile(hex), Some(tile_id));
+        chunk_manager.set_tile(hex, TileId(tile_id)).unwrap();
+        assert_eq!(chunk_manager.get_tile(hex), Some(TileId(tile_id)));
         
         // Create tile component
         let tile_id = tile_manager.create_tile(hex, chunk_coord, 10, 20, TerrainType::Grassland);
-        assert_ne!(tile_id, 0);
+        assert_ne!(tile_id, TileId(0));
         
         // Add to spatial index
         spatial_index.add_tile(tile_id, hex, TerrainType::Grassland, chunk_coord);

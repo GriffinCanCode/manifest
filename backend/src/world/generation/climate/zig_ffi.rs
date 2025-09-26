@@ -1095,6 +1095,7 @@ mod tests {
 }
 
 /// Calculate seasonal rainfall variations using Zig SIMD optimizations
+#[cfg(not(feature = "no_zig"))]
 pub fn climate_seasonal_rainfall(
     base_rainfall: &[u16],
     climate_zones: &[u8], 
@@ -1115,6 +1116,39 @@ pub fn climate_seasonal_rainfall(
             count,
             results.as_mut_ptr(),
         );
+    }
+    
+    results
+}
+
+/// Calculate seasonal rainfall variations using pure Rust fallback
+#[cfg(feature = "no_zig")]
+pub fn climate_seasonal_rainfall(
+    base_rainfall: &[u16],
+    climate_zones: &[u8], 
+    latitudes: &[f32],
+    current_season: f32,
+    rainfall_variations: &[f32],
+) -> Vec<u16> {
+    // Simple fallback implementation
+    let mut results = Vec::with_capacity(base_rainfall.len());
+    
+    for (i, &base_rain) in base_rainfall.iter().enumerate() {
+        let zone = climate_zones.get(i).copied().unwrap_or(0) as usize;
+        let latitude = latitudes.get(i).copied().unwrap_or(0.0);
+        
+        // Apply seasonal variation based on climate zone and latitude
+        let zone_variation = if zone < rainfall_variations.len() {
+            rainfall_variations[zone]
+        } else {
+            1.0
+        };
+        
+        // Simple seasonal effect based on latitude and current season
+        let seasonal_factor = 1.0 + (current_season * std::f32::consts::PI * 2.0 + latitude * 0.1).sin() * zone_variation * 0.3;
+        
+        let adjusted_rain = (base_rain as f32 * seasonal_factor.max(0.1)) as u16;
+        results.push(adjusted_rain);
     }
     
     results

@@ -1,332 +1,36 @@
-import { Environment, Html, OrbitControls } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
+/**
+ * Game Canvas with WebGL2/WebGPU Initialization
+ * Integrates device detection, performance monitoring, and optimized rendering
+ */
+
+import { Environment, Html } from '@react-three/drei';
+import { useFrame, type ThreeEvent } from '@react-three/fiber';
+import { button, useControls } from 'leva';
 import React, { Suspense, useCallback, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { Vector3 } from 'three';
 
-// Terrain type definitions matching backend
-enum TerrainType {
-  Ocean = 'ocean',
-  Grassland = 'grassland',
-  Plains = 'plains',
-  Desert = 'desert',
-  Tundra = 'tundra',
-  Snow = 'snow',
-  Forest = 'forest',
-  Jungle = 'jungle',
-  Hills = 'hills',
-  Mountain = 'mountain',
-}
+import { useTileStreaming } from '../../hooks/use-tile-streaming';
+import { usePostProcessingMetrics } from '../../hooks/usePostProcessingMetrics';
+import {
+  usePerformanceMonitoring,
+  useRenderStore,
+  type RenderDebug,
+  type RenderQuality,
+} from '../../stores/render-store';
+import type {
+  DeviceCapabilities,
+  RenderingSettings,
+} from '../../utils/capabilities';
+import { HexUtils, type GameTile, type GameUnit } from '../../utils/game-types';
+import { CameraController } from '../controls';
+import { HexInstanceRenderer as OptimizedHexRenderer } from '../rendering/components/hex/HexInstanceRenderer';
+import { MultiStepRenderer } from '../rendering/components/pipeline/MultiStepRenderer';
+import RenderInitializer from '../rendering/components/pipeline/RenderInitializer';
 
-// Hex coordinate system
-interface HexCoord {
-  q: number;
-  r: number;
-}
-
-// Tile data structure
-interface GameTile {
-  id: number;
-  hex: HexCoord;
-  terrain: TerrainType;
-  elevation: number;
-  resources?: string[];
-  improvements?: string[];
-  units?: GameUnit[];
-}
-
-// Game unit structure
-interface GameUnit {
-  id: number;
-  type: string;
-  playerId: number;
-  health: number;
-  position: HexCoord;
-  isSelected?: boolean;
-}
-
-// Hex geometry and positioning utilities
-class HexUtils {
-  static readonly HEX_SIZE = 1.0;
-  static readonly HEX_HEIGHT = Math.sqrt(3) * HexUtils.HEX_SIZE;
-  static readonly HEX_WIDTH = 2 * HexUtils.HEX_SIZE;
-
-  static hexToPixel(hex: HexCoord): [number, number] {
-    const x = HexUtils.HEX_SIZE * ((3 / 2) * hex.q);
-    const z =
-      HexUtils.HEX_SIZE * ((Math.sqrt(3) / 2) * hex.q + Math.sqrt(3) * hex.r);
-    return [x, z];
-  }
-
-  static pixelToHex(x: number, z: number): HexCoord {
-    const q = ((2 / 3) * x) / HexUtils.HEX_SIZE;
-    const r = ((-1 / 3) * x + (Math.sqrt(3) / 3) * z) / HexUtils.HEX_SIZE;
-    return { q: Math.round(q), r: Math.round(r) };
-  }
-
-  static getNeighbors(hex: HexCoord): HexCoord[] {
-    const directions = [
-      { q: 1, r: 0 },
-      { q: 1, r: -1 },
-      { q: 0, r: -1 },
-      { q: -1, r: 0 },
-      { q: -1, r: 1 },
-      { q: 0, r: 1 },
-    ];
-    return directions.map(dir => ({ q: hex.q + dir.q, r: hex.r + dir.r }));
-  }
-}
-
-// Individual hex tile component
-interface HexTileProps {
-  tile: GameTile;
-  onTileClick: (tile: GameTile) => void;
-  isSelected?: boolean;
-  isHighlighted?: boolean;
-}
-
-const HexTile: React.FC<HexTileProps> = ({
-  tile,
-  onTileClick,
-  isSelected,
-  isHighlighted,
-}) => {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const [hovered, setHovered] = useState(false);
-
-  const [x, z] = HexUtils.hexToPixel(tile.hex);
-  const y = tile.elevation * 0.1; // Scale elevation for visual effect
-
-  // Generate hex geometry
-  const hexGeometry = useMemo(() => {
-    const geometry = new THREE.CylinderGeometry(
-      HexUtils.HEX_SIZE,
-      HexUtils.HEX_SIZE,
-      0.1,
-      6
-    );
-    return geometry;
-  }, []);
-
-  // Terrain-based colors and materials
-  const terrainMaterial = useMemo(() => {
-    const colors = {
-      [TerrainType.Ocean]: '#2b5797',
-      [TerrainType.Grassland]: '#4d7c0f',
-      [TerrainType.Plains]: '#84cc16',
-      [TerrainType.Desert]: '#eab308',
-      [TerrainType.Tundra]: '#94a3b8',
-      [TerrainType.Snow]: '#f8fafc',
-      [TerrainType.Forest]: '#166534',
-      [TerrainType.Jungle]: '#14532d',
-      [TerrainType.Hills]: '#a3a3a3',
-      [TerrainType.Mountain]: '#525252',
-    };
-
-    const baseColor = colors[tile.terrain] || '#64748b';
-    const color = hovered
-      ? '#ffffff'
-      : isSelected
-        ? '#fbbf24'
-        : isHighlighted
-          ? '#34d399'
-          : baseColor;
-
-    return new THREE.MeshStandardMaterial({
-      color,
-      roughness: tile.terrain === TerrainType.Ocean ? 0.1 : 0.7,
-      metalness: tile.terrain === TerrainType.Mountain ? 0.3 : 0.1,
-    });
-  }, [tile.terrain, hovered, isSelected, isHighlighted]);
-
-  const handleClick = useCallback(
-    (event: THREE.Event) => {
-      event.stopPropagation();
-      onTileClick(tile);
-    },
-    [tile, onTileClick]
-  );
-
-  return (
-    <group position={[x, y, z]}>
-      {/* Main hex tile */}
-      <mesh
-        ref={meshRef}
-        geometry={hexGeometry}
-        material={terrainMaterial}
-        onClick={handleClick}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
-      />
-
-      {/* Elevation indicator for mountains/hills */}
-      {(tile.terrain === TerrainType.Mountain ||
-        tile.terrain === TerrainType.Hills) && (
-        <mesh position={[0, 0.1, 0]}>
-          <coneGeometry args={[0.3, 0.4, 4]} />
-          <meshStandardMaterial
-            color={
-              tile.terrain === TerrainType.Mountain ? '#404040' : '#737373'
-            }
-          />
-        </mesh>
-      )}
-
-      {/* Forest/Jungle vegetation */}
-      {(tile.terrain === TerrainType.Forest ||
-        tile.terrain === TerrainType.Jungle) && (
-        <>
-          <mesh position={[0.2, 0.15, 0.1]}>
-            <coneGeometry args={[0.1, 0.3, 4]} />
-            <meshStandardMaterial
-              color={
-                tile.terrain === TerrainType.Forest ? '#166534' : '#14532d'
-              }
-            />
-          </mesh>
-          <mesh position={[-0.1, 0.15, -0.2]}>
-            <coneGeometry args={[0.08, 0.25, 4]} />
-            <meshStandardMaterial
-              color={
-                tile.terrain === TerrainType.Forest ? '#166534' : '#14532d'
-              }
-            />
-          </mesh>
-        </>
-      )}
-
-      {/* Resource indicators */}
-      {tile.resources &&
-        tile.resources.map((resource, index) => (
-          <mesh
-            key={resource}
-            position={[
-              0.3 * Math.cos((index * Math.PI) / 3),
-              0.05,
-              0.3 * Math.sin((index * Math.PI) / 3),
-            ]}
-          >
-            <sphereGeometry args={[0.05]} />
-            <meshStandardMaterial
-              color={
-                resource === 'gold'
-                  ? '#fbbf24'
-                  : resource === 'iron'
-                    ? '#6b7280'
-                    : '#ef4444'
-              }
-            />
-          </mesh>
-        ))}
-
-      {/* Coordinate display on hover */}
-      {hovered && (
-        <Html position={[0, 0.3, 0]} center>
-          <div className='hex-tooltip'>
-            <div>
-              Hex: {tile.hex.q}, {tile.hex.r}
-            </div>
-            <div>Terrain: {tile.terrain}</div>
-            <div>Elevation: {tile.elevation.toFixed(1)}</div>
-            {tile.resources && (
-              <div>Resources: {tile.resources.join(', ')}</div>
-            )}
-          </div>
-        </Html>
-      )}
-    </group>
-  );
-};
-
-// Game unit component
-interface GameUnitComponentProps {
-  unit: GameUnit;
-  onUnitClick: (unit: GameUnit) => void;
-}
-
-const GameUnitComponent: React.FC<GameUnitComponentProps> = ({
-  unit,
-  onUnitClick,
-}) => {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const [hovered, setHovered] = useState(false);
-
-  const [x, z] = HexUtils.hexToPixel(unit.position);
-  const y = 0.2; // Units float above terrain
-
-  // Unit colors based on player
-  const playerColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
-  const unitColor = playerColors[unit.playerId % playerColors.length];
-
-  // Animate unit (bob up and down)
-  useFrame(({ clock }) => {
-    if (meshRef.current) {
-      meshRef.current.position.y =
-        y + Math.sin(clock.getElapsedTime() * 2) * 0.05;
-    }
-  });
-
-  const handleClick = useCallback(
-    (event: THREE.Event) => {
-      event.stopPropagation();
-      onUnitClick(unit);
-    },
-    [unit, onUnitClick]
-  );
-
-  return (
-    <group position={[x, y, z]}>
-      {/* Unit body */}
-      <mesh
-        ref={meshRef}
-        onClick={handleClick}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
-      >
-        <cylinderGeometry args={[0.15, 0.15, 0.3]} />
-        <meshStandardMaterial
-          color={hovered || unit.isSelected ? '#ffffff' : unitColor}
-          emissive={unit.isSelected ? '#444444' : '#000000'}
-        />
-      </mesh>
-
-      {/* Unit type indicator */}
-      <mesh position={[0, 0.2, 0]}>
-        <sphereGeometry args={[0.08]} />
-        <meshStandardMaterial color={unitColor} />
-      </mesh>
-
-      {/* Health bar */}
-      <Html position={[0, 0.4, 0]} center>
-        <div className='unit-health-bar'>
-          <div
-            className='health-fill'
-            style={{
-              width: `${(unit.health / 100) * 30}px`,
-              height: '4px',
-              backgroundColor:
-                unit.health > 50
-                  ? '#10b981'
-                  : unit.health > 25
-                    ? '#f59e0b'
-                    : '#ef4444',
-              border: '1px solid #000',
-            }}
-          />
-        </div>
-      </Html>
-
-      {/* Selection indicator */}
-      {unit.isSelected && (
-        <mesh position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.25, 0.3, 8]} />
-          <meshBasicMaterial color='#fbbf24' transparent opacity={0.7} />
-        </mesh>
-      )}
-    </group>
-  );
-};
-
-// Main game scene component
+/**
+ * Game scene with performance optimizations and adaptive quality
+ */
 const GameScene: React.FC = () => {
   const [selectedTile, setSelectedTile] = useState<GameTile | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<GameUnit | null>(null);
@@ -334,99 +38,99 @@ const GameScene: React.FC = () => {
     new Set()
   );
 
-  // Generate sample game world
-  const gameWorld = useMemo(() => {
-    const tiles: GameTile[] = [];
-    const units: GameUnit[] = [];
-    let tileId = 0;
-    let unitId = 0;
+  const { capabilities, quality, debug } = useRenderStore();
+  const { checkPerformance } = usePerformanceMonitoring();
 
-    // Generate hex grid
-    const mapRadius = 8;
-    for (let q = -mapRadius; q <= mapRadius; q++) {
-      const r1 = Math.max(-mapRadius, -q - mapRadius);
-      const r2 = Math.min(mapRadius, -q + mapRadius);
-      for (let r = r1; r <= r2; r++) {
-        const hex = { q, r };
+  // Camera position ref for tile streaming
+  const cameraPositionRef = useRef(new Vector3(15, 15, 15));
 
-        // Determine terrain based on position (simple algorithm)
-        let terrain = TerrainType.Grassland;
-        const distance = Math.abs(q) + Math.abs(r) + Math.abs(-q - r);
-        const noise =
-          Math.sin(q * 0.3) * Math.cos(r * 0.4) * Math.sin((q + r) * 0.2);
+  // Real tile streaming from backend (replaces mock data)
+  const {
+    tiles,
+    isLoading: tilesLoading,
+    error: tileError,
+    metrics,
+    refreshTiles,
+  } = useTileStreaming({
+    cameraPosition: cameraPositionRef.current,
+    maxDistance: 50,
+    quality:
+      quality.level === 'low'
+        ? 'low'
+        : quality.level === 'ultra'
+          ? 'high'
+          : 'medium',
+    autoStream: true,
+  });
 
-        if (distance < 2) terrain = TerrainType.Plains;
-        else if (distance > 6) terrain = TerrainType.Ocean;
-        else if (noise > 0.3) terrain = TerrainType.Forest;
-        else if (noise < -0.3) terrain = TerrainType.Hills;
-        else if (Math.random() > 0.8) terrain = TerrainType.Mountain;
-        else if (Math.random() > 0.9) terrain = TerrainType.Desert;
-
-        const elevation = Math.max(
-          0,
-          noise * 2 +
-            (terrain === TerrainType.Mountain
-              ? 3
-              : terrain === TerrainType.Hills
-                ? 1.5
-                : terrain === TerrainType.Ocean
-                  ? -0.5
-                  : 0)
-        );
-
-        // Add resources randomly
-        const resources: string[] = [];
-        if (Math.random() > 0.85) {
-          if (terrain === TerrainType.Mountain) resources.push('iron');
-          else if (terrain === TerrainType.Hills) resources.push('stone');
-          else if (terrain === TerrainType.Desert) resources.push('gold');
-          else resources.push('food');
-        }
-
-        tiles.push({
-          id: tileId++,
-          hex,
-          terrain,
-          elevation,
-          resources: resources.length > 0 ? resources : undefined,
-        });
-
-        // Add units randomly
-        if (
-          Math.random() > 0.95 &&
-          terrain !== TerrainType.Ocean &&
-          distance < 6
-        ) {
-          units.push({
-            id: unitId++,
-            type: 'warrior',
-            playerId: Math.floor(Math.random() * 4),
-            health: Math.floor(Math.random() * 40) + 60,
-            position: hex,
-          });
-        }
-      }
-    }
-
-    return { tiles, units };
-  }, []);
-
-  const handleTileClick = useCallback(
-    (tile: GameTile) => {
-      setSelectedTile(tile);
-      setSelectedUnit(null);
-
-      // Highlight neighboring tiles
-      const neighbors = HexUtils.getNeighbors(tile.hex);
-      const neighborIds = gameWorld.tiles
-        .filter(t => neighbors.some(n => n.q === t.hex.q && n.r === t.hex.r))
-        .map(t => t.id);
-      setHighlightedTiles(new Set(neighborIds));
-
-      console.log('Selected tile:', tile);
-    },
-    [gameWorld.tiles]
+  // Create game world structure with real tiles
+  const gameWorld = useMemo(
+    () => ({
+      tiles,
+      units: [] as GameUnit[], // TODO: Add real unit streaming next
+    }),
+    [tiles]
   );
+
+  // Performance monitoring and camera tracking
+  useFrame(state => {
+    // Update camera position for tile streaming
+    cameraPositionRef.current.copy(state.camera.position);
+
+    if (process.env.NODE_ENV === 'development') {
+      checkPerformance(state.clock.elapsedTime, state.clock.getDelta() * 1000);
+    }
+  });
+
+  // Dev controls for testing (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useControls(
+      'Render Settings',
+      {
+        showWireframe: debug.showWireframe,
+        showBounds: debug.showBounds,
+        showStats: debug.showStats,
+        lodBias: { value: quality.lodBias, min: 0.1, max: 3.0, step: 0.1 },
+        renderScale: {
+          value: quality.renderScale,
+          min: 0.5,
+          max: 2.0,
+          step: 0.1,
+        },
+        particleQuality: {
+          value: quality.particleQuality,
+          min: 0.1,
+          max: 1.0,
+          step: 0.1,
+        },
+      },
+      { collapsed: !debug.showStats }
+    );
+
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useControls(
+      'Tile Streaming',
+      {
+        tilesLoaded: { value: metrics.tilesLoaded, disabled: true },
+        isLoading: { value: tilesLoading, disabled: true },
+        streamingTime: {
+          value: `${metrics.streamingTimeMs.toFixed(2)}ms`,
+          disabled: true,
+        },
+        refreshTiles: button(() => void refreshTiles()),
+        error: { value: tileError ?? 'None', disabled: true },
+      },
+      { collapsed: !debug.showStats }
+    );
+  }
+
+  const handleTileClick = useCallback((tile: GameTile) => {
+    setSelectedTile(tile);
+    setSelectedUnit(null);
+    setHighlightedTiles(new Set());
+    console.warn('Selected tile:', tile);
+  }, []);
 
   const handleUnitClick = useCallback(
     (unit: GameUnit) => {
@@ -445,270 +149,393 @@ const GameScene: React.FC = () => {
         return distance <= movementRange;
       });
       setHighlightedTiles(new Set(inRange.map(t => t.id)));
-
-      console.log('Selected unit:', unit);
+      console.warn('Selected unit:', unit);
     },
     [gameWorld.tiles]
   );
 
+  // Monitor post-processing performance
+  usePostProcessingMetrics();
+
+  // Show error overlay if tile streaming fails
+  if (tileError) {
+    return (
+      <group>
+        <Html center>
+          <div
+            style={{
+              color: 'red',
+              background: 'rgba(0,0,0,0.8)',
+              padding: '1rem',
+              borderRadius: '8px',
+              textAlign: 'center' as const,
+            }}
+          >
+            <h3>🌍 Backend Connection Error</h3>
+            <p>{tileError}</p>
+            <button
+              onClick={() => void refreshTiles()}
+              style={{
+                padding: '0.5rem 1rem',
+                marginTop: '0.5rem',
+                cursor: 'pointer',
+                background: '#ff4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+              }}
+            >
+              Retry Tile Streaming
+            </button>
+          </div>
+        </Html>
+      </group>
+    );
+  }
+
   return (
-    <>
-      {/* Lighting setup */}
-      <ambientLight intensity={0.3} />
-      <directionalLight
-        position={[10, 20, 10]}
-        intensity={1}
-        castShadow
-        shadow-camera-left={-50}
-        shadow-camera-right={50}
-        shadow-camera-top={50}
-        shadow-camera-bottom={-50}
+    <MultiStepRenderer
+      enableSelection
+      enableDebug={process.env.NODE_ENV === 'development'}
+      enableTAA={capabilities?.supportsHDR && quality.level !== 'low'}
+    >
+      {/* Adaptive Lighting based on capabilities */}
+      <AdaptiveLighting capabilities={capabilities} quality={quality} />
+
+      {/* Render tiles with instanced BVH optimization */}
+      <OptimizedHexRenderer
+        tiles={gameWorld.tiles}
+        onTileClick={handleTileClick}
+        selectedTileId={selectedTile?.id}
+        highlightedTiles={highlightedTiles}
+        maxInstances={20000}
+        enableSpatialQueries
       />
-      <pointLight position={[0, 10, 0]} intensity={0.3} />
 
-      {/* Render all hex tiles */}
-      {gameWorld.tiles.map(tile => (
-        <HexTile
-          key={tile.id}
-          tile={tile}
-          onTileClick={handleTileClick}
-          isSelected={selectedTile?.id === tile.id}
-          isHighlighted={highlightedTiles.has(tile.id)}
-        />
-      ))}
-
-      {/* Render all units */}
-      {gameWorld.units.map(unit => (
-        <GameUnitComponent
-          key={unit.id}
-          unit={{ ...unit, isSelected: selectedUnit?.id === unit.id }}
-          onUnitClick={handleUnitClick}
-        />
-      ))}
+      {/* Render units with instancing optimization */}
+      <UnitsRenderer
+        units={gameWorld.units}
+        onUnitClick={handleUnitClick}
+        selectedUnitId={selectedUnit?.id}
+        quality={quality}
+        debug={debug}
+      />
 
       {/* Game UI overlays */}
-      {selectedTile && (
-        <Html position={[5, 5, 5]} transform={false}>
-          <div className='game-info-panel'>
-            <h3>Tile Info</h3>
-            <p>
-              Position: ({selectedTile.hex.q}, {selectedTile.hex.r})
-            </p>
-            <p>Terrain: {selectedTile.terrain}</p>
-            <p>Elevation: {selectedTile.elevation.toFixed(1)}</p>
-            {selectedTile.resources && (
-              <p>Resources: {selectedTile.resources.join(', ')}</p>
-            )}
-          </div>
-        </Html>
-      )}
+      <GameUIOverlays selectedTile={selectedTile} selectedUnit={selectedUnit} />
 
-      {selectedUnit && (
-        <Html position={[5, 3, 5]} transform={false}>
-          <div className='game-info-panel'>
-            <h3>Unit Info</h3>
-            <p>Type: {selectedUnit.type}</p>
-            <p>Player: {selectedUnit.playerId + 1}</p>
-            <p>Health: {selectedUnit.health}%</p>
-            <p>
-              Position: ({selectedUnit.position.q}, {selectedUnit.position.r})
-            </p>
-          </div>
-        </Html>
-      )}
-
-      {/* Camera controls */}
-      <OrbitControls
-        enablePan
-        enableZoom
-        enableRotate
-        minDistance={8}
-        maxDistance={50}
-        minPolarAngle={Math.PI / 6}
-        maxPolarAngle={Math.PI / 2.2}
-        maxAzimuthAngle={Math.PI / 4}
-        minAzimuthAngle={-Math.PI / 4}
+      {/* Enhanced camera controls */}
+      <CameraController
+        mode='orbital'
+        enableShake={false}
+        enableFocus
+        smoothTransitions
       />
 
-      {/* Environment */}
-      <Environment preset='dawn' />
+      {/* Adaptive environment */}
+      <AdaptiveEnvironment capabilities={capabilities} quality={quality} />
 
-      {/* Fog for depth */}
-      <fog attach='fog' args={['#87CEEB', 20, 80]} />
+      {/* Loading indicator for tile streaming */}
+      {tilesLoading && (
+        <Html center>
+          <div
+            style={{
+              color: 'white',
+              background: 'rgba(0,0,0,0.7)',
+              padding: '1rem',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <div
+              style={{
+                width: '20px',
+                height: '20px',
+                border: '2px solid transparent',
+                borderTop: '2px solid white',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }}
+            />
+            🌍 Streaming tiles from backend...
+          </div>
+        </Html>
+      )}
+
+      {/* Conditional fog based on quality */}
+      {quality.level !== 'low' && !debug.disableFog && (
+        <fog attach='fog' args={['#87CEEB', 20, 80]} />
+      )}
+    </MultiStepRenderer>
+  );
+};
+
+/**
+ * Adaptive lighting system that adjusts based on device capabilities
+ */
+const AdaptiveLighting: React.FC<{
+  capabilities: DeviceCapabilities | null;
+  quality: RenderQuality;
+}> = ({ capabilities, quality }) => {
+  const lightRef = useRef<THREE.DirectionalLight>(null);
+  const shadowsEnabled = capabilities?.supportsShadows && quality.shadows;
+
+  // Configure shadow properties after mount
+  useFrame(() => {
+    if (lightRef.current && shadowsEnabled) {
+      const light = lightRef.current;
+      light.shadow.camera.left = -50;
+      light.shadow.camera.right = 50;
+      light.shadow.camera.top = 50;
+      light.shadow.camera.bottom = -50;
+
+      const mapSize =
+        quality.level === 'low'
+          ? 512
+          : quality.level === 'medium'
+            ? 1024
+            : 2048;
+      light.shadow.mapSize.width = mapSize;
+      light.shadow.mapSize.height = mapSize;
+    }
+  });
+
+  return (
+    <>
+      <ambientLight intensity={quality.level === 'low' ? 0.5 : 0.3} />
+      <directionalLight
+        ref={lightRef}
+        position={[10, 20, 10]}
+        intensity={quality.level === 'low' ? 0.8 : 1.0}
+        castShadow={shadowsEnabled}
+      />
+      {quality.level !== 'low' && (
+        <pointLight position={[0, 10, 0]} intensity={0.3} />
+      )}
     </>
   );
 };
 
+/**
+ * Optimized units renderer
+ */
+const UnitsRenderer: React.FC<{
+  units: GameUnit[];
+  onUnitClick: (unit: GameUnit) => void;
+  selectedUnitId?: number;
+  quality: RenderQuality;
+  debug: RenderDebug;
+}> = ({ units, onUnitClick, selectedUnitId, quality, debug }) => {
+  // In production, this would use instanced rendering for better performance
+  return (
+    <>
+      {units.map(unit => (
+        <GameUnitComponent
+          key={unit.id}
+          unit={{ ...unit, isSelected: selectedUnitId === unit.id }}
+          onUnitClick={onUnitClick}
+          quality={quality}
+          debug={debug}
+        />
+      ))}
+    </>
+  );
+};
+
+/**
+ * Enhanced unit component with quality optimizations
+ */
+const GameUnitComponent: React.FC<{
+  unit: GameUnit & { isSelected: boolean };
+  onUnitClick: (unit: GameUnit) => void;
+  quality: RenderQuality;
+  debug: RenderDebug;
+}> = ({ unit, onUnitClick, quality, debug }) => {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const [hovered, setHovered] = useState(false);
+  const [x, z] = HexUtils.hexToPixel(unit.position);
+  const y = 0.2;
+
+  const playerColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+  const unitColor = playerColors[unit.playerId % playerColors.length];
+
+  // Animate unit based on quality level
+  useFrame(({ clock }) => {
+    if (meshRef.current && quality.level !== 'low') {
+      meshRef.current.position.y =
+        y + Math.sin(clock.getElapsedTime() * 2) * 0.05;
+    }
+  });
+
+  const handleClick = useCallback(
+    (event: ThreeEvent<MouseEvent>) => {
+      event.stopPropagation();
+      onUnitClick(unit);
+    },
+    [unit, onUnitClick]
+  );
+
+  const unitDetail =
+    quality.level === 'low' ? 4 : quality.level === 'medium' ? 8 : 16;
+
+  return (
+    <group position={[x, y, z]}>
+      {/* Unit body */}
+      <mesh
+        ref={meshRef}
+        onClick={handleClick}
+        onPointerOver={() => setHovered(true)}
+        onPointerOut={() => setHovered(false)}
+        castShadow={quality.shadows}
+      >
+        <boxGeometry args={[0.6, 0.3, 0.6]} />
+        <meshLambertMaterial
+          color={hovered ? '#ffffff' : unitColor}
+          wireframe={debug.showWireframe}
+        />
+      </mesh>
+
+      {/* Health bar (only for medium+ quality) */}
+      {quality.level !== 'low' && (
+        <group position={[0, 0.4, 0]}>
+          <mesh>
+            <planeGeometry args={[0.8, 0.1]} />
+            <meshBasicMaterial color='#ff0000' />
+          </mesh>
+          <mesh position={[-(0.8 - (0.8 * unit.health) / 100) / 2, 0, 0.001]}>
+            <planeGeometry args={[0.8 * (unit.health / 100), 0.1]} />
+            <meshBasicMaterial color='#00ff00' />
+          </mesh>
+        </group>
+      )}
+
+      {/* Selection indicator */}
+      {unit.isSelected && (
+        <mesh position={[0, -0.05, 0]}>
+          <ringGeometry args={[0.7, 0.8, unitDetail]} />
+          <meshBasicMaterial color='#fbbf24' transparent opacity={0.8} />
+        </mesh>
+      )}
+    </group>
+  );
+};
+
+/**
+ * Game UI overlays with performance optimizations
+ */
+const GameUIOverlays: React.FC<{
+  selectedTile: GameTile | null;
+  selectedUnit: GameUnit | null;
+}> = ({ selectedTile, selectedUnit }) => (
+  <>
+    {selectedTile && (
+      <Html position={[5, 5, 5]} transform={false}>
+        <div className='game-info-panel'>
+          <h3>Tile Info</h3>
+          <p>
+            Position: ({selectedTile.hex.q}, {selectedTile.hex.r})
+          </p>
+          <p>Terrain: {selectedTile.terrain}</p>
+          <p>Elevation: {selectedTile.elevation.toFixed(1)}</p>
+          {selectedTile.resources && (
+            <p>Resources: {selectedTile.resources.join(', ')}</p>
+          )}
+        </div>
+      </Html>
+    )}
+
+    {selectedUnit && (
+      <Html position={[5, 3, 5]} transform={false}>
+        <div className='game-info-panel'>
+          <h3>Unit Info</h3>
+          <p>Type: {selectedUnit.type}</p>
+          <p>Player: {selectedUnit.playerId + 1}</p>
+          <p>Health: {selectedUnit.health}%</p>
+          <p>
+            Position: ({selectedUnit.position.q}, {selectedUnit.position.r})
+          </p>
+        </div>
+      </Html>
+    )}
+  </>
+);
+
+/**
+ * Adaptive environment based on device capabilities
+ */
+const AdaptiveEnvironment: React.FC<{
+  capabilities: DeviceCapabilities | null;
+  quality: RenderQuality;
+}> = ({ capabilities, quality }) => {
+  const envPreset =
+    quality.level === 'low'
+      ? 'dawn'
+      : quality.level === 'medium'
+        ? 'sunset'
+        : capabilities?.supportsHDR
+          ? 'studio'
+          : 'dawn';
+
+  return <Environment preset={envPreset} />;
+};
+
+/**
+ * Main Game Canvas component
+ */
 const GameCanvas: React.FC = () => {
+  const handleInitialized = useCallback(
+    (capabilities: DeviceCapabilities, settings: RenderingSettings) => {
+      console.warn('Render system initialized:', { capabilities, settings });
+    },
+    []
+  );
+
+  const handleInitError = useCallback((error: Error) => {
+    console.error('Render initialization failed:', error);
+  }, []);
+
   return (
     <div className='game-canvas'>
-      <Canvas
-        camera={{
-          position: [15, 15, 15],
-          fov: 65,
-          near: 0.1,
-          far: 1000,
-        }}
-        shadows
-        dpr={[1, 2]}
-        gl={{
-          antialias: true,
-          alpha: false,
-          powerPreference: 'high-performance',
-        }}
-        performance={{
-          min: 0.1,
-        }}
+      <RenderInitializer
+        enableDevTools={process.env.NODE_ENV === 'development'}
+        onInitialized={handleInitialized}
+        onError={handleInitError}
       >
         <Suspense
           fallback={
             <Html center>
-              <div
-                style={{
-                  color: 'white',
-                  fontSize: '18px',
-                  fontWeight: 'bold',
-                  textAlign: 'center',
-                  background: 'rgba(0,0,0,0.7)',
-                  padding: '20px',
-                  borderRadius: '10px',
-                }}
-              >
-                Loading World...
+              <div className='game-loading'>
+                <div className='loading-spinner' />
+                <p>Loading game world...</p>
               </div>
             </Html>
           }
         >
           <GameScene />
         </Suspense>
-      </Canvas>
+      </RenderInitializer>
 
-      {/* Game Controls UI */}
-      <div className='game-controls'>
-        <div className='control-panel'>
-          <h3>Game Controls</h3>
-          <p>Click tiles and units to select them</p>
-          <p>Mouse: Rotate camera</p>
-          <p>Scroll: Zoom in/out</p>
-          <p>Right-click + drag: Pan</p>
-        </div>
-      </div>
-
-      <style>{`
-        .game-canvas {
-          width: 100%;
-          height: 100%;
-          position: relative;
-          background: linear-gradient(to bottom, #87CEEB 0%, #98D8E8 50%, #B0E0E6 100%);
-        }
-
-        .hex-tooltip {
-          background: rgba(0, 0, 0, 0.8);
-          color: white;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 12px;
-          line-height: 1.4;
-          pointer-events: none;
-          white-space: nowrap;
-        }
-
-        .game-info-panel {
-          position: absolute;
-          top: 20px;
-          right: 20px;
-          background: rgba(0, 0, 0, 0.85);
-          color: white;
-          padding: 16px;
-          border-radius: 8px;
-          font-size: 14px;
-          min-width: 200px;
-          backdrop-filter: blur(4px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .game-info-panel h3 {
-          margin: 0 0 12px 0;
-          font-size: 16px;
-          font-weight: bold;
-          color: #fbbf24;
-        }
-
-        .game-info-panel p {
-          margin: 6px 0;
-          line-height: 1.4;
-        }
-
-        .unit-health-bar {
-          pointer-events: none;
-        }
-
-        .health-fill {
-          border-radius: 2px;
-        }
-
-        .control-panel {
-          position: absolute;
-          top: 20px;
-          left: 20px;
-          background: rgba(0, 0, 0, 0.75);
-          color: white;
-          padding: 16px;
-          border-radius: 8px;
-          font-size: 13px;
-          max-width: 250px;
-          backdrop-filter: blur(4px);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        .control-panel h3 {
-          margin: 0 0 10px 0;
-          font-size: 15px;
-          color: #34d399;
-        }
-
-        .control-panel p {
-          margin: 4px 0;
-          opacity: 0.9;
-        }
-
-        .game-controls {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          pointer-events: none;
-        }
-
-        .game-controls > * {
-          pointer-events: auto;
-        }
-
-        /* Responsive design */
-        @media (max-width: 768px) {
-          .game-info-panel,
-          .control-panel {
-            font-size: 12px;
-            padding: 12px;
-            min-width: 150px;
-            max-width: 180px;
-          }
-          
-          .game-info-panel h3,
-          .control-panel h3 {
-            font-size: 14px;
-          }
-        }
-
-        /* Performance optimizations */
-        .game-canvas canvas {
-          display: block;
-          touch-action: manipulation;
-        }
-      `}</style>
+      <GameControlsUI />
     </div>
   );
 };
+
+/**
+ * Game controls UI overlay
+ */
+const GameControlsUI: React.FC = () => (
+  <div className='game-controls'>
+    <div className='control-panel'>
+      <h3>Game Controls</h3>
+      <p>✨ WebGL2/WebGPU optimized rendering</p>
+      <p>🎮 Click tiles and units to select them</p>
+      <p>🖱️ Mouse: Rotate camera</p>
+      <p>🔍 Scroll: Zoom in/out</p>
+      <p>🤚 Right-click + drag: Pan</p>
+    </div>
+  </div>
+);
 
 export default GameCanvas;

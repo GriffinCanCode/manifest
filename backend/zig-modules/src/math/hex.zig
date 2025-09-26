@@ -4,8 +4,9 @@
 //! for grand strategy game spatial calculations.
 
 const std = @import("std");
-const precise = @import("precise.zig");
+
 const simd = @import("../simd/simd.zig");
+const precise = @import("precise.zig");
 
 /// Hex coordinate in axial (q, r) format
 pub const HexCoord = struct {
@@ -34,8 +35,8 @@ pub const HexCoord = struct {
 
     /// Convert to SIMD vector for batch processing
     pub fn toSimdVec(coords: []const HexCoord) [][4]f32 {
-        var result = std.ArrayList([4]f32).init(std.heap.page_allocator);
-        defer result.deinit();
+        var result = std.ArrayList([4]f32){};
+        defer result.deinit(std.heap.page_allocator);
 
         var i: usize = 0;
         while (i < coords.len) : (i += 4) {
@@ -280,19 +281,26 @@ pub fn getHexRing(center: HexCoord, radius: u32, allocator: std.mem.Allocator) !
     var ring = try allocator.alloc(HexCoord, ring_size);
     var index: usize = 0;
 
-    // Start at one of the corner directions
-    var current = HexCoord.init(center.q + @as(i32, @intCast(radius)), center.r);
-
-    // Walk around the ring using the 6 hex directions
     const directions = getHexDirections();
 
-    for (0..6) |dir_idx| {
-        for (0..radius) |_| {
+    // Start at corner: go radius steps in direction 4 (southwest) from center
+    var current = center;
+    const radius_i32 = @as(i32, @intCast(radius));
+    current.q += directions[4][0] * radius_i32; // Southwest
+    current.r += directions[4][1] * radius_i32;
+
+    // Now walk around the ring perimeter using the 6 directions
+    // Each edge of the hexagon uses a different direction
+    for (0..6) |edge_idx| {
+        for (0..radius) |step| {
             ring[index] = current;
             index += 1;
 
-            current.q += directions[dir_idx][0];
-            current.r += directions[dir_idx][1];
+            // Move to next position (except on last step of last edge)
+            if (!(edge_idx == 5 and step == radius - 1)) {
+                current.q += directions[edge_idx][0];
+                current.r += directions[edge_idx][1];
+            }
         }
     }
 
@@ -357,7 +365,7 @@ fn roundToCube(x: f32, y: f32, z: f32) CubeCoord {
 /// Optimized field of view calculation using shadow casting algorithm
 pub fn calculateFOV(center: HexCoord, radius: u32, is_blocked: *const fn (HexCoord) bool, allocator: std.mem.Allocator) ![]HexCoord {
     var visible_set = std.HashMap(HexCoord, void, HexHashContext, std.hash_map.default_max_load_percentage).init(allocator);
-    defer visible_set.deinit();
+    defer visible_set.deinit(allocator);
 
     // Center is always visible
     try visible_set.put(center, {});
@@ -467,14 +475,14 @@ pub fn rangeQuery(center: HexCoord, range: u32, predicate: *const fn (HexCoord) 
     const candidates = try getHexesInRange(center, range, allocator);
     defer allocator.free(candidates);
 
-    var results = std.ArrayList(HexCoord).init(allocator);
-    defer results.deinit();
+    var results = std.ArrayList(HexCoord){};
+    defer results.deinit(allocator);
 
     // Vectorized filtering
     var i: usize = 0;
     while (i < candidates.len) : (i += 1) {
         if (predicate(candidates[i])) {
-            try results.append(candidates[i]);
+            try results.append(allocator, candidates[i]);
         }
     }
 

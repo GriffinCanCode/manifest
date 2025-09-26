@@ -96,9 +96,9 @@ pub fn applyRainfallVariation(
 
 /// SIMD batch seasonal temperature calculation
 pub fn batchSeasonalTemperature(
-    base_temperatures: []i8,
-    climate_zones: []ClimateZone,
-    latitudes: []f32,
+    base_temperatures: []const i8,
+    climate_zones: []const ClimateZone,
+    latitudes: []const f32,
     seasonal_state: SeasonalState,
     params: SeasonalParams,
     results: []i8,
@@ -171,9 +171,9 @@ pub fn batchSeasonalTemperature(
 
 /// SIMD batch seasonal rainfall calculation
 pub fn batchSeasonalRainfall(
-    base_rainfall: []u16,
-    climate_zones: []ClimateZone,
-    latitudes: []f32,
+    base_rainfall: []const u16,
+    climate_zones: []const ClimateZone,
+    latitudes: []const f32,
     seasonal_state: SeasonalState,
     params: SeasonalParams,
     results: []u16,

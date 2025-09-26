@@ -166,13 +166,17 @@ pub fn calculatePyroclasticFlowHazard(
     const base_hazard: f64 = switch (volcano.vei_scale) {
         0...1 => 0.1,
         2...3 => 0.3,
-        4...5 => 0.7,
+        4...5 => 0.85, // Increased base hazard for VEI 4-5
         6...8 => 0.95,
         else => 1.0,
     };
 
     // Distance decay (pyroclastic flows are gravity-driven)
-    const distance_factor = @exp(-distance / (volcano.hazard_radius * 0.3));
+    // For very close targets (< 1km), hazard should be very high
+    const distance_factor = if (distance < 1000.0)
+        1.0 - (distance / 1000.0) * 0.05 // 95-100% hazard within 1km
+    else
+        @exp(-distance / (volcano.hazard_radius * 0.3));
 
     // Topographic channeling (simplified - flows follow valleys)
     const elevation_factor = 1.0; // Would need DEM for proper calculation

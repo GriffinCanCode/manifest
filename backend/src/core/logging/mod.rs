@@ -411,6 +411,7 @@ mod tests {
         let entity = Entity::from_raw(123);
         game_logging::log_entity_operation(entity, "spawn", Some("unit"));
         
+        use glam::IVec2;
         let pos = IVec2::new(10, 20);
         game_logging::log_spatial_operation(pos, "move", Some(3));
         

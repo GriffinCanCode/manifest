@@ -45,13 +45,15 @@ impl VoronoiGenerator {
         let radius = (1.0 / (target_density * std::f64::consts::PI)).sqrt() * 0.8;
 
         // Generate points using Poisson disk sampling
-        let poisson = Poisson2D::new()
+        let mut poisson_builder = Poisson2D::new();
+        let poisson = poisson_builder
             .with_dimensions([width as f64, height as f64], radius)
             .with_seed(self.config.point_seed);
 
         let mut rng = ChaCha8Rng::seed_from_u64(self.config.point_seed);
 
-        self.points = poisson.iter()
+        let points_iter: Vec<_> = poisson.iter().collect();
+        self.points = points_iter.into_iter()
             .map(|p| {
                 let jittered_x = if *self.config.jitter > 0.0 {
                     p[0] + (rng.gen::<f64>() - 0.5) * *self.config.jitter * radius

@@ -6,6 +6,7 @@
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::core::hashing::FastHashMap;
 
 /// Biome definition loaded from RON files
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,7 +251,7 @@ impl BiomeSuitabilityCalculator {
         climate_humidity: u8,
         elevation: f32,
         terrain_type: &str,
-        biome_definitions: &HashMap<String, BiomeDefinition>,
+        biome_definitions: &FastHashMap<String, BiomeDefinition>,
     ) -> Option<(String, f32)> {
         let mut best_biome = None;
         let mut best_score = 0.0;
@@ -365,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_best_biome_selection() {
-        let mut biome_definitions = HashMap::new();
+        let mut biome_definitions = crate::core::hashing::collections::fast_hash_map();
         
         biome_definitions.insert("temperate".to_string(), BiomeDefinition {
             name: "Temperate".to_string(),

@@ -152,15 +152,15 @@ mod tests {
 
     #[test]
     fn test_tile_adjacency() {
-        let adj = TileAdjacency::new(1, 2, HexDirection::East);
-        assert_eq!(adj.from_tile, 1);
-        assert_eq!(adj.to_tile, 2);
+        let adj = TileAdjacency::new(TileId(1), TileId(2), HexDirection::East);
+        assert_eq!(adj.from_tile, TileId(1));
+        assert_eq!(adj.to_tile, TileId(2));
         assert_eq!(adj.direction, HexDirection::East);
         assert!(adj.is_passable());
         
         let reverse = adj.reverse();
-        assert_eq!(reverse.from_tile, 2);
-        assert_eq!(reverse.to_tile, 1);
+        assert_eq!(reverse.from_tile, TileId(2));
+        assert_eq!(reverse.to_tile, TileId(1));
         assert_eq!(reverse.direction, HexDirection::West);
     }
 }

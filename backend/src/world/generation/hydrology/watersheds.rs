@@ -3,25 +3,48 @@
 //! High-performance watershed detection using Zig backend for elevation data
 //! and flow direction analysis with SIMD-optimized drainage basin delineation.
 
-use super::{HydrologyConfig, Watershed, FlowAccumulation};
+use super::{HydrologyConfig, Watershed, WatershedId, FlowAccumulation};
 use super::zig_ffi::{
-    FlowGrid, watershed_time_of_concentration, delineate_watershed, WatershedResult,
+    FlowGrid, calculate_time_of_concentration, delineate_watershed, WatershedResult,
     zig_polygon_area, zig_convex_hull, zig_point_in_polygon,
     zig_elevation_gradient_analysis, zig_elevation_local_statistics, ZigGradientAnalysis, ZigLocalStatistics
 };
 use crate::core::scheduler::SchedulerError;
 use nalgebra::Vector2;
+use ndarray::Array2;
+use std::collections::{HashSet, VecDeque};
+
+/// D8 flow direction vector
+#[derive(Debug, Clone, Copy)]
+struct FlowDirectionVec {
+    pub x: i32,
+    pub y: i32,
+}
 
 /// Watershed analysis system using Zig backend
 #[derive(Debug)]
 pub struct WatershedAnalyzer {
     config: HydrologyConfig,
+    flow_directions: Vec<FlowDirectionVec>,
 }
 
 impl WatershedAnalyzer {
     pub fn new(config: &HydrologyConfig) -> Self {
+        // D8 flow directions: East, SE, South, SW, West, NW, North, NE
+        let flow_directions = vec![
+            FlowDirectionVec { x: 1, y: 0 },   // East
+            FlowDirectionVec { x: 1, y: 1 },   // Southeast
+            FlowDirectionVec { x: 0, y: 1 },   // South
+            FlowDirectionVec { x: -1, y: 1 },  // Southwest
+            FlowDirectionVec { x: -1, y: 0 },  // West
+            FlowDirectionVec { x: -1, y: -1 }, // Northwest
+            FlowDirectionVec { x: 0, y: -1 },  // North
+            FlowDirectionVec { x: 1, y: -1 },  // Northeast
+        ];
+        
         Self {
             config: config.clone(),
+            flow_directions,
         }
     }
 
@@ -285,12 +308,35 @@ impl WatershedAnalyzer {
             }
         }
 
+        let mean_elevation = (min_elevation + max_elevation) / 2.0;
+        let relief = max_elevation - min_elevation;
+        
+        // Calculate perimeter from boundary points
+        let mut perimeter = 0.0;
+        for i in 0..boundary.len() {
+            let current = &boundary[i];
+            let next = &boundary[(i + 1) % boundary.len()];
+            let dx = next.x - current.x;
+            let dy = next.y - current.y;
+            perimeter += (dx * dx + dy * dy).sqrt();
+        }
+        
+        // Calculate shape factor (area / perimeter²)
+        let shape_factor = if perimeter > 0.0 {
+            area / (perimeter * perimeter)
+        } else {
+            0.0
+        };
+
         Watershed {
-            id,
+            id: WatershedId(id),
+            outlet_position: Vector2::new(outlet_world.0, outlet_world.1),
             boundary_points: boundary,
             area,
-            outlet: Vector2::new(outlet_world.0, outlet_world.1),
-            elevation_range: (min_elevation, max_elevation),
+            perimeter,
+            mean_elevation: mean_elevation as f64,
+            relief: relief as f64,
+            shape_factor,
         }
     }
 

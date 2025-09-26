@@ -111,7 +111,7 @@ pub const HydrologicalSystem = struct {
         var flow_grid = try flow.FlowGrid.init(width, height, cell_size, elevation_data, allocator);
         const watershed_delineator = try watersheds.WatershedDelineator.init(&flow_grid, allocator);
         const groundwater_grid = try aquifers.GroundwaterGrid.init(width, height, cell_size, allocator);
-        const springs = std.ArrayList(aquifers.Spring).init(allocator);
+        const springs = std.ArrayList(aquifers.Spring){};
 
         return HydrologicalSystem{
             .flow_grid = flow_grid,
@@ -125,9 +125,9 @@ pub const HydrologicalSystem = struct {
 
     pub fn deinit(self: *HydrologicalSystem) void {
         self.flow_grid.deinit(self.allocator);
-        self.watershed_delineator.deinit();
+        self.watershed_delineator.deinit(self.allocator);
         self.groundwater_grid.deinit(self.allocator);
-        self.springs.deinit();
+        self.springs.deinit(self.allocator);
     }
 
     /// Run complete hydrological analysis
@@ -422,7 +422,7 @@ pub fn batchProcessElevationGrids(
 
     for (grids, 0..) |elevation_data, i| {
         var system = try createSimpleHydrologicalAnalysis(width, height, cell_size, elevation_data, allocator);
-        defer system.deinit();
+        defer system.deinit(allocator);
 
         results[i] = system.analysis_results;
     }

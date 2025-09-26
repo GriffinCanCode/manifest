@@ -6,6 +6,7 @@
 use super::{HydrologyConfig, Lake, FlowAccumulation};
 use super::zig_ffi::{zig_find_local_minima, zig_union_find_basins, zig_calculate_lake_volume, ZigBasin};
 use crate::core::scheduler::SchedulerError;
+use crate::world::LakeId;
 use nalgebra::Vector2;
 
 /// Lake detection system
@@ -92,12 +93,13 @@ impl LakeDetector {
             let radius = basin_stats.radius * self.grid_cell_size();
 
             lakes.push(Lake {
-                id: lake_id as u32,
+                id: LakeId(lake_id as u32),
                 center: world_center,
                 radius,
                 depth,
+                water_level: surface_elevation, // Same as surface elevation initially
                 surface_elevation,
-                volume,
+                volume: volume as f32,
                 drainage_rivers: Vec::new(), // Will be populated later
             });
         }

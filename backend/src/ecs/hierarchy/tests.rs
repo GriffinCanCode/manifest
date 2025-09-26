@@ -756,7 +756,7 @@ mod integration_tests {
         let city_subtree = queries.subtree(city).await;
         assert_eq!(city_subtree.len(), 4);
         
-        let validation = queries.validate_hierarchy().unwrap();
+        let validation = queries.validate_hierarchy(&mut world).unwrap();
         assert!(!validation.has_cycles);
         assert_eq!(validation.entity_count, 7); // 3 from create_test_world + 4 new entities
     }

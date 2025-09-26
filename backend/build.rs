@@ -24,9 +24,27 @@ fn main() {
     // BUILD ORCHESTRATION PIPELINE
     // ========================================================================
     
-    println!("cargo:rerun-if-changed=zig-modules/src/");
+    // Only watch actual source files, not cache directories
     println!("cargo:rerun-if-changed=zig-modules/build.zig");
     println!("cargo:rerun-if-changed=zig-modules/build.zig.zon");
+    
+    // Watch specific source files to avoid cache directory triggers
+    if Path::new("zig-modules/src").exists() {
+        // Walk through src directory and watch only .zig files
+        if let Ok(entries) = fs::read_dir("zig-modules/src") {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_file() && path.extension().map_or(false, |ext| ext == "zig") {
+                        println!("cargo:rerun-if-changed={}", path.display());
+                    } else if path.is_dir() {
+                        // Recursively watch subdirectories for .zig files
+                        watch_zig_files_recursively(&path);
+                    }
+                }
+            }
+        }
+    }
     
     // Step 1: Build optimized Zig math/SIMD library
     let zig_success = build_zig_library();
@@ -38,6 +56,31 @@ fn main() {
     tauri_build::build();
     
     println!("cargo:warning=ManifestRustTS build orchestration complete");
+}
+
+/// Recursively watch .zig files in a directory, ignoring cache files
+fn watch_zig_files_recursively(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                
+                // Skip cache directories and other non-source directories
+                if file_name.starts_with('.') || 
+                   file_name == "zig-cache" || 
+                   file_name == "zig-out" {
+                    continue;
+                }
+                
+                if path.is_file() && path.extension().map_or(false, |ext| ext == "zig") {
+                    println!("cargo:rerun-if-changed={}", path.display());
+                } else if path.is_dir() {
+                    watch_zig_files_recursively(&path);
+                }
+            }
+        }
+    }
 }
 
 /// Build Zig Math & SIMD Library Using Optimized Build System
@@ -79,6 +122,20 @@ fn build_zig_library() -> bool {
     // Configure Zig build to match Cargo's target and optimization
     let mut zig_cmd = Command::new("zig");
     zig_cmd.arg("build").current_dir(zig_dir);
+    
+    // Use system temp directory for Zig cache AND output to avoid Tauri file watcher conflicts
+    let temp_base = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP"))
+        .unwrap_or_else(|_| "/tmp".to_string());
+    let temp_base = temp_base.trim_end_matches('/');
+    
+    let zig_cache_dir = format!("{}/.manifest-zig-cache", temp_base);
+    let zig_output_dir = format!("{}/.manifest-zig-output", temp_base);
+    
+    zig_cmd.arg("--cache-dir").arg(&zig_cache_dir);
+    zig_cmd.arg("--prefix-lib-dir").arg(&zig_output_dir);
+    
+    println!("cargo:warning=Using Zig cache directory: {}", zig_cache_dir);
+    println!("cargo:warning=Using Zig output directory: {}", zig_output_dir);
     
     // ========================================================================
     // CROSS-COMPILATION TARGET MATCHING  
@@ -162,9 +219,14 @@ fn build_zig_library() -> bool {
                     println!("cargo:warning=Zig build info: {}", stderr);
                 }
                 
-                // Verify artifacts were created
-                let lib_path = zig_dir.join("zig-out/lib/libmanifest_zig.a");
-                let obj_path = zig_dir.join("zig-out/lib/libmanifest_zig.o");
+                // Verify artifacts were created in temp directory
+                let temp_base = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP"))
+                    .unwrap_or_else(|_| "/tmp".to_string());
+                let temp_base = temp_base.trim_end_matches('/');
+                let zig_output_dir = format!("{}/.manifest-zig-output", temp_base);
+                
+                let lib_path = Path::new(&zig_output_dir).join("libmanifest_zig.a");
+                let obj_path = Path::new(&zig_output_dir).join("libmanifest_zig.o");
                 
                 if lib_path.exists() {
                     println!("cargo:warning=Zig static archive created: {}", lib_path.display());
@@ -173,6 +235,15 @@ fn build_zig_library() -> bool {
                     if let Ok(metadata) = fs::metadata(&lib_path) {
                         println!("cargo:warning=Archive size: {} bytes", metadata.len());
                     }
+                    
+                    // Sync the library file to ensure it's completely written
+                    // This helps prevent Tauri from detecting partial writes
+                    if let Ok(file) = std::fs::File::open(&lib_path) {
+                        let _ = file.sync_all();
+                    }
+                    
+                    // Small delay to let filesystem operations settle before Tauri file watcher
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     
                     return true;
                 } else if obj_path.exists() {
@@ -201,15 +272,19 @@ fn build_zig_library() -> bool {
 /// - With Zig: Links static archive and enables optimized FFI
 /// - Without Zig: Enables fallback feature flag for pure Rust implementations
 fn configure_rust_linking(zig_available: bool) {
-    let zig_dir = Path::new("zig-modules");
-    
     if zig_available {
         // ====================================================================
         // ZIG LIBRARY LINKING CONFIGURATION
         // ====================================================================
         
-        let lib_path = zig_dir.join("zig-out/lib/libmanifest_zig.a");
-        let obj_path = zig_dir.join("zig-out/lib/libmanifest_zig.o");
+        // Use the same temp directory as the build process
+        let temp_base = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP"))
+            .unwrap_or_else(|_| "/tmp".to_string());
+        let temp_base = temp_base.trim_end_matches('/');
+        let zig_output_dir = format!("{}/.manifest-zig-output", temp_base);
+        
+        let lib_path = Path::new(&zig_output_dir).join("libmanifest_zig.a");
+        let obj_path = Path::new(&zig_output_dir).join("libmanifest_zig.o");
         
         // Determine which artifact to link
         let (link_type, link_name, artifact_path) = if lib_path.exists() {
@@ -227,11 +302,7 @@ fn configure_rust_linking(zig_available: bool) {
         
         // Configure linker search paths
         let search_path = artifact_path.parent().unwrap();
-        let full_search_path = env::current_dir()
-            .unwrap()
-            .join(search_path);
-            
-        println!("cargo:rustc-link-search=native={}", full_search_path.display());
+        println!("cargo:rustc-link-search=native={}", search_path.display());
         println!("cargo:rustc-link-lib={}={}", link_type, link_name);
         
         // Link system libraries that Zig depends on

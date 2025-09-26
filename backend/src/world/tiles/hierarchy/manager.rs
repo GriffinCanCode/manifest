@@ -287,6 +287,11 @@ impl TileHierarchy {
             .unwrap_or_default()
     }
 
+    /// Get reference to hierarchical tiles (for external access)
+    pub fn hierarchical_tiles(&self) -> &Arc<RwLock<FastHashMap<u8, Vec<Entity>>>> {
+        &self.hierarchical_tiles
+    }
+
     /// Get hierarchy statistics for monitoring
     pub async fn hierarchy_stats(&self) -> TileHierarchyStats {
         let mut stats = TileHierarchyStats {
@@ -315,7 +320,7 @@ impl TileHierarchy {
     }
 
     /// Validate hierarchy integrity
-    pub fn validate_tile_hierarchy(&self, world: &World) -> HierarchyResult<TileHierarchyValidation> {
+    pub fn validate_tile_hierarchy(&self, world: &mut World) -> HierarchyResult<TileHierarchyValidation> {
         let base_validation = self.hierarchy_queries.validate_hierarchy(world)?;
         
         let hierarchical_tiles = self.hierarchical_tiles.read();

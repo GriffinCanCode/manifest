@@ -17,6 +17,7 @@
 @use 'components/buttons';
 @use 'components/forms';
 @use 'components/error-screen';
+@use 'components/render-initializer';
 
 // Layouts (page-level structures)
 @use 'layouts/app';

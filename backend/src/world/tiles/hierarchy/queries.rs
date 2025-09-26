@@ -17,12 +17,7 @@ use super::{
     types::HierarchicalTile
 };
 
-// Access to the hierarchical_tiles field in TileHierarchy
-impl TileHierarchy {
-    pub fn hierarchical_tiles(&self) -> &std::sync::Arc<parking_lot::RwLock<crate::core::hashing::FastHashMap<u8, Vec<bevy_ecs::entity::Entity>>>> {
-        &self.hierarchical_tiles
-    }
-}
+// Hierarchical tiles access moved to manager.rs where the struct is defined
 
 impl TileHierarchy {
     /// Find hierarchical tile containing the given hex coordinate

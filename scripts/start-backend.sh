@@ -24,7 +24,7 @@ echo -e "${YELLOW}Environment: ${NODE_ENV}${NC}"
 echo ""
 
 # Navigate to backend directory
-cd "$(dirname "$0")/backend"
+cd "$(dirname "$0")/../backend"
 
 # Check if frontend is running
 echo -e "${YELLOW}🔍 Checking if frontend server is running on port ${VITE_DEV_PORT}...${NC}"
@@ -44,6 +44,46 @@ fi
 
 echo ""
 
-# Start Tauri development app
-echo -e "${GREEN}🚀 Starting Tauri development app...${NC}"
-cargo tauri dev
+# Build and start Tauri app (no file watching)
+echo -e "${GREEN}🚀 Building and starting Tauri app...${NC}"
+echo -e "${YELLOW}Note: File watching disabled to avoid rebuild loops${NC}"
+echo -e "${YELLOW}To rebuild after changes, restart this script${NC}"
+echo ""
+
+# Check if we should build frontend first
+echo -e "${BLUE}Checking frontend build...${NC}"
+if [ ! -d "../frontend/dist" ] || [ -z "$(find ../frontend/dist -name '*.js' -o -name '*.html' 2>/dev/null)" ]; then
+    echo -e "${YELLOW}Frontend not built. Building frontend for production...${NC}"
+    cd ../frontend
+    npm run build
+    cd ../backend
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Frontend build failed${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Frontend built successfully${NC}"
+else
+    echo -e "${GREEN}✅ Frontend already built${NC}"
+fi
+
+# Build the Tauri app once (debug mode, but no file watching)
+echo -e "${BLUE}Building Tauri application...${NC}"
+cargo build
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Build completed successfully${NC}"
+    echo -e "${GREEN}🚀 Starting application...${NC}"
+    echo ""
+    
+    # Run the built binary directly without dev mode
+    cargo run --bin manifest
+else
+    echo -e "${RED}❌ Build failed${NC}"
+    echo ""
+    echo -e "${YELLOW}Check the output above for errors${NC}"
+    echo -e "${YELLOW}Common fixes:${NC}"
+    echo -e "${YELLOW}- Ensure Zig toolchain is installed${NC}"
+    echo -e "${YELLOW}- Run 'cargo clean' and try again${NC}"
+    echo -e "${YELLOW}- Check that frontend is built: npm run build${NC}"
+    exit 1
+fi

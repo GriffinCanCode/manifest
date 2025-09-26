@@ -133,6 +133,11 @@ impl NoiseGenerator {
         self.fbm.sample_temperature(x, y)
     }
 
+    /// Get the noise configuration
+    pub fn config(&self) -> &NoiseConfig {
+        &self.config
+    }
+
     /// Sample moisture using domain warping
     pub fn sample_moisture(&self, x: f64, y: f64) -> f32 {
         let warped = self.domain_warp.warp(x, y);

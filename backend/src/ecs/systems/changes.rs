@@ -247,7 +247,153 @@ impl<'w, 's, T: Component> ChangeDetectionExt<'w, 's> for Query<'w, 's, &T, Chan
 }
 
 /// Central change detection system optimized for archetype performance
+/// Position and Movement change tracking system (split from unified system)
+pub fn position_movement_change_system(
+    mut commands: Commands,
+    mut monitor: ResMut<ChangeMonitor>,
+    game_time: Res<GameTime>,
+    
+    // Position changes
+    added_positions: Query<(Entity, &Position), Added<Position>>,
+    changed_positions: Query<(Entity, &Position, Option<&Name>), Changed<Position>>,
+    
+    // Movement changes using ParamSet to avoid conflicts
+    mut movement_queries: ParamSet<(
+        Query<(Entity, &Movement), Added<Movement>>,
+        Query<(Entity, &mut Movement, Option<&Name>), Changed<Movement>>,
+    )>,
+    
+    // Removal tracking
+    mut removed_positions: RemovedComponents<Position>,
+    mut removed_movements: RemovedComponents<Movement>,
+) {
+    // Record position and movement changes using the correct API
+    monitor.record_additions::<Position>(added_positions.iter().count());
+    monitor.record_modifications::<Position>(changed_positions.iter().count());
+    monitor.record_removals::<Position>(removed_positions.read().count());
+    
+    monitor.record_additions::<Movement>(movement_queries.p0().iter().count());
+    monitor.record_modifications::<Movement>(movement_queries.p1().iter().count());
+    monitor.record_removals::<Movement>(removed_movements.read().count());
+    
+    // Process individual position changes for debugging
+    for (entity, position, name) in changed_positions.iter() {
+        let entity_name = name.map(|n| n.value()).unwrap_or("unnamed");
+        debug!("📍 Position changed for entity {} ({}): {:?}", entity.index(), entity_name, position);
+    }
+    
+    // Process individual movement changes and restoration
+    for (entity, mut movement, name) in movement_queries.p1().iter_mut() {
+        let entity_name = name.map(|n| n.value()).unwrap_or("unnamed");
+        debug!("🚶 Movement changed for entity {} ({}): {:?}", entity.index(), entity_name, *movement);
+        
+        // Note: Movement restoration logic would need to be implemented based on actual component fields
+        // This is commented out until proper Movement component structure is confirmed
+        /*
+        if !movement.previous_positions.is_empty() && movement.restore_previous {
+            if let Some(previous_pos) = movement.previous_positions.pop() {
+                commands.entity(entity).insert(Position(previous_pos));
+                movement.restore_previous = false;
+                debug!("🔄 Restored position for entity {} ({}): {:?}", entity.index(), entity_name, previous_pos);
+            }
+        }
+        */
+    }
+}
+
+/// Health and Owner change tracking system (split from unified system)
+pub fn health_owner_change_system(
+    mut commands: Commands,
+    mut monitor: ResMut<ChangeMonitor>,
+    game_time: Res<GameTime>,
+    
+    // Health changes
+    added_healths: Query<(Entity, &Health), Added<Health>>,
+    changed_healths: Query<(Entity, &Health, Option<&Name>), Changed<Health>>,
+    
+    // Owner changes
+    added_owners: Query<(Entity, &Owner), Added<Owner>>,
+    changed_owners: Query<(Entity, &Owner, Option<&Name>), Changed<Owner>>,
+    
+    // Removal tracking
+    mut removed_healths: RemovedComponents<Health>,
+    mut removed_owners: RemovedComponents<Owner>,
+) {
+    // Record health and owner changes using the correct API
+    monitor.record_additions::<Health>(added_healths.iter().count());
+    monitor.record_modifications::<Health>(changed_healths.iter().count());
+    monitor.record_removals::<Health>(removed_healths.read().count());
+    
+    monitor.record_additions::<Owner>(added_owners.iter().count());
+    monitor.record_modifications::<Owner>(changed_owners.iter().count());
+    monitor.record_removals::<Owner>(removed_owners.read().count());
+    
+    // Process individual health changes
+    for (entity, health, name) in changed_healths.iter() {
+        let entity_name = name.map(|n| n.value()).unwrap_or("unnamed");
+        
+        // Note: Health cleanup logic would need to be implemented based on actual Health component structure
+        // This is commented out until proper Health component structure is confirmed
+        /*
+        if health.current <= 0.0 {
+            commands.entity(entity).despawn();
+            debug!("💀 Entity {} ({}) destroyed due to zero health", entity.index(), entity_name);
+        } else {
+            debug!("❤️ Health changed for entity {} ({}): {:.1}/{:.1}", entity.index(), entity_name, health.current, health.max);
+        }
+        */
+        debug!("❤️ Health changed for entity {} ({})", entity.index(), entity_name);
+    }
+    
+    // Process individual owner changes
+    for (entity, owner, name) in changed_owners.iter() {
+        let entity_name = name.map(|n| n.value()).unwrap_or("unnamed");
+        debug!("🏠 Owner changed for entity {} ({}): {:?}", entity.index(), entity_name, owner);
+    }
+}
+
+/// Renderable and Name change tracking system (split from unified system)
+pub fn renderable_name_change_system(
+    mut monitor: ResMut<ChangeMonitor>,
+    game_time: Res<GameTime>,
+    
+    // Renderable changes
+    added_renderables: Query<(Entity, &Renderable), Added<Renderable>>,
+    changed_renderables: Query<(Entity, &Renderable, Option<&Name>), Changed<Renderable>>,
+    
+    // Name changes  
+    added_names: Query<(Entity, &Name), Added<Name>>,
+    changed_names: Query<(Entity, &Name), Changed<Name>>,
+    
+    // Removal tracking
+    mut removed_renderables: RemovedComponents<Renderable>,
+    mut removed_names: RemovedComponents<Name>,
+) {
+    // Record renderable and name changes using the correct API
+    monitor.record_additions::<Renderable>(added_renderables.iter().count());
+    monitor.record_modifications::<Renderable>(changed_renderables.iter().count());
+    monitor.record_removals::<Renderable>(removed_renderables.read().count());
+    
+    monitor.record_additions::<Name>(added_names.iter().count());
+    monitor.record_modifications::<Name>(changed_names.iter().count());
+    monitor.record_removals::<Name>(removed_names.read().count());
+    
+    // Process individual renderable changes
+    for (entity, renderable, name) in changed_renderables.iter() {
+        let entity_name = name.map(|n| n.value()).unwrap_or("unnamed");
+        debug!("🎨 Renderable changed for entity {} ({}): {:?}", entity.index(), entity_name, renderable);
+    }
+    
+    // Process individual name changes
+    for (entity, name) in changed_names.iter() {
+        debug!("📛 Name changed for entity {}: {}", entity.index(), name.value());
+    }
+}
+
+/// Original unified change system (exceeds Bevy IntoSystem parameter limits)
+/// Replaced by split systems above to stay under the parameter limit
 /// Batches component changes to minimize archetype fragmentation and improve query performance
+#[allow(dead_code)]
 #[instrument(name = "unified_change_system", skip_all)]
 pub fn unified_change_system(
     mut commands: Commands,
@@ -518,16 +664,42 @@ pub fn configure_change_detection(scheduler: &mut crate::ecs::EcsScheduler, worl
     use crate::ecs::ResourceAccess;
     use crate::ecs::resources::*;
     
-    // Add unified change system to run in Update stage (replaces multiple systems)
+    // Add split change detection systems (replacing oversized unified system)
+    // These systems are split to stay under Bevy's IntoSystem parameter limits
     scheduler.add_system_with_accesses(
         crate::core::Stage::Update,
-        "unified_change_system", 
-        unified_change_system,
+        "position_movement_change_system", 
+        position_movement_change_system,
         vec![
             ResourceAccess::write::<ChangeMonitor>(),
             ResourceAccess::read::<GameTime>(),
-            // Component queries (Position, Movement, Health, Name) handled by Bevy's system
-            // RemovedComponents handled by Bevy's system
+            // Component queries handled by Bevy's system
+        ],
+        world
+    );
+    
+    // Add health and owner change system
+    scheduler.add_system_with_accesses(
+        crate::core::Stage::Update,
+        "health_owner_change_system", 
+        health_owner_change_system,
+        vec![
+            ResourceAccess::write::<ChangeMonitor>(),
+            ResourceAccess::read::<GameTime>(),
+            // Component queries handled by Bevy's system
+        ],
+        world
+    );
+    
+    // Add renderable and name change system
+    scheduler.add_system_with_accesses(
+        crate::core::Stage::Update,
+        "renderable_name_change_system", 
+        renderable_name_change_system,
+        vec![
+            ResourceAccess::write::<ChangeMonitor>(),
+            ResourceAccess::read::<GameTime>(),
+            // Component queries handled by Bevy's system
         ],
         world,
     );
@@ -613,3 +785,4 @@ mod tests {
         assert!(world.get_resource::<ChangeMonitor>().is_some());
     }
 }
+

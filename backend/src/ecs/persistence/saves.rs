@@ -61,6 +61,28 @@ pub struct SaveMetadata {
     pub playtime: u64,
     /// Player's civilization name
     pub civilization: String,
+    /// Optional save thumbnail for visual browsing
+    pub thumbnail: Option<SaveThumbnailMetadata>,
+}
+
+/// Thumbnail metadata stored with saves
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SaveThumbnailMetadata {
+    /// Base64 encoded thumbnail image
+    pub thumbnail: String,
+    /// Thumbnail generation timestamp
+    pub generated_at: u64,
+    /// Canvas dimensions when captured
+    pub dimensions: ThumbnailDimensions,
+    /// Thumbnail size
+    pub size: ThumbnailDimensions,
+}
+
+/// Dimensions for thumbnails
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThumbnailDimensions {
+    pub width: u32,
+    pub height: u32,
 }
 
 /// High-performance bincode serializer with optimal settings
@@ -112,7 +134,7 @@ impl SaveSystem {
         
         // Export world state with timing
         let export_start = Instant::now();
-        let world_state = world.export_state();
+        let world_state = world.export_world_state();
         let export_duration = export_start.elapsed().as_secs_f64() * 1000.0;
         
         debug!(
@@ -135,6 +157,7 @@ impl SaveSystem {
             game_version: env!("CARGO_PKG_VERSION").to_string(),
             playtime: world_state.game_time.total_time() as u64,
             civilization: "Ancient Empire".to_string(), // Default civilization for now
+            thumbnail: None, // Thumbnail will be added separately by frontend
         };
         
         let save_file = SaveFile {
@@ -213,10 +236,11 @@ impl SaveSystem {
         // Invalidate metadata cache for this save
         let cache_key = CacheKey::Custom(format!("save_metadata:{}", name));
         let metadata_cache = self.metadata_cache.clone();
+        let save_name = name.to_string(); // Convert to owned string to avoid borrow issues
         tokio::spawn(async move {
             // Invalidate the specific save's metadata cache since it was just updated
             let _ = metadata_cache.remove(&cache_key).await;
-            debug!("Invalidated metadata cache for save '{}'", name);
+            debug!("Invalidated metadata cache for save '{}'", save_name);
         });
 
         Ok(path)
@@ -446,7 +470,7 @@ impl SaveSystem {
     
     /// Apply loaded save to game world
     pub fn apply_to_world(&self, save_file: SaveFile, world: &mut GameWorld) -> Result<(), SaveError> {
-        world.import_state(save_file.world_state);
+        world.import_world_state(save_file.world_state);
         info!("Applied save '{}' to world", save_file.metadata.name);
         Ok(())
     }
@@ -529,6 +553,51 @@ impl SaveSystem {
             .collect::<String>();
         
         self.saves_dir.join(format!("{}.save", safe_name))
+    }
+
+    /// Update save metadata with thumbnail
+    pub fn add_thumbnail(&self, name: &str, thumbnail: SaveThumbnailMetadata) -> Result<(), SaveError> {
+        let correlation_id = LoggingSystem::generate_correlation_id();
+        
+        info!(
+            target: "game::saves",
+            correlation_id = correlation_id,
+            save_name = name,
+            "Adding thumbnail to save metadata"
+        );
+
+        // Load existing save file
+        let mut save_file = self.load(name)?;
+        
+        // Update metadata with thumbnail
+        save_file.metadata.thumbnail = Some(thumbnail);
+        
+        // Save the updated file
+        let path = self.save_path(name);
+        let file = File::create(&path)?;
+        let writer = BufWriter::new(file);
+        bincode::serialize_into(writer, &save_file)?;
+
+        // TODO: Invalidate cache for this save when method is implemented
+        // let cache_key = CacheKey::Player(crate::core::caching::PlayerCacheKey::SaveMetadata {
+        //     save_name: name.to_string()
+        // });
+        // let _ = self.metadata_cache.invalidate(cache_key);
+
+        info!(
+            target: "game::saves",
+            correlation_id = correlation_id,
+            save_name = name,
+            "Thumbnail added to save successfully"
+        );
+
+        Ok(())
+    }
+
+    /// Get save thumbnail metadata
+    pub fn get_thumbnail(&self, name: &str) -> Result<Option<SaveThumbnailMetadata>, SaveError> {
+        let save_file = self.load(name)?;
+        Ok(save_file.metadata.thumbnail)
     }
 }
 
@@ -641,6 +710,8 @@ mod tests {
                 timestamp: 123456,
                 game_version: "1.0.0".to_string(),
                 playtime: 0,
+                civilization: "Test".to_string(),
+                thumbnail: None,
             },
             world_state: WorldState {
                 game_time: crate::ecs::GameTime::default(),
@@ -705,6 +776,7 @@ pub fn save_world_state_to_file(world_state: &WorldState, filename: &str) -> Res
             game_version: env!("CARGO_PKG_VERSION").to_string(),
             playtime: world_state.game_time.total_time() as u64,
             civilization: "Default".to_string(),
+            thumbnail: None, // Thumbnail added separately by frontend
         },
         world_state: world_state.clone(),
     };

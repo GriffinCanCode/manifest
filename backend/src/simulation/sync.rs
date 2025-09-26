@@ -508,7 +508,8 @@ pub enum SyncError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{pause, resume, advance};
+    // Note: These functions require test-util feature
+    // use tokio::time::{pause, resume, advance};
 
     #[tokio::test]
     async fn test_tick_synchronizer_creation() {

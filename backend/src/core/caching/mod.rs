@@ -41,6 +41,8 @@ pub use metrics::*;
 pub use events::*;
 
 use std::time::{Duration, Instant};
+use std::hash::{Hash, Hasher};
+use ordered_float::OrderedFloat;
 use tracing::error;
 use crate::core::hashing::FastHasher;
 
@@ -303,19 +305,42 @@ impl<T> CacheEntry<T> {
 }
 
 /// Tectonic cache key for tectonic simulation queries
-#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TectonicCacheKey {
     /// Type of tectonic query
     pub query_type: TectonicQueryType,
-    /// Primary position for tectonic influence
-    pub position: (f64, f64),
-    /// Optional radius for area queries (in km)
-    pub radius: Option<f64>,
+    /// Primary position for tectonic influence (stored as ordered bytes for hashing)
+    pub position: (OrderedFloat<f64>, OrderedFloat<f64>),
+    /// Optional radius for area queries (in km, stored as ordered bytes for hashing)  
+    pub radius: Option<OrderedFloat<f64>>,
     /// World seed for cache invalidation
     pub world_seed: u64,
     /// Tectonic configuration hash for cache invalidation
     pub config_hash: u64,
 }
+
+impl Hash for TectonicCacheKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.query_type.hash(state);
+        self.position.0.hash(state);
+        self.position.1.hash(state);
+        self.radius.hash(state);
+        self.world_seed.hash(state);
+        self.config_hash.hash(state);
+    }
+}
+
+impl PartialEq for TectonicCacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.query_type == other.query_type 
+            && self.position == other.position
+            && self.radius == other.radius
+            && self.world_seed == other.world_seed
+            && self.config_hash == other.config_hash
+    }
+}
+
+impl Eq for TectonicCacheKey {}
 
 impl TectonicCacheKey {
     /// Fast hash using existing game hashing infrastructure

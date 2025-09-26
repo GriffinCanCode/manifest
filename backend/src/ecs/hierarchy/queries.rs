@@ -291,7 +291,7 @@ impl HierarchyQueries {
     }
 
     /// Validate hierarchy integrity (no cycles, valid relationships)
-    pub fn validate_hierarchy(&self, world: &World) -> HierarchyResult<HierarchyValidation> {
+    pub fn validate_hierarchy(&self, world: &mut World) -> HierarchyResult<HierarchyValidation> {
         let stats = self.graph.stats();
         
         Ok(HierarchyValidation {
@@ -303,7 +303,7 @@ impl HierarchyQueries {
     }
 
     /// Count entities that exist in components but not in graph
-    fn count_orphaned_entities(&self, world: &World) -> usize {
+    fn count_orphaned_entities(&self, world: &mut World) -> usize {
         let mut orphaned_count = 0;
         
         // Get all entities that have hierarchical components

@@ -13,8 +13,7 @@ extern void simd_f32_add_4(const float a[4], const float b[4], float result[4]);
 extern void simd_f32_mul_4(const float a[4], const float b[4], float result[4]);
 extern float simd_f32_dot_4(const float a[4], const float b[4]);
 
-extern uint32_t hex_distance(int32_t q1, int32_t r1, int32_t q2, int32_t r2);
-extern void hex_to_pixel(int32_t q, int32_t r, float size, float *x, float *y);
+// Hex functions are now directly exported from Zig, no need for C bridge
 
 // C wrapper functions for easier Rust integration
 float manifest_det_add_f32(float a, float b) {
@@ -63,10 +62,4 @@ float manifest_simd_dot_4_f32(const float a[4], const float b[4]) {
     return simd_f32_dot_4(a, b);
 }
 
-uint32_t manifest_hex_distance(int32_t q1, int32_t r1, int32_t q2, int32_t r2) {
-    return hex_distance(q1, r1, q2, r2);
-}
-
-void manifest_hex_to_pixel(int32_t q, int32_t r, float size, float *x, float *y) {
-    hex_to_pixel(q, r, size, x, y);
-}
+// Hex functions (manifest_hex_distance, manifest_hex_to_pixel) are exported directly from Zig

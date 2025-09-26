@@ -107,8 +107,7 @@ impl CulturalInfluence {
     /// Get culture strength for player on tile
     pub fn get_culture_strength(&self, tile_id: TileId, player_id: PlayerId) -> f32 {
         self.influence_map.get(&tile_id)
-            .and_then(|entry| entry.influences.get(&player_id))
-            .copied()
+            .and_then(|entry| entry.influences.get(&player_id).copied())
             .unwrap_or(0.0)
     }
 

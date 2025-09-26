@@ -775,6 +775,7 @@ mod tests {
     #[test]
     fn test_rotation_strategies() {
         // Test size-based rotation
+        use crate::core::logging::RotationConfig;
         let size_rotation = RotationConfig::size_based(1024);
         assert!(matches!(size_rotation.strategy, RotationStrategy::Size(1024)));
         

@@ -239,6 +239,7 @@ impl CacheMetrics {
             CacheKey::Rendering(_) => "Rendering".to_string(),
             CacheKey::Player(_) => "Player".to_string(),
             CacheKey::Custom(name) => format!("Custom-{}", name),
+            CacheKey::Tectonic(_) => "Tectonic".to_string(),
         }
     }
 
@@ -511,6 +512,7 @@ impl TimeSeries {
             CacheKey::Rendering(_) => "Rendering".to_string(),
             CacheKey::Player(_) => "Player".to_string(),
             CacheKey::Custom(name) => format!("Custom-{}", name),
+            CacheKey::Tectonic(_) => "Tectonic".to_string(),
         }
     }
 }

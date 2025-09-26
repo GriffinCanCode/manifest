@@ -29,8 +29,8 @@ pub const InterpolationParams = struct {
 /// Calculate weighted average of climate values
 pub fn weightedAverage(
     center_climate: ClimateData,
-    neighbor_climates: []ClimateData,
-    weights: []f32,
+    neighbor_climates: []const ClimateData,
+    weights: []const f32,
     params: InterpolationParams,
 ) ClimateData {
     std.debug.assert(neighbor_climates.len == weights.len);
@@ -106,9 +106,10 @@ pub fn batchInterpolateClimate(
         const current_neighbor_climates = neighbor_climates[start_idx..end_idx];
 
         // Calculate weights based on distance
-        var weights = std.ArrayList(f32).initCapacity(std.heap.page_allocator, neighbor_count) catch unreachable;
-        defer weights.deinit();
-        weights.resize(neighbor_count) catch unreachable;
+        const allocator = std.heap.page_allocator;
+        var weights = std.ArrayList(f32).initCapacity(allocator, neighbor_count) catch unreachable;
+        defer weights.deinit(allocator);
+        weights.resize(allocator, neighbor_count) catch unreachable;
 
         for (current_neighbor_positions, weights.items) |neighbor_pos, *weight| {
             const dx = precise.detSub(center_pos[0], neighbor_pos[0]);
@@ -134,7 +135,7 @@ pub fn gaussianSmoothing(
     std.debug.assert(positions.len == climates.len);
     std.debug.assert(positions.len == results.len);
 
-    const kernel_radius = @as(i32, @intCast(kernel_size)) / 2;
+    const kernel_radius = @divTrunc(@as(i32, @intCast(kernel_size)), 2);
 
     for (positions, climates, results, 0..) |center_pos, center_climate, *result, i| {
         var total_weight: f32 = 0.0;
@@ -185,7 +186,7 @@ pub fn gaussianSmoothing(
 pub fn bilinearInterpolation(
     grid_width: u32,
     grid_height: u32,
-    climate_grid: []ClimateData,
+    climate_grid: []const ClimateData,
     query_x: f32,
     query_y: f32,
 ) ClimateData {

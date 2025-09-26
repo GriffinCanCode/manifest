@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use nalgebra::Vector2;
 use chrono::{DateTime, Utc};
 use delaunator::{triangulate, Point};
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rand_distr::{Distribution, Normal, Uniform};
 use rayon::prelude::*;
@@ -136,7 +136,7 @@ impl PlateGenerator {
             let y = rng.gen_range(min_y..max_y);
             
             // Check minimum distance constraint
-            let too_close = points.iter().any(|existing_point| {
+            let too_close = points.iter().any(|existing_point: &Point| {
                 let dx = x - existing_point.x;
                 let dy = y - existing_point.y;
                 (dx * dx + dy * dy).sqrt() < min_distance
@@ -254,11 +254,16 @@ impl PlateGenerator {
         regions: Vec<Vec<(f64, f64)>>,
         rng: &mut ChaCha8Rng,
     ) -> Result<Vec<TectonicPlate>, SchedulerError> {
+        // Generate seed for parallel processing
+        let base_seed = rng.next_u64();
+        
         let plates: Result<Vec<_>, _> = regions
             .par_iter()
             .enumerate()
             .map(|(id, region)| {
-                self.create_single_plate(id as u32, region.clone(), rng)
+                // Create thread-local RNG with unique seed
+                let mut thread_rng = ChaCha8Rng::seed_from_u64(base_seed.wrapping_add(id as u64));
+                self.create_single_plate(id as u32, region.clone(), &mut thread_rng)
             })
             .collect();
             

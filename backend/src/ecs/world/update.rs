@@ -24,17 +24,17 @@ impl GameWorld {
         self.set_last_update(now);
 
         // Update game time through world manager
-        self.world_manager.update_game_time(delta);
+        self.update_game_time(delta);
         
         // Validate hierarchical data periodically through subsystem registry
-        self.subsystem_registry.validate_hierarchy(self.world(), delta);
+        self.validate_hierarchy(delta);
 
         // Process hot reload events
         #[cfg(debug_assertions)]
-        self.subsystem_registry.process_reload_events();
+        self.process_reload_events();
 
         // Run systems through system coordinator
-        self.system_coordinator.run_system_stages(self.world_mut());
+        self.run_system_stages();
     }
 
     /// Update the world with a fixed time step (useful for deterministic simulation)
@@ -56,7 +56,7 @@ impl GameWorld {
         // No expensive full rebuilds needed in fixed timestep mode!
 
         // Run systems through system coordinator
-        self.system_coordinator.run_system_stages(self.world_mut());
+        self.run_system_stages();
     }
 
     // System stage execution now handled by SystemCoordinator

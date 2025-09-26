@@ -29,11 +29,11 @@ pub fn process_layers_system(
         let stack_generation_before = layer_stack.generation();
         
         // Process temporal features and cleanup
-        for layer in layer_stack.layers.iter_mut() {
+        for layer in layer_stack.layers_mut().iter_mut() {
             let mut expired_features = Vec::new();
             
             // Check for expired features (if they have duration metadata)
-            for (index, feature) in layer.features.iter().enumerate() {
+            for (index, feature) in layer.features().iter().enumerate() {
                 if let Some(ref metadata) = feature.metadata {
                     // Parse expiration from metadata (format: "expires:turn_number")
                     if let Some(expires_str) = metadata.strip_prefix("expires:") {
@@ -53,15 +53,21 @@ pub fn process_layers_system(
             
             // Remove expired features (in reverse order to preserve indices)
             for &index in expired_features.iter().rev() {
-                if index < layer.features.len() {
-                    layer.features.swap_remove(index);
-                    layer.generation += 1;
-                    features_expired += 1;
+                if index < layer.features().len() {
+                    // Use the remove_feature method instead of direct access
+                    if let Some(feature) = layer.features().get(index) {
+                        let feature_id = feature.id;
+                        layer.remove_feature(feature_id);
+                        features_expired += 1;
+                    }
                 }
             }
             
             // Update feature intensities for temporal effects
-            for feature in layer.features.iter_mut() {
+            let layer_generation = layer.generation();
+            let mut layer_changed = false;
+            
+            for feature in layer.features_mut().iter_mut() {
                 let old_intensity = feature.intensity;
                 
                 // Apply time-based intensity decay for certain feature types
@@ -91,9 +97,14 @@ pub fn process_layers_system(
                 
                 if old_intensity != feature.intensity {
                     feature.last_modified = current_turn;
-                    layer.generation += 1;
+                    layer_changed = true;
                     features_updated += 1;
                 }
+            }
+            
+            // Update generation after the loop if any changes were made
+            if layer_changed {
+                layer.set_generation(layer_generation + 1);
             }
         }
         

@@ -4,6 +4,7 @@
 //! Uses probabilistic models and geological analysis for realistic spring placement.
 
 use super::{HydrologyConfig, Spring, Aquifer};
+use super::types::{SpringId, SpringType};
 use crate::core::scheduler::SchedulerError;
 use nalgebra::Vector2;
 use rand::{Rng, SeedableRng};
@@ -61,7 +62,7 @@ impl SpringGenerator {
         world_size: (u32, u32)
     ) -> Vec<Spring> {
         let mut springs = Vec::new();
-        let mut local_rng = ChaCha8Rng::seed_from_u64(self.config.seed + aquifer.id as u64);
+        let mut local_rng = ChaCha8Rng::seed_from_u64(self.config.seed + aquifer.id.0 as u64);
         
         // Determine number of springs based on aquifer properties
         let num_springs = self.calculate_spring_count(aquifer);
@@ -211,7 +212,7 @@ impl SpringGenerator {
         let center_elevation = self.get_elevation_at_grid(grid_pos, elevation_data, world_size);
         
         // Check for elevation gradient in neighborhood
-        let mut max_gradient = 0.0;
+        let mut max_gradient: f32 = 0.0;
         
         for dy in -2..=2i32 {
             for dx in -2..=2i32 {
@@ -268,12 +269,41 @@ impl SpringGenerator {
         let mineral_content = (residence_time_factor * 0.01).min(1.0).max(0.1);
         
         Spring {
-            id: spring_id,
+            id: SpringId(spring_id),
             position,
             flow_rate,
             temperature,
             aquifer_id: Some(aquifer.id),
             mineral_content,
+            spring_type: self.determine_spring_type_zig(aquifer, flow_rate),
+        }
+    }
+
+    /// Determine spring type based on aquifer properties
+    fn determine_spring_type_zig(&self, aquifer: &Aquifer, flow_rate: f32) -> SpringType {
+        use super::types::SpringType;
+        use crate::world::generation::hydrology::zig_ffi::AquiferType;
+        
+        let hydraulic_head = aquifer.hydraulic_head;
+        
+        // Determine spring type based on aquifer characteristics
+        match (aquifer.aquifer_type, hydraulic_head, flow_rate) {
+            // High pressure springs (artesian)
+            (AquiferType::Confined, head, _) if head > 20.0 => SpringType::Artesian,
+            (AquiferType::LeakyConfined, head, _) if head > 15.0 => SpringType::Artesian,
+            
+            // Contact springs at geological boundaries
+            (AquiferType::FracturedRock, _, _) => SpringType::Contact,
+            (AquiferType::Karst, _, _) => SpringType::Joint,
+            
+            // High-flow thermal springs
+            (_, _, flow) if flow > 0.1 && aquifer.depth > 200.0 => SpringType::Thermal,
+            
+            // Depression springs in low-lying areas
+            (_, _, _) if hydraulic_head < 5.0 => SpringType::Depression,
+            
+            // Default gravity springs
+            _ => SpringType::Gravity,
         }
     }
 

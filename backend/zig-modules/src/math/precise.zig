@@ -112,6 +112,25 @@ pub fn detSub(a: f32, b: f32) f32 {
     return detAdd(a, -b);
 }
 
+/// Deterministic absolute value
+pub fn detAbs(a: f32) f32 {
+    if (math.isNan(a)) return math.nan(f32);
+    return if (a < 0) -a else a;
+}
+
+/// Deterministic exponential function
+pub fn detExp(a: f32) f32 {
+    if (math.isNan(a)) return math.nan(f32);
+    if (math.isInf(a)) return if (a > 0) math.inf(f32) else 0.0;
+    return @exp(a);
+}
+
+/// Deterministic negation
+pub fn detNeg(a: f32) f32 {
+    if (math.isNan(a)) return math.nan(f32);
+    return -a;
+}
+
 /// Check if two floats are approximately equal (deterministic)
 pub fn detApproxEq(a: f32, b: f32, epsilon: f32) bool {
     const diff = detSub(a, b);

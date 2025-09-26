@@ -104,26 +104,29 @@ impl LuaEcsIntegration {
                 return Ok(results);
             };
             
-            // Query the world based on type
-            match world_ref.try_read() {
-                Some(world) => {
+            // Query the world based on type (need write access for queries)
+            match world_ref.try_write() {
+                Some(mut world) => {
                     let entities = match query_type.as_str() {
                         "all" => {
                             // Get all entities with any components
-                            let mut query = world.world().query::<Entity>();
-                            query.iter(world.world()).take(1000).collect::<Vec<_>>() // Limit for safety
+                            let ecs_world = world.world_mut();
+                            let mut query = ecs_world.query::<Entity>();
+                            query.iter(ecs_world).take(1000).collect::<Vec<_>>() // Limit for safety
                         },
                         "hierarchical" => {
                             // Get entities with hierarchical components
                             use crate::ecs::hierarchy::components::Hierarchical;
-                            let mut query = world.world().query_filtered::<Entity, With<Hierarchical>>();
-                            query.iter(world.world()).take(1000).collect::<Vec<_>>()
+                            let ecs_world = world.world_mut();
+                            let mut query = ecs_world.query_filtered::<Entity, With<Hierarchical>>();
+                            query.iter(ecs_world).take(1000).collect::<Vec<_>>()
                         },
                         "tiles" => {
                             // Get tile entities
                             use crate::world::tiles::components::Tile;
-                            let mut query = world.world().query_filtered::<Entity, With<Tile>>();
-                            query.iter(world.world()).take(1000).collect::<Vec<_>>()
+                            let ecs_world = world.world_mut();
+                            let mut query = ecs_world.query_filtered::<Entity, With<Tile>>();
+                            query.iter(ecs_world).take(1000).collect::<Vec<_>>()
                         },
                         _ => Vec::new(),
                     };
@@ -164,15 +167,15 @@ impl LuaEcsIntegration {
             return Ok(Vec::new());
         };
         
-        match world_ref.try_read() {
-            Some(world) => {
+        match world_ref.try_write() {
+            Some(mut world) => {
                 let mut matching_entities = Vec::new();
                 
                 // For safety and simplicity, handle common component combinations
                 match component_names.iter().map(|s| s.as_str()).collect::<Vec<_>>().as_slice() {
                     ["Tile"] => {
                         use crate::world::tiles::components::Tile;
-                        let mut query = world.world().query_filtered::<Entity, With<Tile>>();
+                        let mut query = world.world_mut().query_filtered::<Entity, With<Tile>>();
                         matching_entities = query.iter(world.world())
                             .take(1000) // Limit for safety
                             .map(LuaEntity::from)
@@ -180,7 +183,7 @@ impl LuaEcsIntegration {
                     },
                     ["Hierarchical"] => {
                         use crate::ecs::hierarchy::components::Hierarchical;
-                        let mut query = world.world().query_filtered::<Entity, With<Hierarchical>>();
+                        let mut query = world.world_mut().query_filtered::<Entity, With<Hierarchical>>();
                         matching_entities = query.iter(world.world())
                             .take(1000)
                             .map(LuaEntity::from)
@@ -188,7 +191,7 @@ impl LuaEcsIntegration {
                     },
                     ["GameSelection"] => {
                         use crate::ecs::components::GameSelection;
-                        let mut query = world.world().query_filtered::<Entity, With<GameSelection>>();
+                        let mut query = world.world_mut().query_filtered::<Entity, With<GameSelection>>();
                         matching_entities = query.iter(world.world())
                             .take(1000)
                             .map(LuaEntity::from)
@@ -215,8 +218,8 @@ impl LuaEcsIntegration {
             return Ok(Value::Nil);
         };
         
-        match world_ref.try_read() {
-            Some(world) => {
+        match world_ref.try_write() {
+            Some(mut world) => {
                 let bevy_entity: Entity = entity.into();
                 
                 // For safety, only expose basic component data that's safe to access from Lua
@@ -260,8 +263,8 @@ impl LuaEcsIntegration {
             return Ok(false);
         };
         
-        match world_ref.try_read() {
-            Some(world) => {
+        match world_ref.try_write() {
+            Some(mut world) => {
                 let bevy_entity: Entity = entity.into();
                 
                 // Check for specific component types that are safe to expose
@@ -355,7 +358,7 @@ impl LuaQueryBuilder {
     }
 
     /// Execute the query against the ECS world
-    pub fn execute(&self, world: &GameWorld) -> ScriptResult<Vec<LuaEntity>> {
+    pub fn execute(&self, world: &mut GameWorld) -> ScriptResult<Vec<LuaEntity>> {
         let mut matching_entities = Vec::new();
         
         // Handle different query combinations based on with_components
@@ -363,7 +366,7 @@ impl LuaQueryBuilder {
             // Single component queries
             components if components == ["Tile"] => {
                 use crate::world::tiles::components::Tile;
-                let mut query = world.world().query_filtered::<Entity, With<Tile>>();
+                let mut query = world.world_mut().query_filtered::<Entity, With<Tile>>();
                 for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
@@ -373,7 +376,7 @@ impl LuaQueryBuilder {
             },
             components if components == ["Hierarchical"] => {
                 use crate::ecs::hierarchy::components::Hierarchical;
-                let mut query = world.world().query_filtered::<Entity, With<Hierarchical>>();
+                let mut query = world.world_mut().query_filtered::<Entity, With<Hierarchical>>();
                 for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
@@ -383,7 +386,7 @@ impl LuaQueryBuilder {
             },
             components if components == ["Position"] => {
                 use crate::ecs::components::Position;
-                let mut query = world.world().query_filtered::<Entity, With<Position>>();
+                let mut query = world.world_mut().query_filtered::<Entity, With<Position>>();
                 for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
@@ -393,7 +396,7 @@ impl LuaQueryBuilder {
             },
             components if components == ["Health"] => {
                 use crate::ecs::components::Health;
-                let mut query = world.world().query_filtered::<Entity, With<Health>>();
+                let mut query = world.world_mut().query_filtered::<Entity, With<Health>>();
                 for entity in query.iter(world.world()) {
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {
@@ -403,7 +406,7 @@ impl LuaQueryBuilder {
             },
             // Empty query - return all entities (with safety limit)
             components if components.is_empty() => {
-                let mut query = world.world().query::<Entity>();
+                let mut query = world.world_mut().query::<Entity>();
                 for entity in query.iter(world.world()).take(500) { // Safety limit
                     if self.entity_matches_without_components(world, entity)
                         && self.entity_matches_filters(world, entity) {

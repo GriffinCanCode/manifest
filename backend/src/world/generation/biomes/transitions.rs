@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use crate::world::tiles::{chunks::TileId, properties::Biome};
 
 /// Biome transition manager
-#[derive(Debug, Resource, Default)]
+#[derive(Component, Debug, Resource, Default)]
 pub struct BiomeTransitionManager {
     /// Transition rules between biome types
     transition_rules: HashMap<(String, String), TransitionType>,
@@ -317,13 +317,13 @@ mod tests {
         let manager = BiomeTransitionManager::new();
         
         let neighbors = vec![
-            (TileId::new(1, 1), "temperate_grassland".to_string(), 1.0),
-            (TileId::new(1, 2), "temperate_grassland".to_string(), 1.0),
-            (TileId::new(2, 1), "steppe".to_string(), 1.5),
+            (TileId::new(1), "temperate_grassland".to_string(), 1.0),
+            (TileId::new(2), "temperate_grassland".to_string(), 1.0),
+            (TileId::new(3), "steppe".to_string(), 1.5),
         ];
         
         let transition = manager.calculate_transition(
-            TileId::new(0, 0),
+            TileId::new(0),
             "temperate_forest",
             &neighbors,
         );
@@ -339,14 +339,14 @@ mod tests {
         let mut manager = BiomeTransitionManager::new();
         
         // Add some test transitions
-        manager.update_transition(TileId::new(0, 0), BiomeTransition {
+        manager.update_transition(TileId::new(0), BiomeTransition {
             primary_biome: "forest".to_string(),
             secondary_biome: Some("grassland".to_string()),
             transition_strength: 0.3,
             transition_type: TransitionType::Gradual { distance: 2 },
         });
         
-        manager.update_transition(TileId::new(1, 1), BiomeTransition {
+        manager.update_transition(TileId::new(1), BiomeTransition {
             primary_biome: "grassland".to_string(),
             secondary_biome: None,
             transition_strength: 0.0,

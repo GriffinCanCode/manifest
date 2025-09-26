@@ -403,7 +403,7 @@ pub enum ChannelType {
 
 /// Aquifer types for groundwater modeling
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AquiferType {
     Unconfined = 0,
     Confined = 1,

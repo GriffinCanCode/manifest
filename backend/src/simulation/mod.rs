@@ -108,7 +108,7 @@ impl SimulationCore {
     }
 
     /// Create snapshot of current state
-    pub fn create_snapshot(&self, world: &World) -> Result<SimulationSnapshot, SimulationError> {
+    pub fn create_snapshot(&self, world: &mut World) -> Result<SimulationSnapshot, SimulationError> {
         let tick = self.state.tick();
         let sim_state = self.state.state();
         

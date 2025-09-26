@@ -174,7 +174,7 @@ impl SubsystemRegistry {
     }
 
     /// Validate hierarchical data periodically
-    pub fn validate_hierarchy(&self, world: &World, delta: f32) {
+    pub fn validate_hierarchy(&self, world: &mut World, delta: f32) {
         // Validate hierarchical data periodically (every 5 seconds in debug, 30 seconds in release)
         let validation_interval = if cfg!(debug_assertions) { 5.0 } else { 30.0 };
         
@@ -185,8 +185,13 @@ impl SubsystemRegistry {
                 let correlation_id = LoggingSystem::generate_correlation_id();
                 let validation_start = Instant::now();
                 
-                if let Some(hierarchy_queries) = world.get_resource::<HierarchyQueries>() {
-                    match hierarchy_queries.validate_hierarchy(world) {
+                // Temporarily remove the resource to avoid borrow conflicts
+                if let Some(hierarchy_queries) = world.remove_resource::<HierarchyQueries>() {
+                    let validation_result = hierarchy_queries.validate_hierarchy(world);
+                    // Put the resource back
+                    world.insert_resource(hierarchy_queries);
+                    
+                    match validation_result {
                         Ok(validation) => {
                             let validation_duration = validation_start.elapsed().as_secs_f64() * 1000.0;
                             

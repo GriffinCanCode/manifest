@@ -135,6 +135,8 @@ impl GameWorld {
                                 .expect("Valid tile name"),
                             position: Position::from_hex(hex_pos)
                                 .expect("Valid tile position"),
+                            renderable: Renderable::new("terrain_default".to_string()),
+                            owner: Owner::neutral(),
                         };
                     
                     self.spawn_entity(tile_bundle);
@@ -162,6 +164,8 @@ impl GameWorld {
                                 .expect("Valid tile name"),
                             position: Position::from_hex(hex_pos)
                                 .expect("Valid tile position"),
+                            renderable: Renderable::new("terrain_default".to_string()),
+                            owner: Owner::neutral(),
                         };
                     
                     self.spawn_entity(tile_bundle);
@@ -188,6 +192,8 @@ impl GameWorld {
                                 .expect("Valid tile name"),
                             position: Position::from_hex(hex_pos)
                                 .expect("Valid tile position"),
+                            renderable: Renderable::new("terrain_default".to_string()),
+                            owner: Owner::neutral(),
                         };
                     
                     self.spawn_entity(tile_bundle);
@@ -214,6 +220,8 @@ impl GameWorld {
                                 .expect("Valid tile name"),
                             position: Position::from_hex(hex_pos)
                                 .expect("Valid tile position"),
+                            renderable: Renderable::new("terrain_default".to_string()),
+                            owner: Owner::neutral(),
                         };
                     
                     self.spawn_entity(tile_bundle);

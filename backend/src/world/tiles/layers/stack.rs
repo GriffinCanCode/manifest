@@ -112,6 +112,11 @@ impl TileLayerStack {
         &self.layers
     }
 
+    /// Get mutable reference to all layers
+    pub fn layers_mut(&mut self) -> &mut [TileLayer] {
+        &mut self.layers
+    }
+
     /// Get layers sorted by render priority
     pub fn layers_by_priority(&self) -> Vec<&TileLayer> {
         let mut layers: Vec<_> = self.layers.iter().collect();

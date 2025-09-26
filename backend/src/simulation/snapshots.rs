@@ -130,7 +130,7 @@ impl SnapshotManager {
     /// Create snapshot of world state
     pub fn create_snapshot(
         &mut self,
-        world: &World,
+        world: &mut World,
         tick: u64,
         sim_state: TimerSnapshot,
     ) -> Result<SimulationSnapshot, SnapshotError> {
@@ -251,10 +251,10 @@ impl SnapshotManager {
             .map_err(|e| SnapshotError::DeserializationFailed(e.to_string()))
     }
 
-    fn serialize_world(&self, world: &World, tick: u64) -> Result<WorldSnapshot, SnapshotError> {
+    fn serialize_world(&self, world: &mut World, tick: u64) -> Result<WorldSnapshot, SnapshotError> {
         // Variables will be populated above with ECS integration
 
-        // Extract entities with full ECS integration
+        // Extract entities with full ECS integration  
         let mut entities = Vec::new();
         let mut entity_query = world.query::<Entity>();
         let entity_list: Vec<Entity> = entity_query.iter(world).collect();

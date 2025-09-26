@@ -285,11 +285,12 @@ impl VoronoiGenerator {
         use fast_poisson::Poisson2D;
         
         let radius = (width as f64 * height as f64 / self.config.point_count as f64).sqrt() * 0.5;
-        let poisson = Poisson2D::new()
+        let mut poisson_builder = Poisson2D::new();
+        let poisson = poisson_builder
             .with_dimensions([width as f64, height as f64], radius)
             .with_seed(self.config.point_seed);
 
-        let points = poisson.iter().collect::<Vec<_>>();
+        let points: Vec<_> = poisson.iter().collect();
         
         points.into_iter()
             .map(|p| super::VoronoiPoint {
@@ -382,7 +383,7 @@ impl WorleyGenerator {
             let mut generator = FastNoise::seeded(self.seed);
             generator.set_noise_type(bracket_noise::prelude::NoiseType::SimplexFractal);
             generator.set_fractal_octaves(self.config.fractal_octaves as i32);
-            generator.set_fractal_frequency(*self.config.fractal_frequency as f32);
+            generator.set_frequency(*self.config.fractal_frequency as f32);
             generator.get_noise(x as f32, y as f32)
         } else {
             self.bracket_generator.get_noise(x as f32, y as f32)

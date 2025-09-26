@@ -112,9 +112,9 @@ pub fn batchOceanProximity(
 
 /// SIMD batch calculation of continental effects on temperature and humidity
 pub fn batchContinentalEffects(
-    positions: [][2]f32,
-    base_temperatures: []i8,
-    base_humidity: []u8,
+    positions: []const [2]f32,
+    base_temperatures: []const i8,
+    base_humidity: []const u8,
     params: ContinentalParams,
     temperature_results: []i8,
     humidity_results: []u8,
@@ -127,9 +127,10 @@ pub fn batchContinentalEffects(
     const len = positions.len;
 
     // First calculate continentality for all positions
-    var continentality = std.ArrayList(f32).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer continentality.deinit();
-    continentality.resize(len) catch unreachable;
+    const allocator = std.heap.page_allocator;
+    var continentality = std.ArrayList(f32).initCapacity(allocator, len) catch unreachable;
+    defer continentality.deinit(allocator);
+    continentality.resize(allocator, len) catch unreachable;
 
     for (positions, continentality.items) |pos, *cont| {
         cont.* = calculateContinentality(pos[0], pos[1], params);

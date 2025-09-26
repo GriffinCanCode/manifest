@@ -134,6 +134,31 @@ impl GameWorld {
         self.world_manager.set_paused(paused);
     }
 
+    /// Update game time with delta time
+    pub fn update_game_time(&mut self, delta: f32) {
+        self.world_manager.update_game_time(delta);
+    }
+
+    /// Run all system stages in sequence
+    pub fn run_system_stages(&mut self) {
+        // Split the borrow to avoid simultaneous mutable borrows
+        let GameWorld { world_manager, system_coordinator, .. } = self;
+        system_coordinator.run_system_stages(world_manager.world_mut());
+    }
+
+    /// Validate hierarchical data periodically
+    pub fn validate_hierarchy(&mut self, delta: f32) {
+        // Split the borrow to avoid simultaneous borrows
+        let GameWorld { world_manager, subsystem_registry, .. } = self;
+        subsystem_registry.validate_hierarchy(world_manager.world_mut(), delta);
+    }
+
+    /// Process hot reload events (debug builds only)
+    #[cfg(debug_assertions)]
+    pub fn process_reload_events(&mut self) {
+        self.subsystem_registry.process_reload_events();
+    }
+
     // Export/import state now handled by serialization module
 }
 

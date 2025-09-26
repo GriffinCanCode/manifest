@@ -5,39 +5,43 @@
 
 const std = @import("std");
 
-pub const climate = @import("climate/climate.zig");
+pub const climate = @import("climate/mod.zig");
+pub const culling = @import("culling/mod.zig");
 pub const hydrology = @import("hydrology/mod.zig");
-pub const hex = @import("math/hex.zig");
-pub const math = @import("math/math.zig");
-pub const precise = @import("math/precise.zig");
-pub const noise = @import("noise/noise.zig");
-pub const simd = @import("simd/simd.zig");
-pub const geometry = @import("tectonics/geometry.zig");
-pub const plates = @import("tectonics/plates.zig");
-pub const stress = @import("tectonics/stress.zig");
-pub const volcanic = @import("tectonics/volcanic.zig");
+pub const math = @import("math/mod.zig");
+pub const hex = math.hex;
+pub const precise = math.precise;
+pub const noise = @import("noise/mod.zig");
+pub const simd = @import("simd/mod.zig");
+pub const tectonics = @import("tectonics/mod.zig");
+pub const geometry = tectonics.geometry;
+pub const plates = tectonics.plates;
+pub const stress = tectonics.stress;
+pub const volcanic = tectonics.volcanic;
 
+// Legacy compatibility - these will still work but are deprecated
+// Individual module access is now available through the main modules above
 // Tectonics modules
 // Export main modules
 // C exports for Rust FFI
-export fn manifest_det_add_f32(a: f32, b: f32) f32 {
-    return precise.detAdd(a, b);
+pub export fn manifest_det_add_f32(a: f32, b: f32) f32 {
+    return math.precise.detAdd(a, b);
 }
 
-export fn manifest_det_mul_f32(a: f32, b: f32) f32 {
-    return precise.detMul(a, b);
+pub export fn manifest_det_mul_f32(a: f32, b: f32) f32 {
+    return math.precise.detMul(a, b);
 }
 
-export fn manifest_det_div_f32(a: f32, b: f32) f32 {
-    return precise.detDiv(a, b);
+pub export fn manifest_det_div_f32(a: f32, b: f32) f32 {
+    return math.precise.detDiv(a, b);
 }
 
 export fn manifest_det_sqrt_f32(a: f32) f32 {
-    return precise.detSqrt(a);
+    return math.precise.detSqrt(a);
 }
 
 // SIMD vector operations
-export fn manifest_simd_add_4_f32(a: *const f32, b: *const f32, result: *f32) void {
+pub export fn manifest_simd_add_4_f32(a: *const f32, b: *const f32, result: *f32) void {
     const a_arr: *const [4]f32 = @ptrCast(a);
     const b_arr: *const [4]f32 = @ptrCast(b);
     const result_arr: *[4]f32 = @ptrCast(result);
@@ -58,146 +62,146 @@ export fn manifest_simd_dot_4_f32(a: *const f32, b: *const f32) f32 {
 }
 
 // Hex grid operations
-export fn manifest_hex_distance(q1: i32, r1: i32, q2: i32, r2: i32) u32 {
-    return hex.distance(q1, r1, q2, r2);
+pub export fn manifest_hex_distance(q1: i32, r1: i32, q2: i32, r2: i32) u32 {
+    return math.hex.distance(q1, r1, q2, r2);
 }
 
-export fn manifest_hex_to_pixel(q: i32, r: i32, size: f32, x: *f32, y: *f32) void {
-    const pos = hex.toPixel(q, r, size);
+pub export fn manifest_hex_to_pixel(q: i32, r: i32, size: f32, x: *f32, y: *f32) void {
+    const pos = math.hex.toPixel(q, r, size);
     x.* = pos.x;
     y.* = pos.y;
 }
 
-export fn manifest_hex_from_pixel(x: f32, y: f32, size: f32, q: *i32, r: *i32) void {
-    const coord = hex.fromPixel(x, y, size);
+pub export fn manifest_hex_from_pixel(x: f32, y: f32, size: f32, q: *i32, r: *i32) void {
+    const coord = math.hex.fromPixel(x, y, size);
     q.* = coord.q;
     r.* = coord.r;
 }
 
-export fn manifest_hex_get_neighbors(q: i32, r: i32, neighbors: *[6]hex.HexCoord) void {
-    const coord = hex.HexCoord.init(q, r);
-    const result = hex.getNeighbors(coord);
+pub export fn manifest_hex_get_neighbors(q: i32, r: i32, neighbors: *[6]math.hex.HexCoord) void {
+    const coord = math.hex.HexCoord.init(q, r);
+    const result = math.hex.getNeighbors(coord);
     neighbors.* = result;
 }
 
 export fn manifest_hex_get_neighbor(q: i32, r: i32, direction: u8, out_q: *i32, out_r: *i32) void {
-    const coord = hex.HexCoord.init(q, r);
-    const neighbor = hex.getNeighbor(coord, @intCast(direction));
+    const coord = math.hex.HexCoord.init(q, r);
+    const neighbor = math.hex.getNeighbor(coord, @intCast(direction));
     out_q.* = neighbor.q;
     out_r.* = neighbor.r;
 }
 
-export fn manifest_hex_batch_to_pixel(coords: [*]const hex.HexCoord, size: f32, pixels: [*]hex.PixelPos, count: usize) void {
+export fn manifest_hex_batch_to_pixel(coords: [*]const math.hex.HexCoord, size: f32, pixels: [*]math.hex.PixelPos, count: usize) void {
     const coord_slice = coords[0..count];
     const pixel_slice = pixels[0..count];
-    hex.batchToPixel(coord_slice, size, pixel_slice);
+    math.hex.batchToPixel(coord_slice, size, pixel_slice);
 }
 
 export fn manifest_hex_round_to_hex(q_f: f32, r_f: f32, q: *i32, r: *i32) void {
-    const coord = hex.roundToHex(q_f, r_f);
+    const coord = math.hex.roundToHex(q_f, r_f);
     q.* = coord.q;
     r.* = coord.r;
 }
 
 // Tectonic plate physics calculations
 export fn manifest_calculate_ridge_push(plate_center_x: f64, plate_center_y: f64, plate_vel_x: f64, plate_vel_y: f64, age_million_years: f64, area: f64, movement_speed: f64, result_x: *f64, result_y: *f64) void {
-    const plate_data = plates.TectonicPlate{
+    const plate_data = tectonics.plates.TectonicPlate{
         .id = 0,
-        .center = plates.Vec2.init(plate_center_x, plate_center_y),
-        .velocity = plates.Vec2.init(plate_vel_x, plate_vel_y),
+        .center = tectonics.plates.Vec2.init(plate_center_x, plate_center_y),
+        .velocity = tectonics.plates.Vec2.init(plate_vel_x, plate_vel_y),
         .age_million_years = age_million_years,
         .density = 2700.0,
         .area = area,
     };
 
-    const force = plates.calculateRidgePush(&plate_data, movement_speed);
+    const force = tectonics.plates.calculateRidgePush(&plate_data, movement_speed);
     result_x.* = force.x;
     result_y.* = force.y;
 }
 
 export fn manifest_calculate_basal_drag(plate_vel_x: f64, plate_vel_y: f64, area: f64, result_x: *f64, result_y: *f64) void {
-    const plate_data = plates.TectonicPlate{
+    const plate_data = tectonics.plates.TectonicPlate{
         .id = 0,
-        .center = plates.Vec2.init(0.0, 0.0),
-        .velocity = plates.Vec2.init(plate_vel_x, plate_vel_y),
+        .center = tectonics.plates.Vec2.init(0.0, 0.0),
+        .velocity = tectonics.plates.Vec2.init(plate_vel_x, plate_vel_y),
         .age_million_years = 50.0,
         .density = 2700.0,
         .area = area,
     };
 
-    const force = plates.calculateBasalDrag(&plate_data);
+    const force = tectonics.plates.calculateBasalDrag(&plate_data);
     result_x.* = force.x;
     result_y.* = force.y;
 }
 
 export fn manifest_calculate_mantle_convection(plate_center_x: f64, plate_center_y: f64, area: f64, movement_speed: f64, result_x: *f64, result_y: *f64) void {
-    const plate_data = plates.TectonicPlate{
+    const plate_data = tectonics.plates.TectonicPlate{
         .id = 0,
-        .center = plates.Vec2.init(plate_center_x, plate_center_y),
-        .velocity = plates.Vec2.init(0.0, 0.0),
+        .center = tectonics.plates.Vec2.init(plate_center_x, plate_center_y),
+        .velocity = tectonics.plates.Vec2.init(0.0, 0.0),
         .age_million_years = 50.0,
         .density = 2700.0,
         .area = area,
     };
 
-    const force = plates.calculateMantelConvection(&plate_data, movement_speed);
+    const force = tectonics.plates.calculateMantelConvection(&plate_data, movement_speed);
     result_x.* = force.x;
     result_y.* = force.y;
 }
 
 // Geometric calculations
 export fn manifest_point_to_segment_distance(point_x: f64, point_y: f64, seg_start_x: f64, seg_start_y: f64, seg_end_x: f64, seg_end_y: f64) f64 {
-    const point = geometry.Point2D.init(point_x, point_y);
-    const segment = geometry.LineSegment.init(geometry.Point2D.init(seg_start_x, seg_start_y), geometry.Point2D.init(seg_end_x, seg_end_y));
+    const point = tectonics.geometry.Point2D.init(point_x, point_y);
+    const segment = tectonics.geometry.LineSegment.init(tectonics.geometry.Point2D.init(seg_start_x, seg_start_y), tectonics.geometry.Point2D.init(seg_end_x, seg_end_y));
 
-    return geometry.pointToSegmentDistance(point, segment);
+    return tectonics.geometry.pointToSegmentDistance(point, segment);
 }
 
 export fn manifest_polygon_contains_point(vertices_x: [*]const f64, vertices_y: [*]const f64, vertex_count: usize, point_x: f64, point_y: f64) bool {
-    var vertices: [32]geometry.Point2D = undefined; // Stack allocation for small polygons
+    var vertices: [32]tectonics.geometry.Point2D = undefined; // Stack allocation for small polygons
     const count = @min(vertex_count, 32);
 
     for (0..count) |i| {
-        vertices[i] = geometry.Point2D.init(vertices_x[i], vertices_y[i]);
+        vertices[i] = tectonics.geometry.Point2D.init(vertices_x[i], vertices_y[i]);
     }
 
-    const polygon = geometry.Polygon.init(vertices[0..count]);
-    const point = geometry.Point2D.init(point_x, point_y);
+    const polygon = tectonics.geometry.Polygon.init(vertices[0..count]);
+    const point = tectonics.geometry.Point2D.init(point_x, point_y);
 
     return polygon.containsPoint(point);
 }
 
 export fn manifest_polygon_area(vertices_x: [*]const f64, vertices_y: [*]const f64, vertex_count: usize) f64 {
-    var vertices: [32]geometry.Point2D = undefined;
+    var vertices: [32]tectonics.geometry.Point2D = undefined;
     const count = @min(vertex_count, 32);
 
     for (0..count) |i| {
-        vertices[i] = geometry.Point2D.init(vertices_x[i], vertices_y[i]);
+        vertices[i] = tectonics.geometry.Point2D.init(vertices_x[i], vertices_y[i]);
     }
 
-    const polygon = geometry.Polygon.init(vertices[0..count]);
+    const polygon = tectonics.geometry.Polygon.init(vertices[0..count]);
     return polygon.area();
 }
 
 // Stress field calculations
 export fn manifest_stress_von_mises(stress_xx: f64, stress_yy: f64, stress_xy: f64) f64 {
-    const tensor = stress.StressTensor.init(stress_xx, stress_yy, stress_xy);
+    const tensor = tectonics.stress.StressTensor.init(stress_xx, stress_yy, stress_xy);
     return tensor.vonMisesStress();
 }
 
 export fn manifest_stress_max_principal(stress_xx: f64, stress_yy: f64, stress_xy: f64) f64 {
-    const tensor = stress.StressTensor.init(stress_xx, stress_yy, stress_xy);
+    const tensor = tectonics.stress.StressTensor.init(stress_xx, stress_yy, stress_xy);
     return tensor.maxPrincipalStress();
 }
 
 export fn manifest_stress_principal_angle(stress_xx: f64, stress_yy: f64, stress_xy: f64) f64 {
-    const tensor = stress.StressTensor.init(stress_xx, stress_yy, stress_xy);
+    const tensor = tectonics.stress.StressTensor.init(stress_xx, stress_yy, stress_xy);
     return tensor.principalStressAngle();
 }
 
 // Volcanic hazard calculations
 export fn manifest_volcanic_pyroclastic_hazard(volcano_x: f64, volcano_y: f64, vei_scale: u32, hazard_radius: f64, target_x: f64, target_y: f64, wind_direction: f64, wind_speed: f64) f64 {
-    const volcano_data = volcanic.Volcano{
+    const volcano_data = tectonics.volcanic.Volcano{
         .x = volcano_x,
         .y = volcano_y,
         .elevation = 2000.0,
@@ -208,11 +212,11 @@ export fn manifest_volcanic_pyroclastic_hazard(volcano_x: f64, volcano_y: f64, v
         .eruption_probability = 0.5,
     };
 
-    return volcanic.calculatePyroclasticFlowHazard(&volcano_data, target_x, target_y, wind_direction, wind_speed);
+    return tectonics.volcanic.calculatePyroclasticFlowHazard(&volcano_data, target_x, target_y, wind_direction, wind_speed);
 }
 
 export fn manifest_volcanic_ash_hazard(volcano_x: f64, volcano_y: f64, vei_scale: u32, target_x: f64, target_y: f64, wind_direction: f64, wind_speed: f64, column_height: f64) f64 {
-    const volcano_data = volcanic.Volcano{
+    const volcano_data = tectonics.volcanic.Volcano{
         .x = volcano_x,
         .y = volcano_y,
         .elevation = 2000.0,
@@ -223,7 +227,7 @@ export fn manifest_volcanic_ash_hazard(volcano_x: f64, volcano_y: f64, vei_scale
         .eruption_probability = 0.5,
     };
 
-    return volcanic.calculateAshFallHazard(&volcano_data, target_x, target_y, wind_direction, wind_speed, column_height);
+    return tectonics.volcanic.calculateAshFallHazard(&volcano_data, target_x, target_y, wind_direction, wind_speed, column_height);
 }
 
 // Climate calculations
@@ -253,8 +257,8 @@ export fn manifest_climate_orographic_effects(
 
     climate.orographic.batchOrographicEffects(
         position_data[0..actual_count],
-        elevations[0..actual_count],
-        wind_directions[0..actual_count],
+        @as([]f32, @constCast(elevations[0..actual_count])),
+        @as([]f32, @constCast(wind_directions[0..actual_count])),
         params,
         results[0..actual_count],
     );
@@ -289,8 +293,8 @@ export fn manifest_climate_continental_effects(
 
     climate.continental.batchContinentalEffects(
         position_data[0..actual_count],
-        base_temperatures[0..actual_count],
-        base_humidity[0..actual_count],
+        @as([]i8, @constCast(base_temperatures[0..actual_count])),
+        @as([]u8, @constCast(base_humidity[0..actual_count])),
         params,
         temperature_results[0..actual_count],
         humidity_results[0..actual_count],
@@ -326,9 +330,9 @@ export fn manifest_climate_seasonal_temperature(
     }
 
     climate.seasonal.batchSeasonalTemperature(
-        base_temperatures[0..actual_count],
+        @as([]i8, @constCast(base_temperatures[0..actual_count])),
         zone_data[0..actual_count],
-        latitudes[0..actual_count],
+        @as([]f32, @constCast(latitudes[0..actual_count])),
         seasonal_state,
         params,
         results[0..actual_count],
@@ -364,16 +368,16 @@ export fn manifest_climate_seasonal_rainfall(
     }
 
     climate.seasonal.batchSeasonalRainfall(
-        base_rainfall[0..actual_count],
+        @as([]u16, @constCast(base_rainfall[0..actual_count])),
         zone_data[0..actual_count],
-        latitudes[0..actual_count],
+        @as([]f32, @constCast(latitudes[0..actual_count])),
         seasonal_state,
         params,
         results[0..actual_count],
     );
 }
 
-export fn manifest_climate_process_all(
+pub export fn manifest_climate_process_all(
     positions_x: [*]const f32,
     positions_y: [*]const f32,
     elevations: [*]const f32,
@@ -395,11 +399,11 @@ export fn manifest_climate_process_all(
 
     climate.simpleClimateProcessing(
         position_data[0..actual_count],
-        elevations[0..actual_count],
-        base_temperatures[0..actual_count],
-        base_rainfall[0..actual_count],
-        base_humidity[0..actual_count],
-        wind_directions[0..actual_count],
+        @as([]f32, @constCast(elevations[0..actual_count])),
+        @as([]i8, @constCast(base_temperatures[0..actual_count])),
+        @as([]f32, @constCast(base_rainfall[0..actual_count])),
+        @as([]u8, @constCast(base_humidity[0..actual_count])),
+        @as([]f32, @constCast(wind_directions[0..actual_count])),
         temperature_results[0..actual_count],
         rainfall_results[0..actual_count],
         humidity_results[0..actual_count],
@@ -471,7 +475,7 @@ export fn manifest_climate_rain_shadow(
 
     climate.orographic.calculateRainShadowEffect(
         position_data[0..actual_count],
-        elevations[0..actual_count],
+        @as([]f32, @constCast(elevations[0..actual_count])),
         mountain_data[0..actual_mountain_count],
         wind_direction,
         shadow_factor,
@@ -552,8 +556,8 @@ export fn manifest_climate_interpolate_batch(
         center_climate_data[0..actual_center_count],
         neighbor_pos_data[0..actual_neighbor_count],
         neighbor_climate_data[0..actual_neighbor_count],
-        neighbor_counts[0..actual_center_count],
-        neighbor_offsets[0..actual_center_count],
+        @as([]u32, @constCast(neighbor_counts[0..actual_center_count])),
+        @as([]u32, @constCast(neighbor_offsets[0..actual_center_count])),
         params,
         results_data[0..actual_center_count],
     );
@@ -674,21 +678,21 @@ export fn manifest_climate_gaussian_smoothing(
 
 // Batch distance calculations
 export fn manifest_batch_plate_distances(plates_x: [*]const f64, plates_y: [*]const f64, plate_count: usize, distances: [*]f64) void {
-    var plate_data: [64]plates.TectonicPlate = undefined; // Stack allocation
+    var plate_data: [64]tectonics.plates.TectonicPlate = undefined; // Stack allocation
     const count = @min(plate_count, 64);
 
     for (0..count) |i| {
-        plate_data[i] = plates.TectonicPlate{
+        plate_data[i] = tectonics.plates.TectonicPlate{
             .id = @intCast(i),
-            .center = plates.Vec2.init(plates_x[i], plates_y[i]),
-            .velocity = plates.Vec2.init(0.0, 0.0),
+            .center = tectonics.plates.Vec2.init(plates_x[i], plates_y[i]),
+            .velocity = tectonics.plates.Vec2.init(0.0, 0.0),
             .age_million_years = 50.0,
             .density = 2700.0,
             .area = 1000000.0,
         };
     }
 
-    plates.batchDistanceCalculations(plate_data[0..count], distances[0 .. count * count]);
+    tectonics.plates.batchDistanceCalculations(plate_data[0..count], distances[0 .. count * count]);
 }
 
 // Hydrology FFI exports
@@ -802,7 +806,7 @@ export fn manifest_watershed_time_of_concentration(stream_length: f64, relief: f
     const allocator = gpa.allocator();
 
     var watershed_data = hydrology.watersheds.Watershed.init(1, 0, 0, 100.0, allocator);
-    defer watershed_data.deinit();
+    defer watershed_data.deinit(allocator);
 
     watershed_data.stream_length = stream_length;
     watershed_data.relief = relief;
@@ -810,7 +814,7 @@ export fn manifest_watershed_time_of_concentration(stream_length: f64, relief: f
     return watershed_data.calculateTimeOfConcentration();
 }
 
-export fn manifest_batch_manning_calculations(
+pub export fn manifest_batch_manning_calculations(
     areas: [*]const f64,
     wetted_perimeters: [*]const f64,
     slopes: [*]const f64,
@@ -843,7 +847,7 @@ export fn manifest_batch_slope_calculations(
     slopes: [*]f64,
 ) void {
     const elevation_slice = elevations[0 .. width * height];
-    var slopes_slice = slopes[0 .. width * height];
+    const slopes_slice = slopes[0 .. width * height];
     hydrology.flow.batchCalculateSlopes(elevation_slice, width, height, cell_size, slopes_slice);
 }
 
@@ -860,18 +864,18 @@ export fn manifest_batch_point_distances(
     const actual_count1 = @min(count1, max_points);
     const actual_count2 = @min(count2, max_points);
 
-    var points1_data: [max_points]geometry.Point2D = undefined;
-    var points2_data: [max_points]geometry.Point2D = undefined;
+    var points1_data: [max_points]tectonics.geometry.Point2D = undefined;
+    var points2_data: [max_points]tectonics.geometry.Point2D = undefined;
 
     for (0..actual_count1) |i| {
-        points1_data[i] = geometry.Point2D.init(points1_x[i], points1_y[i]);
+        points1_data[i] = tectonics.geometry.Point2D.init(points1_x[i], points1_y[i]);
     }
 
     for (0..actual_count2) |i| {
-        points2_data[i] = geometry.Point2D.init(points2_x[i], points2_y[i]);
+        points2_data[i] = tectonics.geometry.Point2D.init(points2_x[i], points2_y[i]);
     }
 
-    geometry.batchPointDistances(
+    tectonics.geometry.batchPointDistances(
         points1_data[0..actual_count1],
         points2_data[0..actual_count2],
         distances[0 .. actual_count1 * actual_count2],

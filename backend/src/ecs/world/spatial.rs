@@ -38,9 +38,10 @@ impl GameWorld {
     /// Find all entities of a specific type at a position
     pub fn entities_at_position_with_component<T: Component>(&mut self, pos: IVec2) -> Vec<Entity> {
         let spatial_entities = self.entities_at_position(pos);
-        let mut query = self.world.query_filtered::<Entity, With<T>>();
+        let world = self.world_mut();
+        let mut query = world.query_filtered::<Entity, With<T>>();
         let entities_with_component: std::collections::HashSet<Entity> = 
-            query.iter(&self.world).collect();
+            query.iter(world).collect();
         
         spatial_entities.into_iter()
             .filter(|e| entities_with_component.contains(e))
@@ -50,9 +51,10 @@ impl GameWorld {
     /// Find all entities of a specific type within range
     pub fn entities_in_range_with_component<T: Component>(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
         let spatial_entities = self.entities_in_range(center, radius);
-        let mut query = self.world.query_filtered::<Entity, With<T>>();
+        let world = self.world_mut();
+        let mut query = world.query_filtered::<Entity, With<T>>();
         let entities_with_component: std::collections::HashSet<Entity> = 
-            query.iter(&self.world).collect();
+            query.iter(world).collect();
         
         spatial_entities.into_iter()
             .filter(|e| entities_with_component.contains(e))
@@ -100,9 +102,10 @@ impl GameWorld {
     /// Find entities with multiple components in range (replaces custom archetype queries)
     pub fn entities_in_range_with_components_2<T1: Component, T2: Component>(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
         let spatial_entities = self.entities_in_range(center, radius);
-        let mut query = self.world.query_filtered::<Entity, (With<T1>, With<T2>)>();
+        let world = self.world_mut();
+        let mut query = world.query_filtered::<Entity, (With<T1>, With<T2>)>();
         let entities_with_components: std::collections::HashSet<Entity> = 
-            query.iter(&self.world).collect();
+            query.iter(world).collect();
         
         spatial_entities.into_iter()
             .filter(|e| entities_with_components.contains(e))
@@ -112,9 +115,10 @@ impl GameWorld {
     /// Find entities with three components in range
     pub fn entities_in_range_with_components_3<T1: Component, T2: Component, T3: Component>(&mut self, center: IVec2, radius: u32) -> Vec<Entity> {
         let spatial_entities = self.entities_in_range(center, radius);
-        let mut query = self.world.query_filtered::<Entity, (With<T1>, With<T2>, With<T3>)>();
+        let world = self.world_mut();
+        let mut query = world.query_filtered::<Entity, (With<T1>, With<T2>, With<T3>)>();
         let entities_with_components: std::collections::HashSet<Entity> = 
-            query.iter(&self.world).collect();
+            query.iter(world).collect();
         
         spatial_entities.into_iter()
             .filter(|e| entities_with_components.contains(e))

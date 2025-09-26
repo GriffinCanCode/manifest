@@ -551,6 +551,9 @@ impl GameCache {
                 false // For now, only invalidate pathfinding on broader changes
             },
             
+            // Tectonic caches are geological and not entity-specific
+            CacheKey::Tectonic(_) => false,
+            
             // Player and Rendering caches are not typically entity-specific
             CacheKey::Player(_) | CacheKey::Rendering(_) => false,
         }

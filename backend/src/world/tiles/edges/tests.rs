@@ -5,6 +5,7 @@ use super::{
     config::EdgeDetectionConfig,
 };
 use crate::world::tiles::adjacency::HexDirection;
+use crate::world::tiles::chunks::types::TileId;
 
 #[test]
 fn test_edge_type_properties() {
@@ -14,10 +15,10 @@ fn test_edge_type_properties() {
 
 #[test]
 fn test_tile_edge_creation() {
-    let edge = TileEdge::new(1, 2, HexDirection::East, EdgeType::TerrainBoundary, 0.5);
+    let edge = TileEdge::new(TileId(1), TileId(2), HexDirection::East, EdgeType::TerrainBoundary, 0.5);
     
-    assert_eq!(edge.from_tile, 1);
-    assert_eq!(edge.to_tile, 2);
+    assert_eq!(edge.from_tile, TileId(1));
+    assert_eq!(edge.to_tile, TileId(2));
     assert_eq!(edge.direction, HexDirection::East);
     assert_eq!(edge.edge_type, EdgeType::TerrainBoundary);
     assert_eq!(edge.strength, 0.5);
@@ -26,8 +27,8 @@ fn test_tile_edge_creation() {
 
 #[test]
 fn test_edge_intensity() {
-    let weak_edge = TileEdge::new(1, 2, HexDirection::East, EdgeType::TerrainBoundary, 0.1);
-    let strong_edge = TileEdge::new(1, 2, HexDirection::East, EdgeType::TerrainBoundary, 0.9);
+    let weak_edge = TileEdge::new(TileId(1), TileId(2), HexDirection::East, EdgeType::TerrainBoundary, 0.1);
+    let strong_edge = TileEdge::new(TileId(1), TileId(2), HexDirection::East, EdgeType::TerrainBoundary, 0.9);
     
     assert_eq!(weak_edge.intensity(), EdgeIntensity::VeryWeak);
     assert_eq!(strong_edge.intensity(), EdgeIntensity::VeryStrong);

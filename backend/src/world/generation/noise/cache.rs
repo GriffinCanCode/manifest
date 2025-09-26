@@ -408,8 +408,8 @@ mod tests {
         
         let stats = cache.stats();
         assert_eq!(stats.total_hits + stats.total_misses, 2);
-        assert_eq!(stats.hits, 1);
-        assert_eq!(stats.misses, 1);
-        assert_eq!(stats.hit_rate, 0.5);
+        assert_eq!(stats.total_hits, 1);
+        assert_eq!(stats.total_misses, 1);
+        assert_eq!(stats.hit_ratio, 0.5);
     }
 }

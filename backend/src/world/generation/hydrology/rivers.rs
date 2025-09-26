@@ -6,6 +6,7 @@
 use super::{HydrologyConfig, River, RiverSegment, FlowAccumulation, Watershed};
 use super::zig_ffi::{zig_find_river_sources, zig_river_astar_pathfinding, ZigRiverPath};
 use crate::core::scheduler::SchedulerError;
+use crate::world::{WatershedId, RiverId};
 use nalgebra::Vector2;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -152,11 +153,11 @@ impl RiverGenerator {
         let watershed_id = watersheds.iter()
             .find(|w| w.contains_point(source.x, source.y))
             .map(|w| w.id)
-            .unwrap_or(0);
+            .unwrap_or(WatershedId(0));
 
         // Use A* pathfinding to find path from source to watershed outlet
         let watershed = watersheds.iter().find(|w| w.id == watershed_id);
-        let mouth = watershed.map(|w| w.outlet).unwrap_or(source);
+        let mouth = watershed.map(|w| w.outlet_position).unwrap_or(source);
 
         let path = self.find_river_path(source, mouth, flow_accumulation)?;
         
@@ -164,16 +165,13 @@ impl RiverGenerator {
         let segments = self.create_river_segments(&path, flow_accumulation);
         
         let length = self.calculate_river_length(&segments);
-        let average_flow = segments.iter().map(|s| s.flow_rate).sum::<f32>() / segments.len() as f32;
+        let total_discharge = segments.iter().map(|s| s.flow_rate).sum::<f32>();
 
         Ok(River {
-            id: river_id,
-            watershed_id,
-            source,
-            mouth,
+            id: RiverId(river_id),
             segments,
             length,
-            average_flow,
+            discharge: total_discharge,
         })
     }
 
@@ -214,7 +212,7 @@ impl RiverGenerator {
             Ok(world_path)
         } else {
             // Fallback: straight line path if pathfinding fails
-            log::warn!("River pathfinding failed, using straight line fallback");
+            tracing::warn!("River pathfinding failed, using straight line fallback");
             Ok(vec![start, goal])
         }
     }
@@ -242,7 +240,7 @@ impl RiverGenerator {
         // Prefer following flow direction (lower cost)
         // Rivers naturally follow the steepest descent
         let base_cost = 1.0;
-        let flow_bonus = flow_direction.magnitude * 0.1; // Bonus for following flow
+        let flow_bonus = flow_direction.magnitude() * 0.1; // Bonus for following flow
         
         base_cost - flow_bonus.min(0.8) // Ensure cost stays positive
     }

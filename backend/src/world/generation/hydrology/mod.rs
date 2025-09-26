@@ -146,28 +146,23 @@ impl HydrologicalSystem {
         let results = Arc::new(std::sync::Mutex::new(None));
         let results_clone = results.clone();
         
-        let batch = TaskBatch::new(
-            "Hydrology Generation (Zig)".to_string(),
-            vec![SchedulerResource::read::<crate::world::generation::terrain::ElevationData>()],
-            vec![SchedulerResource::write::<HydrologyResult>()],
-            vec![],
-            vec![String::new(); 1], // Single task
-            vec![SchedulerError::TaskFailed("Hydrology generation task failed".to_string()); 1],
-            vec![move || -> Result<(), SchedulerError> {
-                let hydrology_result = Self::generate_hydrology_internal(&config, &elevation_data_f64, world_size)?;
-                *results_clone.lock().unwrap() = Some(hydrology_result);
-                Ok(())
-            }],
-        );
+        let mut batch = TaskBatch::new(crate::core::scheduler::Stage::WorldGeneration);
+        batch.add_task("Hydrology Generation (Zig)", move || -> Result<(), SchedulerError> {
+            let hydrology_result = Self::generate_hydrology_internal(&config, &elevation_data_f64, world_size)?;
+            *results_clone.lock().unwrap() = Some(hydrology_result);
+            Ok(())
+        });
         
         scheduler.add_batch(batch);
-        scheduler.run_stage(Stage::Update).map_err(|errors| {
+        scheduler.run_stage(crate::core::scheduler::Stage::WorldGeneration).map_err(|errors| {
             errors.into_iter().next().unwrap_or_else(|| SchedulerError::TaskFailed("Unknown scheduler error".to_string()))
         })?;
         
-        results.lock().unwrap().take().ok_or_else(|| 
+        let final_result = results.lock().unwrap().take().ok_or_else(|| 
             SchedulerError::TaskFailed("Hydrology generation failed to produce results".to_string())
-        )
+        );
+        
+        final_result
     }
 
     /// Direct generation using Zig backend
@@ -355,6 +350,8 @@ impl HydrologicalSystem {
                 depth: config.lake_min_depth + i as f32,
                 volume: std::f32::consts::PI * radius * radius * (config.lake_min_depth + i as f32),
                 water_level: 100.0 + i as f32,
+                surface_elevation: 100.0 + i as f32, // Same as water level initially
+                drainage_rivers: Vec::new(), // Will be populated later
             });
         }
 
@@ -384,6 +381,14 @@ impl HydrologicalSystem {
                 permeability: 1e-5,
                 porosity: 0.3,
                 hydraulic_head: 50.0,
+                water_table_elevation: 40.0 + i as f32 * 5.0, // Reasonable default
+                recharge_rate: 0.1, // m/year, reasonable default
+                boundary: vec![ // Simple circular boundary approximation
+                    Vector2::new(center_x - extent/2.0, center_y),
+                    Vector2::new(center_x, center_y + extent/2.0),
+                    Vector2::new(center_x + extent/2.0, center_y),
+                    Vector2::new(center_x, center_y - extent/2.0),
+                ],
                 aquifer_type: match i % 3 {
                     0 => AquiferType::Unconfined,
                     1 => AquiferType::Confined,
@@ -417,15 +422,16 @@ impl HydrologicalSystem {
                 let spring_y = aquifer.center.y + angle.sin() * distance;
                 
                 let head_difference = aquifer.hydraulic_head - 30.0; // Spring elevation
-                let discharge = calculate_spring_discharge(head_difference, aquifer.aquifer_type);
+                let discharge = calculate_spring_discharge(head_difference as f64, aquifer.aquifer_type);
                 
                 if discharge > 0.001 { // Minimum discharge threshold
                     springs.push(Spring {
                         id: SpringId(spring_id),
                         position: Vector2::new(spring_x, spring_y),
-                        discharge,
+                        flow_rate: discharge as f32,
                         temperature: 15.0 + aquifer.depth * 0.025, // Geothermal gradient
-                        aquifer_connection: aquifer.id,
+                        aquifer_id: Some(aquifer.id),
+                        mineral_content: 0.3, // Default mineral content
                         spring_type: SpringType::Gravity,
                     });
                     spring_id += 1;
@@ -456,6 +462,8 @@ impl HydrologicalSystem {
                     water_depth: 0.3, // Shallow water
                     vegetation_density: 0.8,
                     wetland_type: WetlandType::Marsh,
+                    biodiversity_index: 0.7, // High biodiversity near lakes
+                    seasonal_variation: 0.4, // Moderate seasonal changes
                 });
                 wetland_id += 1;
             }
@@ -476,6 +484,8 @@ impl HydrologicalSystem {
                 water_depth: 0.5,
                 vegetation_density: 0.6,
                 wetland_type: if i % 2 == 0 { WetlandType::Swamp } else { WetlandType::Bog },
+                biodiversity_index: 0.5, // Moderate biodiversity
+                seasonal_variation: 0.6, // Higher seasonal variation
             });
             wetland_id += 1;
         }

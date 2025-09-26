@@ -278,7 +278,7 @@ impl VerificationSystem {
     }
 
     /// Fast hash of entities - deterministic implementation
-    fn hash_entities(&self, world: &World) -> u64 {
+    fn hash_entities(&self, world: &mut World) -> u64 {
         use std::hash::Hash;
         use crate::ecs::components::{Position, Movement, Health, Owner, Name, Renderable};
         use crate::ecs::hierarchy::{Relationships, Hierarchical};

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import { useGameStore } from '@/stores/game-store';
 
@@ -9,10 +9,20 @@ interface GameUIProps {
 
 const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
   const { gameState } = useGameStore();
+  const [isSaveBrowserOpen, setIsSaveBrowserOpen] = useState(false);
 
   if (!gameState) {
     return null;
   }
+
+  const handleLoadGameClick = () => {
+    setIsSaveBrowserOpen(true);
+  };
+
+  const handleSaveSelect = (saveName: string) => {
+    onLoad(saveName);
+    setIsSaveBrowserOpen(false);
+  };
 
   return (
     <div className='game-ui'>
@@ -37,7 +47,7 @@ const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
           <button className='ui-button' onClick={onSave}>
             Save Game
           </button>
-          <button className='ui-button' onClick={() => onLoad('test_save')}>
+          <button className='ui-button' onClick={handleLoadGameClick}>
             Load Game
           </button>
           <button
@@ -179,6 +189,13 @@ const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
           transform: translateY(-1px);
         }
       `}</style>
+
+      {/* Save Browser Modal */}
+      <SaveBrowser
+        isOpen={isSaveBrowserOpen}
+        onSaveSelect={handleSaveSelect}
+        onClose={() => setIsSaveBrowserOpen(false)}
+      />
     </div>
   );
 };

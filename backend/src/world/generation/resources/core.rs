@@ -337,9 +337,10 @@ impl ResourceDistributionSystem {
                     vec![(id % 1000) as i32, (id / 1000) as i32]
                 }).collect::<Vec<_>>());
                 
+                // Convert to Lua-compatible types - use owned String instead of reference
                 let veins: Vec<ResourceVein> = self.lua_handler.call_function(
                     "generate_resource_veins",
-                    (&resource_type, &lua_positions),
+                    (resource_type.clone(), lua_positions.to_string()),
                 )?;
                 
                 // Apply veins to world entities

@@ -74,10 +74,15 @@ pub const AquiferCell = struct {
             .unconfined => porosity * 0.8, // Effective porosity
             else => 0.0,
         };
-        const specific_storage = switch (aquifer_type) {
-            .confined, .leaky_confined => 1e-5, // Typical value
-            else => 0.0,
-        };
+        var specific_storage: f64 = 0.0;
+        switch (aquifer_type) {
+            .confined, .leaky_confined => {
+                specific_storage = 1e-5; // Typical value
+            },
+            else => {
+                specific_storage = 0.0;
+            },
+        }
 
         return AquiferCell{
             .hydraulic_head = head,
@@ -382,6 +387,7 @@ pub fn generateSprings(
     elevation_grid: []const f64,
     springs: *std.ArrayList(Spring),
     min_discharge: f64,
+    allocator: std.mem.Allocator,
 ) !void {
     for (0..groundwater_grid.height) |y| {
         for (0..groundwater_grid.width) |x| {
@@ -409,7 +415,7 @@ pub fn generateSprings(
                 );
 
                 if (spring.discharge >= min_discharge) {
-                    try springs.append(spring);
+                    try springs.append(allocator, spring);
                 }
             }
         }
@@ -544,7 +550,7 @@ fn wellFunction(u: f64) f64 {
     if (u < 0.01) {
         // Series expansion for small u
         const euler_gamma = 0.5772156649015329;
-        return -euler_gamma - std.math.log(u) + u - u * u / 4.0 + u * u * u / 18.0;
+        return -euler_gamma - @log(u) + u - u * u / 4.0 + u * u * u / 18.0;
     } else {
         // Numerical integration approximation
         var result: f64 = 0.0;

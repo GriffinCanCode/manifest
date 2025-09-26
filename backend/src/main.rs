@@ -19,37 +19,41 @@ use manifest::commands::{self, AppState};
 use manifest::core::benchmarks;
 
 fn main() {
-    // Initialize logging system
-    let logging_config = if cfg!(debug_assertions) {
-        LoggingConfig::development()
-    } else {
-        LoggingConfig::production()
-    };
-    
-    let _logging_system = LoggingSystem::init(logging_config)
-        .expect("Failed to initialize logging system");
-
-    info!(
-        target: "manifest::main",
-        version = env!("CARGO_PKG_VERSION"),
-        mode = if cfg!(debug_assertions) { "development" } else { "production" },
-        "🎮 Manifest - Grand Strategy Game"
-    );
-    info!("==================================");
-    
-    // Run quick performance test for hashing
-    #[cfg(feature = "bench")]
-    benchmarks::quick_performance_test();
-    
-    // Initialize the game systems...
-    info!(
-        target: "manifest::core",
-        subsystem = "initialization",
-        "🔧 Initializing core systems with optimized hashing..."
-    );
-
     tauri::Builder::default()
         .setup(|app| {
+            // Initialize basic console-only logging to avoid Tokio runtime issues
+            let mut logging_config = if cfg!(debug_assertions) {
+                LoggingConfig::development()
+            } else {
+                LoggingConfig::production()
+            };
+            
+            // Disable file logging temporarily to avoid async runtime issues during startup
+            logging_config.files.clear();
+            
+            let _logging_system = LoggingSystem::init(logging_config)
+                .expect("Failed to initialize logging system");
+
+            info!(
+                target: "manifest::main",
+                version = env!("CARGO_PKG_VERSION"),
+                mode = if cfg!(debug_assertions) { "development" } else { "production" },
+                "🎮 Manifest - Grand Strategy Game"
+            );
+            info!("==================================");
+            
+            // Run quick performance test for hashing
+            #[cfg(feature = "bench")]
+            benchmarks::quick_performance_test();
+            
+            // Initialize the game systems...
+            info!(
+                target: "manifest::core",
+                subsystem = "initialization",
+                "🔧 Initializing core systems with optimized hashing..."
+            );
+            
+            // Continue with existing setup logic...
             // Get application data directory for saves
             let app_data_dir = app.path().app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("./saves"));
@@ -112,6 +116,16 @@ fn main() {
             commands::load_game,
             commands::list_saves,
             commands::get_scheduler_metrics,
+            // Save thumbnail commands
+            commands::save_thumbnail_metadata,
+            commands::load_thumbnail_metadata,
+            // Tile streaming commands
+            commands::tile_streaming::stream_tiles,
+            commands::tile_streaming::get_tile,
+            commands::tile_streaming::get_tile_updates,
+            // Enhanced IPC commands
+            commands::execute_batch_commands,
+            commands::health_check,
             #[cfg(debug_assertions)]
             commands::get_reload_stats,
         ])

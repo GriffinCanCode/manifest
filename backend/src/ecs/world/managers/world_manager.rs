@@ -146,9 +146,9 @@ impl WorldManager {
     /// Update game time with delta time
     pub fn update_game_time(&mut self, delta: f32) {
         // Update game time through simulation state
-        let simulation_state = self.world.get_resource::<crate::core::time::SimulationState>().cloned();
+        let simulation_state = self.world().get_resource::<crate::core::time::SimulationState>().cloned();
         if let (Some(mut game_time), Some(simulation_state)) = (
-            self.world.get_resource_mut::<GameTime>(),
+            self.world_mut().get_resource_mut::<GameTime>(),
             simulation_state
         ) {
             game_time.update(delta, &simulation_state);
@@ -157,34 +157,34 @@ impl WorldManager {
 
     /// Get current turn number
     pub fn get_turn(&self) -> u32 {
-        self.world.get_resource::<GameTime>()
+        self.world().get_resource::<GameTime>()
             .map(|game_time| game_time.turn)
             .unwrap_or(1)
     }
 
     /// Check if the game is paused
     pub fn is_paused(&self) -> bool {
-        self.world.get_resource::<GameTime>()
+        self.world().get_resource::<GameTime>()
             .map(|game_time| game_time.paused)
             .unwrap_or(false)
     }
 
     /// Set paused state
     pub fn set_paused(&mut self, paused: bool) {
-        if let Some(mut game_time) = self.world.get_resource_mut::<GameTime>() {
+        if let Some(mut game_time) = self.world_mut().get_resource_mut::<GameTime>() {
             game_time.paused = paused;
         }
     }
 
     /// Clear all entities while preserving resources
     pub fn clear_entities(&mut self) {
-        self.world.clear_entities();
+        self.world_mut().clear_entities();
         self.increment_world_generation();
     }
 
     /// Get hierarchy queries resource
     pub fn hierarchy_queries(&self) -> Option<&HierarchyQueries> {
-        self.world.get_resource::<HierarchyQueries>()
+        self.world().get_resource::<HierarchyQueries>()
     }
 }
 

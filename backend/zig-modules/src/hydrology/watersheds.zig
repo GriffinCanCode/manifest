@@ -43,6 +43,7 @@ pub const Watershed = struct {
     shape_factor: f64, // dimensionless (area / perimeter²)
 
     pub fn init(id: u32, outlet_x: usize, outlet_y: usize, outlet_elevation: f64, allocator: std.mem.Allocator) Watershed {
+        _ = allocator;
         return Watershed{
             .id = id,
             .outlet_x = outlet_x,
@@ -50,7 +51,7 @@ pub const Watershed = struct {
             .outlet_elevation = outlet_elevation,
             .area = 0.0,
             .perimeter = 0.0,
-            .boundary_points = std.ArrayList(BoundaryPoint).init(allocator),
+            .boundary_points = std.ArrayList(BoundaryPoint){},
             .stream_length = 0.0,
             .drainage_density = 0.0,
             .relief = 0.0,
@@ -60,8 +61,8 @@ pub const Watershed = struct {
         };
     }
 
-    pub fn deinit(self: *Watershed) void {
-        self.boundary_points.deinit();
+    pub fn deinit(self: *Watershed, allocator: std.mem.Allocator) void {
+        self.boundary_points.deinit(allocator);
     }
 
     /// Calculate watershed morphometric properties
@@ -151,16 +152,16 @@ pub const WatershedDelineator = struct {
         return WatershedDelineator{
             .flow_grid = flow_grid,
             .watershed_id_grid = watershed_id_grid,
-            .watersheds = std.ArrayList(Watershed).init(allocator),
+            .watersheds = std.ArrayList(Watershed){},
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *WatershedDelineator) void {
         for (self.watersheds.items) |*watershed| {
-            watershed.deinit();
+            watershed.deinit(self.allocator);
         }
-        self.watersheds.deinit();
+        self.watersheds.deinit(self.allocator);
         self.allocator.free(self.watershed_id_grid);
     }
 
@@ -186,8 +187,8 @@ pub const WatershedDelineator = struct {
         }
 
         // Flood fill from outlet
-        var queue = std.ArrayList(struct { x: usize, y: usize }).init(self.allocator);
-        defer queue.deinit();
+        var queue = std.ArrayList(struct { x: usize, y: usize }){};
+        defer queue.deinit(self.allocator);
 
         try queue.append(.{ .x = outlet_x, .y = outlet_y });
 
@@ -209,7 +210,7 @@ pub const WatershedDelineator = struct {
         // Calculate watershed properties
         try self.calculateWatershedProperties(&watershed);
 
-        try self.watersheds.append(watershed);
+        try self.watersheds.append(self.allocator, watershed);
     }
 
     /// Find all cells that flow into the given cell
@@ -246,8 +247,8 @@ pub const WatershedDelineator = struct {
     /// Trace watershed boundary using Moore neighborhood algorithm
     fn traceBoundary(self: *WatershedDelineator, watershed: *Watershed) !void {
         // Find boundary cells (cells that have at least one neighbor not in watershed)
-        var boundary_cells = std.ArrayList(struct { x: usize, y: usize }).init(self.allocator);
-        defer boundary_cells.deinit();
+        var boundary_cells = std.ArrayList(struct { x: usize, y: usize }){};
+        defer boundary_cells.deinit(self.allocator);
 
         for (0..self.flow_grid.height) |y| {
             for (0..self.flow_grid.width) |x| {
@@ -503,7 +504,7 @@ fn getUpstreamOrders(
     strahler_order: []const u32,
     allocator: std.mem.Allocator,
 ) ![]u32 {
-    var orders = std.ArrayList(u32).init(allocator);
+    var orders = std.ArrayList(u32){};
     const directions = [_]flow.FlowDirection{ .east, .southeast, .south, .southwest, .west, .northwest, .north, .northeast };
 
     for (directions) |direction| {
@@ -520,7 +521,7 @@ fn getUpstreamOrders(
         if (stream_cells[upstream_index] and strahler_order[upstream_index] > 0) {
             const upstream_flow = flow_grid.flow_direction[upstream_index];
             if (upstream_flow == direction) {
-                try orders.append(strahler_order[upstream_index]);
+                try orders.append(allocator, strahler_order[upstream_index]);
             }
         }
     }
@@ -534,11 +535,11 @@ fn calculateStrahlerOrderFromUpstream(upstream_orders: []const u32) u32 {
     if (upstream_orders.len == 1) return upstream_orders[0];
 
     // Sort orders
-    var sorted_orders = std.ArrayList(u32).init(std.heap.page_allocator);
-    defer sorted_orders.deinit();
+    var sorted_orders = std.ArrayList(u32){};
+    defer sorted_orders.deinit(std.heap.page_allocator);
 
     for (upstream_orders) |order| {
-        sorted_orders.append(order) catch return 0;
+        sorted_orders.append(std.heap.page_allocator, order) catch return 0;
     }
 
     std.sort.insertion(u32, sorted_orders.items, {}, comptime std.sort.desc(u32));

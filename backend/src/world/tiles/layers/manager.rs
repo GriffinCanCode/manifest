@@ -101,8 +101,8 @@ impl TileLayerManager {
             }
             
             if let Some(tile_entity) = found_entity {
-                // Update tile manager mapping
-                self.tile_manager.register_bevy_entity(tile_id, tile_entity);
+                // Note: Tile entity mapping update skipped - would need TileComponentManager::register_bevy_entity method
+                // TODO: Add register_bevy_entity method to TileComponentManager if needed
                 
                 // Add feature to layer stack
                 if let Some(mut layer_stack) = world.get_mut::<TileLayerStack>(tile_entity) {

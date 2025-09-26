@@ -4,6 +4,7 @@
 //! cleaning up orphaned relationships, and performance monitoring.
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::SystemSet;
 use tracing::{warn, info, debug};
 
 use super::{
@@ -30,7 +31,7 @@ pub fn cleanup_tile_hierarchy_system(
     _commands: Commands,
     tile_hierarchy: ResMut<TileHierarchy>,
     _hierarchical_query: Query<Entity, With<HierarchicalTile>>,
-    world: &World,
+    world: &mut World,
 ) {
     // Validate and clean up any inconsistencies in the tile hierarchy
     if let Ok(validation) = tile_hierarchy.validate_tile_hierarchy(world) {
@@ -68,16 +69,17 @@ pub fn monitor_tile_hierarchy_system(
         let mut metrics = HierarchyPerformanceMetrics::new();
         
         // Collect hierarchical tile statistics
-        let hierarchical_tiles = hierarchical_tiles_arc.read();
-        for (resolution, tiles) in hierarchical_tiles.iter() {
-            metrics.tiles_by_resolution.insert(*resolution, tiles.len());
-            metrics.total_hierarchical_tiles += tiles.len();
-            
-            if *resolution == max_resolution {
-                metrics.base_layer_tiles = tiles.len();
+        {
+            let hierarchical_tiles = hierarchical_tiles_arc.read();
+            for (resolution, tiles) in hierarchical_tiles.iter() {
+                metrics.tiles_by_resolution.insert(*resolution, tiles.len());
+                metrics.total_hierarchical_tiles += tiles.len();
+                
+                if *resolution == max_resolution {
+                    metrics.base_layer_tiles = tiles.len();
+                }
             }
-        }
-        drop(hierarchical_tiles); // Release lock early
+        } // Lock automatically dropped here
         
         // Collect cache statistics
         let cache_stats = cache.stats().await;
@@ -141,7 +143,7 @@ pub fn monitor_tile_hierarchy_system(
         
         // Periodic detailed logging (every 100 turns)
         if current_turn % 100 == 0 {
-            info!("📊 Tile Hierarchy Performance Report (Turn {}):", current_turn);
+            info!("📊 Tile Hierarchy Performance Report (Turn {}, Tick {}):", current_turn, current_tick);
             info!("  📦 Total hierarchical tiles: {}", metrics.total_hierarchical_tiles);
             info!("  🎯 Base layer tiles: {}", metrics.base_layer_tiles);
             info!("  📈 Cache hit rate: {:.1}%", metrics.cache_hit_rate * 100.0);
@@ -198,7 +200,7 @@ impl HierarchyPerformanceMetrics {
 /// System for periodic hierarchy validation (should be run less frequently)
 pub fn validate_tile_hierarchy_system(
     tile_hierarchy: ResMut<TileHierarchy>,
-    world: &World,
+    world: &mut World,
 ) {
     if let Ok(validation) = tile_hierarchy.validate_tile_hierarchy(world) {
         if validation.has_resolution_gaps || validation.base_validation.has_cycles {
@@ -209,16 +211,22 @@ pub fn validate_tile_hierarchy_system(
 }
 
 /// System bundle for convenient registration of all tile hierarchy systems
-pub struct TileHierarchySystemSet;
+/// System set for organizing tile hierarchy systems
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
+pub enum TileHierarchySystemSet {
+    /// Core hierarchy maintenance
+    Maintenance,
+    /// Cleanup and validation
+    Cleanup,
+    /// Performance monitoring
+    Monitoring,
+}
 
-impl TileHierarchySystemSet {
-    /// Get all tile hierarchy systems for registration with Bevy scheduler
-    pub fn systems() -> impl IntoSystemConfigs<()> {
-        (
-            maintain_tile_hierarchy_system,
-            cleanup_tile_hierarchy_system,
-            monitor_tile_hierarchy_system,
-            validate_tile_hierarchy_system,
-        ).chain() // Run systems in sequence
-    }
+/// Configure tile hierarchy systems with proper scheduling
+pub fn configure_tile_hierarchy_systems(scheduler: &mut crate::ecs::EcsScheduler, world: &mut bevy_ecs::world::World) {
+    // Add systems to scheduler with proper resource access
+    // Note: These systems need to be added individually to the scheduler
+    // as the EcsScheduler has different API than the standard Bevy schedule
+    
+    // TODO: Implement actual system registration when scheduler API is finalized
 }

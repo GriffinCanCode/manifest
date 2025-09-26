@@ -155,7 +155,7 @@ impl TileSpatialIndex {
         let cache_key = CacheKey::Spatial(crate::core::caching::SpatialCacheKey::entities_in_range(
             glam::IVec2::new(center.q, center.r), 
             radius as u32, 
-            self.world_generation()
+            *self.generation.read() as u32
         ));
         
         // Try to get from cache first (synchronous check)

@@ -99,6 +99,11 @@ impl TileLayer {
         &self.features
     }
 
+    /// Get mutable access to all features
+    pub fn features_mut(&mut self) -> &mut [LayerFeature] {
+        &mut self.features
+    }
+
     /// Get features by type
     pub fn features_by_type(&self, feature_type: FeatureType) -> impl Iterator<Item = &LayerFeature> {
         self.features.iter().filter(move |f| f.feature_type == feature_type)
@@ -122,6 +127,16 @@ impl TileLayer {
     /// Get layer generation for change detection
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// Set layer generation (for manual change tracking)
+    pub fn set_generation(&mut self, generation: u64) {
+        self.generation = generation;
+    }
+
+    /// Increment layer generation
+    pub fn increment_generation(&mut self) {
+        self.generation += 1;
     }
 
     /// Clear all features from layer

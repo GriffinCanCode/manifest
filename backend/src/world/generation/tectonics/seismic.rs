@@ -507,7 +507,7 @@ impl SeismicSystem {
         let direction = Vector2::new(orientation.cos(), orientation.sin());
 
         // Create fault trace as line segments
-        let num_segments = (fault_length / 20.0).max(2.0) as usize;
+        let num_segments = (fault_length / 20.0f64).max(2.0) as usize;
         let mut trace = Vec::new();
 
         for i in 0..num_segments {
@@ -553,7 +553,7 @@ impl SeismicSystem {
         };
 
         let normal = Normal::new(mean_depth, std_dev).unwrap();
-        normal.sample(rng).max(5.0).min(50.0)
+        (normal.sample(rng) as f64).max(5.0).min(50.0)
     }
 
     /// Calculate current stress on fault
@@ -641,7 +641,7 @@ impl SeismicSystem {
         };
 
         let normal = Normal::new(mean, std_dev).unwrap();
-        normal.sample(rng).max(1.0).min(30.0)
+        (normal.sample(rng) as f64).max(1.0).min(30.0)
     }
 
     /// Generate segment width

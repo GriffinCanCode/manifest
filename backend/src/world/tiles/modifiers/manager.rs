@@ -544,7 +544,7 @@ pub fn process_modifiers_system(
     if current_turn % 10 == 0 {
         // Collect the data needed for stats update from the current query
         let tile_data: Vec<_> = query.iter().map(|(entity, tile_modifiers)| {
-            (entity, tile_modifiers.memory_size(), tile_modifiers.modifier_count(), tile_modifiers.instances.clone())
+            (entity, tile_modifiers.memory_size(), tile_modifiers.modifier_count(), tile_modifiers.instances.to_vec())
         }).collect();
         
         commands.add(move |world: &mut bevy_ecs::world::World| {
@@ -569,7 +569,7 @@ pub fn update_modifier_stats_system(
     
     // Collect the data needed for stats update
     let tile_data: Vec<_> = query.iter().map(|tile_modifiers| {
-        (bevy_ecs::entity::Entity::PLACEHOLDER, tile_modifiers.memory_size(), tile_modifiers.modifier_count(), tile_modifiers.instances.clone())
+        (bevy_ecs::entity::Entity::PLACEHOLDER, tile_modifiers.memory_size(), tile_modifiers.modifier_count(), tile_modifiers.instances.to_vec())
     }).collect();
     
     commands.add(move |world: &mut bevy_ecs::world::World| {
@@ -599,7 +599,7 @@ pub fn validate_modifier_integrity_system(
     
     // Collect the data needed for integrity validation
     let validation_data: Vec<_> = query.iter().map(|(entity, tile_modifiers)| {
-        (*entity, tile_modifiers.instances.clone())
+        (entity, tile_modifiers.instances.iter().cloned().collect::<Vec<_>>())
     }).collect();
     
     commands.add(move |world: &mut bevy_ecs::world::World| {

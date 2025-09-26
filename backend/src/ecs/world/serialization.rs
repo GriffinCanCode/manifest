@@ -22,11 +22,12 @@ impl GameWorld {
         let mut state = WorldState::default();
         
         // Serialize all entities with their components
-        let mut entity_query = self.world().query::<Entity>();
-        let entities: Vec<Entity> = entity_query.iter(self.world()).collect();
+        let world = self.world_mut();
+        let mut entity_query = world.query::<Entity>();
+        let entities: Vec<Entity> = entity_query.iter(world).collect();
         
         for entity in entities {
-            if let Some(serialized_entity) = serialize_entity(self.world(), entity) {
+            if let Some(serialized_entity) = serialize_entity(world, entity) {
                 state.entities.push(serialized_entity);
                 state.entity_count += 1;
             }
@@ -34,15 +35,15 @@ impl GameWorld {
         
         // Export hierarchical relationships (legacy format for compatibility)
         let hierarchical_entities: Vec<StableEntityId> = {
-            let mut hierarchical_query = self.world().query_filtered::<Entity, With<Hierarchical>>();
-            hierarchical_query.iter(self.world())
+            let mut hierarchical_query = world.query_filtered::<Entity, With<Hierarchical>>();
+            hierarchical_query.iter(world)
                 .filter_map(|entity| StableEntityId::from_entity(entity))
                 .collect()
         };
         
         let entity_relationships: HashMap<StableEntityId, Relationships> = {
-            let mut relationships_query = self.world().query::<(Entity, &Relationships)>();
-            relationships_query.iter(self.world())
+            let mut relationships_query = world.query::<(Entity, &Relationships)>();
+            relationships_query.iter(world)
                 .filter_map(|(entity, relationships)| {
                     StableEntityId::from_entity(entity)
                         .map(|stable_id| (stable_id, relationships.clone()))
@@ -101,10 +102,12 @@ impl GameWorld {
         // Sync hierarchy system after import
         if let Some(hierarchy_queries) = self.world_mut().remove_resource::<HierarchyQueries>() {
             // Manually sync the hierarchy using our direct approach
-            let mut relationships_query = self.world().query::<(Entity, &Relationships)>();
-            let updates: Vec<_> = relationships_query.iter(self.world())
-                .map(|(entity, relationships)| (entity, relationships.clone()))
-                .collect();
+            let updates: Vec<_> = {
+                let mut relationships_query = self.world_mut().query::<(Entity, &Relationships)>();
+                relationships_query.iter(self.world())
+                    .map(|(entity, relationships)| (entity, relationships.clone()))
+                    .collect()
+            };
             
             // Apply updates to hierarchy graph using public interface
             if let Err(e) = hierarchy_queries.update_relationships_sync(updates) {

@@ -22,6 +22,8 @@ pub use bevy_ecs::prelude::*;
 pub use commands::{
     AppState, greet, get_game_state, initialize_game,
     save_game, load_game, list_saves, get_scheduler_metrics,
+    // Tile streaming commands  
+    stream_tiles, get_tile, get_tile_updates,
 };
 
 // Re-export debug commands

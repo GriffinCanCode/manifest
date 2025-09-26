@@ -324,6 +324,10 @@ mod tests {
                 .unwrap_or(false)
         }
 
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
         fn reload(&mut self, _path: &PathBuf) -> ReloadResult<()> {
             self.counter.fetch_add(1, Ordering::Relaxed);
             Ok(())

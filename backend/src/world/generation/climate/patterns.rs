@@ -335,7 +335,7 @@ impl OceanCurrents {
 }
 
 /// Seasonal variation resource
-#[derive(Debug, Resource, Serialize, Deserialize)]
+#[derive(Debug, Clone, Resource, Serialize, Deserialize)]
 pub struct SeasonalVariation {
     /// Current season (0.0-1.0 where 0.0 = spring)
     pub current_season: f32,
@@ -473,37 +473,37 @@ impl SeasonalVariation {
             return Err("All input arrays must have same length".to_string());
         }
 
-        // Convert climate zones to Zig enum values
-        let zig_zones: Vec<super::zig_ffi::ClimateZone> = climate_zones.iter()
+        // Convert climate zones to Zig enum values and then to u8
+        let zig_zones: Vec<u8> = climate_zones.iter()
             .map(|zone| match zone.to_lowercase().as_str() {
-                "equatorial" => super::zig_ffi::ClimateZone::Equatorial,
-                "tropical" => super::zig_ffi::ClimateZone::Tropical,
-                "temperate" => super::zig_ffi::ClimateZone::Temperate,
-                "polar" => super::zig_ffi::ClimateZone::Polar,
-                "desert" => super::zig_ffi::ClimateZone::Desert,
-                "mediterranean" => super::zig_ffi::ClimateZone::Mediterranean,
-                _ => super::zig_ffi::ClimateZone::Temperate, // Default
+                "equatorial" => super::zig_ffi::ClimateZone::Equatorial as u8,
+                "tropical" => super::zig_ffi::ClimateZone::Tropical as u8,
+                "temperate" => super::zig_ffi::ClimateZone::Temperate as u8,
+                "polar" => super::zig_ffi::ClimateZone::Polar as u8,
+                "desert" => super::zig_ffi::ClimateZone::Desert as u8,
+                "mediterranean" => super::zig_ffi::ClimateZone::Mediterranean as u8,
+                _ => super::zig_ffi::ClimateZone::Temperate as u8, // Default
             })
             .collect();
 
         // Prepare rainfall variation array for each zone
         let rain_variations = [
-            self.rainfall_variation.get("equatorial").unwrap_or(&50.0),
-            self.rainfall_variation.get("tropical").unwrap_or(&100.0),
-            self.rainfall_variation.get("temperate").unwrap_or(&75.0),
-            self.rainfall_variation.get("polar").unwrap_or(&25.0),
-            self.rainfall_variation.get("desert").unwrap_or(&20.0),
-            self.rainfall_variation.get("mediterranean").unwrap_or(&120.0),
+            *self.rainfall_variation.get("equatorial").unwrap_or(&50.0),
+            *self.rainfall_variation.get("tropical").unwrap_or(&100.0),
+            *self.rainfall_variation.get("temperate").unwrap_or(&75.0),
+            *self.rainfall_variation.get("polar").unwrap_or(&25.0),
+            *self.rainfall_variation.get("desert").unwrap_or(&20.0),
+            *self.rainfall_variation.get("mediterranean").unwrap_or(&120.0),
         ];
 
         // Use Zig SIMD for seasonal rainfall calculation
-        super::zig_ffi::climate_seasonal_rainfall(
+        Ok(super::zig_ffi::climate_seasonal_rainfall(
             base_rainfall,
             &zig_zones,
             latitudes,
             self.current_season,
             &rain_variations,
-        )
+        ))
     }
 
     /// Apply monsoon effects to positions using Zig SIMD

@@ -209,9 +209,11 @@ impl TectonicSimulator {
             errors.into_iter().next().unwrap_or_else(|| SchedulerError::TaskFailed("Unknown scheduler error".to_string()))
         })?;
         
-        result.lock().unwrap().take().ok_or_else(|| {
+        let final_result = result.lock().unwrap().take().ok_or_else(|| {
             SchedulerError::TaskFailed("Failed to generate tectonic result".to_string())
-        })
+        });
+        
+        final_result
     }
 
     /// Sample tectonic influence at specific coordinates

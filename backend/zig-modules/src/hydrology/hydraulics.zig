@@ -35,7 +35,7 @@ pub const ChannelType = enum {
                 const top_width = @sqrt(4.0 * width * area / width);
                 return (top_width / 6.0) * (2.0 * @sqrt(top_width * top_width + 16.0 * width * width) +
                     (top_width * top_width / width) *
-                        std.math.log(@abs((top_width + @sqrt(top_width * top_width + 16.0 * width * width)) / (4.0 * width))));
+                        @log(@abs((top_width + @sqrt(top_width * top_width + 16.0 * width * width)) / (4.0 * width))));
             },
             .irregular => area / @sqrt(area), // Rough approximation
         };
@@ -429,4 +429,16 @@ pub fn batchManningCalculation(
     for (0..count) |i| {
         results[i] = calculateManning(areas[i], wetted_perimeters[i], slopes[i], manning_ns[i]);
     }
+}
+
+/// Calculate Froude number
+pub fn calculateFroude(velocity: f64, depth: f64) f64 {
+    if (depth <= 0.0) return 0.0;
+    return velocity / @sqrt(9.81 * depth); // Using standard gravity
+}
+
+/// Calculate Reynolds number
+pub fn calculateReynolds(velocity: f64, hydraulic_radius: f64, kinematic_viscosity: f64) f64 {
+    if (kinematic_viscosity <= 0.0) return 0.0;
+    return (velocity * hydraulic_radius) / kinematic_viscosity;
 }

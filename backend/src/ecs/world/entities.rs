@@ -18,8 +18,11 @@ impl GameWorld {
         let spawn_start = Instant::now();
         let correlation_id = LoggingSystem::generate_correlation_id();
         
+        // Get single world reference to avoid borrowing conflicts
+        let world = self.world_mut();
+        
         // Spawn in ECS world - Bevy handles archetype management automatically
-        let entity = self.world.spawn(bundle).id();
+        let entity = world.spawn(bundle).id();
         
         let spawn_duration = spawn_start.elapsed().as_secs_f64() * 1000.0;
         
@@ -27,7 +30,7 @@ impl GameWorld {
         // Archetype organization handled automatically by Bevy ECS
         
         // Log the entity creation
-        if let Some(name_component) = self.world.get::<Name>(entity) {
+        if let Some(name_component) = world.get::<Name>(entity) {
             info!(
                 target: "game::world::entities",
                 correlation_id = correlation_id,
@@ -51,7 +54,7 @@ impl GameWorld {
         }
         
         // Log position if available
-        if let Some(position) = self.world.get::<Position>(entity) {
+        if let Some(position) = world.get::<Position>(entity) {
             game_logging::log_spatial_operation(position.hex(), "entity_spawn", None);
         }
         
@@ -69,13 +72,16 @@ impl GameWorld {
         let despawn_start = Instant::now();
         let correlation_id = LoggingSystem::generate_correlation_id();
         
+        // Get single world reference to avoid borrowing conflicts
+        let world = self.world_mut();
+        
         // Get entity info before despawning for logging
-        let name = self.world.get::<Name>(entity).map(|n| n.value().to_string());
-        let position = self.world.get::<Position>(entity).map(|p| p.hex());
+        let name = world.get::<Name>(entity).map(|n| n.value().to_string());
+        let position = world.get::<Position>(entity).map(|p| p.hex());
         
         // Despawn from ECS world - Bevy handles archetype cleanup automatically
         // Spatial index updated automatically via RemovedComponents<Position>
-        let success = if let Some(entity_mut) = self.world.get_entity_mut(entity) {
+        let success = if let Some(entity_mut) = world.get_entity_mut(entity) {
             entity_mut.despawn();
             true
         } else {

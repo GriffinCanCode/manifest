@@ -117,7 +117,7 @@ impl WorldGenerator {
 
     /// Generate climate data for coordinates
     pub fn generate_climate(&self, tile_id: crate::world::tiles::chunks::TileId, x: f64, y: f64, elevation: f32) -> crate::scripting::ScriptResult<crate::world::tiles::properties::EnhancedClimate> {
-        self.climate_generator.generate_climate(tile_id, x, y, elevation, &self.noise_generator)
+        self.climate_generator.generate_climate_sync(tile_id, x, y, elevation, &self.noise_generator)
     }
     
     /// Generate biome data for coordinates
@@ -128,6 +128,6 @@ impl WorldGenerator {
         terrain: &crate::world::tiles::properties::EnhancedTerrainType,
         elevation: &crate::world::tiles::properties::Elevation,
     ) -> crate::scripting::ScriptResult<crate::world::tiles::properties::Biome> {
-        self.biome_generator.generate_biome(tile_id, climate, terrain, elevation)
+        self.biome_generator.generate_biome_sync(tile_id, climate, terrain, elevation)
     }
 }

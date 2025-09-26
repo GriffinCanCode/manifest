@@ -433,7 +433,7 @@ fn batch_noise_mix_zig(
         .collect()
 }
 
-#[cfg(feature = "no_zig")]
+// Fallback implementation for when SIMD fails or no_zig feature is enabled
 fn batch_noise_mix_fallback(
     noise1: &[f32],
     noise2: &[f32],

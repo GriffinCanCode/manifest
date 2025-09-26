@@ -239,6 +239,7 @@ impl From<&CacheKey> for CacheKeyType {
             CacheKey::Rendering(_) => CacheKeyType::Rendering,
             CacheKey::Player(_) => CacheKeyType::Player,
             CacheKey::Custom(_) => CacheKeyType::Custom,
+            CacheKey::Tectonic(_) => CacheKeyType::Custom,  // Map tectonic to custom type
         }
     }
 }

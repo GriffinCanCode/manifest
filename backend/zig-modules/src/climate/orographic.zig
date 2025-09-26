@@ -48,9 +48,9 @@ pub fn calculateOrographicEffect(
 
 /// SIMD batch calculation of orographic effects
 pub fn batchOrographicEffects(
-    positions: [][2]f32,
-    elevations: []f32,
-    wind_directions: []f32,
+    positions: []const [2]f32,
+    elevations: []const f32,
+    wind_directions: []const f32,
     params: OrographicParams,
     results: []f32,
 ) void {
@@ -100,8 +100,8 @@ pub fn batchOrographicEffects(
 
 /// Calculate rain shadow effect for positions downwind of mountains
 pub fn calculateRainShadowEffect(
-    positions: [][2]f32,
-    elevations: []f32,
+    positions: []const [2]f32,
+    elevations: []const f32,
     mountain_ranges: []MountainRange,
     wind_direction: f32,
     shadow_factor: f32,
@@ -148,7 +148,7 @@ pub fn calculateRainShadowEffect(
 
 /// Apply orographic effects to base rainfall values
 pub fn applyOrographicToRainfall(
-    base_rainfall: []f32,
+    base_rainfall: []const f32,
     orographic_multipliers: []f32,
     rain_shadow_effects: []f32,
     results: []f32,

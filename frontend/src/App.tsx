@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import GameCanvas from '@/components/game/GameCanvas';
 import GameUI from '@/components/ui/game-ui';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { saveThumbnailService } from '@/services/save-thumbnails';
 import { useGameStore } from '@/stores/game-store';
 
 // Types
@@ -50,10 +51,22 @@ const App = () => {
 
   const handleSaveGame = async () => {
     try {
-      const result = await invoke<string>('save_game', {
-        saveName: `manifest_save_${Date.now()}`,
-      });
+      const saveName = `manifest_save_${Date.now()}`;
+
+      // First, save the game state
+      const result = await invoke<string>('save_game', { saveName });
       console.warn('Save result:', result);
+
+      // Then, generate and save thumbnail
+      try {
+        await saveThumbnailService.saveThumbnailWithSave(saveName);
+        console.log('Thumbnail saved successfully');
+      } catch (thumbnailError) {
+        console.warn(
+          'Failed to save thumbnail (game still saved):',
+          thumbnailError
+        );
+      }
     } catch (err) {
       console.error('Failed to save game:', err);
     }

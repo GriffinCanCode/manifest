@@ -167,8 +167,9 @@ impl SystemCoordinator {
     pub fn run_system_stages(&mut self, world: &mut World) {
         let stages = [Stage::PreUpdate, Stage::Update, Stage::PostUpdate, Stage::Cleanup];
         for stage in stages {
+            let stage_name = format!("{:?}", stage); // Store stage name before moving
             if let Err(errors) = self.scheduler.run_stage(stage, world) {
-                error!("System execution errors in stage {:?}: {:?}", stage, errors);
+                error!("System execution errors in stage {}: {:?}", stage_name, errors);
             }
         }
     }

@@ -11,6 +11,7 @@ use super::zig_ffi::{
     zig_elevation_local_statistics, ZigGradientAnalysis, ZigLocalStatistics
 };
 use crate::core::scheduler::SchedulerError;
+use crate::world::{AquiferId, SpringId};
 use nalgebra::Vector2;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -306,7 +307,7 @@ impl AquiferSystem {
             let recharge_rate = self.calculate_recharge_rate_zig(&zone);
             
             let aquifer = Aquifer {
-                id: aquifer_id as u32,
+                id: AquiferId(aquifer_id as u32),
                 center: zone.center,
                 extent: zone.extent,
                 depth,
@@ -384,7 +385,7 @@ impl AquiferSystem {
         gradient_magnitude: f32,
     ) -> f32 {
         // Get typical conductivity range for aquifer type
-        let (min_k, max_k) = match aquifer_type {
+        let (min_k, max_k): (f64, f64) = match aquifer_type {
             AquiferType::Unconfined => (1e-6, 1e-3),      // Sand and gravel
             AquiferType::Confined => (1e-8, 1e-4),        // Confined sand/sandstone
             AquiferType::LeakyConfined => (1e-7, 1e-4),   // Semi-permeable layers
@@ -401,7 +402,7 @@ impl AquiferSystem {
         let interpolation_factor = (terrain_factor + elevation_factor) / 2.0;
         let log_min = min_k.log10();
         let log_max = max_k.log10();
-        let log_k = log_min + interpolation_factor * (log_max - log_min);
+        let log_k = log_min + interpolation_factor as f64 * (log_max - log_min);
         
         10.0_f32.powf(log_k as f32)
     }
@@ -496,7 +497,7 @@ impl AquiferSystem {
                     let mineral_content = self.calculate_mineral_content_zig(aquifer);
                     
                     let spring = Spring {
-                        id: base_spring_id + i,
+                        id: SpringId(base_spring_id + i),
                         position: spring_location,
                         flow_rate: discharge,
                         temperature,
@@ -526,7 +527,7 @@ impl AquiferSystem {
         
         // Scale by aquifer extent
         let size_factor = (aquifer.extent / 1000.0).max(0.5).min(2.0); // 0.5x to 2x
-        (base_count as f32 * size_factor) as u32
+        (base_count as f32 * size_factor as f32) as u32
     }
 
     /// Determine spring type using Zig analysis

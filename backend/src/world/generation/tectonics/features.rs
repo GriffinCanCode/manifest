@@ -351,7 +351,7 @@ impl FeatureGenerator {
             MountainType::Complex => Normal::new(0.75, 0.25).unwrap(),
         };
         
-        let factor: f64 = distribution.sample(rng).clamp(0.2, 1.0);
+        let factor: f64 = (distribution.sample(rng) as f64).clamp(0.2, 1.0);
         base_elevation + variation * factor
     }
 

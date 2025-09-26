@@ -10,7 +10,7 @@ use tracing::{debug, info, instrument};
 use crate::{
     core::{
         scheduler::{Scheduler, SchedulerError}, 
-        caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority},
+        caching::{GameCache, GameCacheBuilder, CacheKey, CachePriority, CacheConfig},
         hashing::HashStrategies,
     },
     scripting::{ScriptManager, ScriptResult, LuaEventData, LuaEventValue},
@@ -127,7 +127,28 @@ impl ClimateGenerator {
         };
         
         // Cache result for performance and consistency
-        self.cache.insert(cache_key.to_string(), final_climate.clone());
+        let _ = self.cache.set(cache_key_obj, final_climate.clone(), CachePriority::Medium).await;
+        
+        Ok(final_climate)
+    }
+    
+    /// Generate climate synchronously (without caching for systems)
+    pub fn generate_climate_sync(
+        &self,
+        tile_id: TileId,
+        x: f64,
+        y: f64,
+        elevation: f32,
+        noise_gen: &NoiseGenerator,
+    ) -> ScriptResult<EnhancedClimate> {
+        // Use Zig-optimized base climate generation
+        let base_climate = self.generate_base_climate(x, y, elevation, noise_gen);
+        
+        let final_climate = if self.config.use_lua_rules {
+            self.apply_lua_rules(tile_id, base_climate, x, y, elevation)?
+        } else {
+            base_climate
+        };
         
         Ok(final_climate)
     }
@@ -335,11 +356,13 @@ impl ClimateGenerator {
     pub fn generate_batch(
         &self,
         mut tiles: Vec<(TileId, f64, f64, f32)>,
-        noise_gen: &NoiseGenerator,
+        noise_gen: NoiseGenerator,
         scheduler: &Scheduler,
     ) -> Result<HashMap<TileId, EnhancedClimate>, String> {
         use crate::core::scheduler::{TaskBatch, Stage, Resource as SchedulerResource};
         use std::sync::{Arc, Mutex};
+        
+        // Use the owned noise generator directly
         
         // Sort tiles by TileId for deterministic processing order
         tiles.sort_by_key(|(tile_id, _, _, _)| format!("{:?}", tile_id));
@@ -363,20 +386,26 @@ impl ClimateGenerator {
         for (chunk_idx, chunk) in tiles.chunks(chunk_size).enumerate() {
             let results_clone = Arc::clone(&results);
             let chunk_data = chunk.to_vec();
-            let generator_ptr = self as *const Self;
-            let noise_ptr = noise_gen as *const NoiseGenerator;
+            let config_clone = self.config.clone();
+            let script_manager = Arc::clone(&self.script_manager);
+            // Create a new noise generator with the same config for this task
+            let noise_gen_for_task = NoiseGenerator::new(noise_gen.config());
             
             batch.add_task_with_resources(
                 format!("climate_batch_{}_{}", batch_hash, chunk_idx),
                 vec![SchedulerResource::write::<HashMap<TileId, EnhancedClimate>>()],
                 move || -> Result<(), crate::core::scheduler::SchedulerError> {
-                    let generator = unsafe { &*generator_ptr };
-                    let noise = unsafe { &*noise_ptr };
+                    // Create a temporary generator with cloned data
+                    let temp_generator = ClimateGenerator {
+                        config: config_clone,
+                        script_manager,
+                        cache: GameCache::new(CacheConfig::default()),
+                    };
                     let mut local_results = HashMap::new();
                     
                     // Process chunk in deterministic order
                     for (tile_id, x, y, elevation) in chunk_data {
-                        match generator.generate_climate(tile_id, x, y, elevation, noise).await {
+                        match temp_generator.generate_climate_sync(tile_id, x, y, elevation, &noise_gen_for_task) {
                             Ok(climate) => {
                                 local_results.insert(tile_id, climate);
                             }
@@ -397,7 +426,8 @@ impl ClimateGenerator {
             format!("Scheduler error: {:?}", errors.into_iter().next().unwrap_or_else(|| SchedulerError::TaskFailed("Unknown scheduler error".to_string())))
         })?;
         
-        Ok(results.lock().unwrap().clone())
+        let final_results = results.lock().unwrap().clone();
+        Ok(final_results)
     }
     
     /// High-performance batch generation using Zig SIMD optimizations

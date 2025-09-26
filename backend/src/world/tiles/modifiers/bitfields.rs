@@ -364,7 +364,8 @@ mod tests {
         let mut modifiers = CoreModifiers::default();
         assert!(!modifiers.is_impassable());
         
-        modifiers = modifiers.with_special_flag(super::types::SpecialFlag::Impassable, true);
+        use crate::world::SpecialFlag;
+        modifiers = modifiers.with_special_flag(SpecialFlag::Impassable, true);
         assert!(modifiers.is_impassable());
     }
 

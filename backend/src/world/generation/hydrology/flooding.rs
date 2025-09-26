@@ -101,7 +101,7 @@ impl FloodSimulator {
         
         if result.max_cells_reached {
             // Log warning about potential incomplete flood simulation
-            log::warn!("Flood simulation may be incomplete - reached maximum cell limit");
+            tracing::warn!("Flood simulation may be incomplete - reached maximum cell limit");
         }
         
         result.inundated_cells

@@ -6,7 +6,9 @@
 use super::{HydrologyConfig, Wetland, WetlandType, FlowAccumulation, Lake};
 use super::zig_ffi::{ZigSpatialTree, zig_evaluate_wetland_candidates, ZigWetlandEvaluation};
 use crate::core::scheduler::SchedulerError;
+use crate::world::WetlandId;
 use nalgebra::Vector2;
+use kdtree::{KdTree, distance::squared_euclidean};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -213,7 +215,7 @@ impl WetlandGenerator {
 
     /// Calculate comprehensive suitability score
     fn calculate_suitability_score(
-        &self,
+        &mut self,
         position: Vector2<f64>,
         elevation: f32,
         flow_value: f32,
@@ -265,9 +267,11 @@ impl WetlandGenerator {
             let seasonal_variation = self.calculate_seasonal_variation_zig(&candidate);
             
             let wetland = Wetland {
-                id: wetland_id as u32,
+                id: WetlandId(wetland_id as u32),
                 center: candidate.position,
                 radius,
+                water_depth: radius * 0.1, // Reasonable default based on size
+                vegetation_density: biodiversity_index * 0.8, // Correlate with biodiversity
                 wetland_type: candidate.wetland_type,
                 biodiversity_index,
                 seasonal_variation,
@@ -330,7 +334,7 @@ impl WetlandGenerator {
     }
 
     /// Calculate wetland radius based on environmental conditions
-    fn calculate_wetland_radius(&self, candidate: &WetlandCandidate) -> f32 {
+    fn calculate_wetland_radius(&self, candidate: &ZigWetlandCandidate) -> f32 {
         let base_radius = match candidate.wetland_type {
             WetlandType::Delta => 200.0,   // Large deltas
             WetlandType::Marsh => 100.0,   // Medium marshes
@@ -345,7 +349,7 @@ impl WetlandGenerator {
     }
 
     /// Calculate biodiversity index
-    fn calculate_biodiversity_index(&self, candidate: &WetlandCandidate, water_bodies_kdtree: &KdTree<f64, usize, [f64; 2]>) -> f32 {
+    fn calculate_biodiversity_index(&self, candidate: &ZigWetlandCandidate, water_bodies_kdtree: &KdTree<f64, usize, [f64; 2]>) -> f32 {
         let point = [candidate.position.x, candidate.position.y];
         let nearby_water_count = water_bodies_kdtree.within(&point, 500.0, &squared_euclidean).unwrap().len();
         
@@ -358,13 +362,13 @@ impl WetlandGenerator {
         };
         
         // Bonus for connectivity to other water bodies
-        let connectivity_bonus = (nearby_water_count as f32 * 0.05).min(0.2);
+        let connectivity_bonus = (nearby_water_count as f32 * 0.05f32).min(0.2f32);
         
-        (base_biodiversity + connectivity_bonus).min(1.0)
+        (base_biodiversity + connectivity_bonus).min(1.0f32)
     }
 
     /// Calculate seasonal variation
-    fn calculate_seasonal_variation(&self, candidate: &WetlandCandidate) -> f32 {
+    fn calculate_seasonal_variation(&self, candidate: &ZigWetlandCandidate) -> f32 {
         match candidate.wetland_type {
             WetlandType::Delta => 0.3,     // Moderate variation
             WetlandType::Marsh => 0.5,     // High variation

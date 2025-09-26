@@ -48,7 +48,7 @@ impl Default for BiomeGenConfig {
 }
 
 /// Core biome generator - integrates with existing systems
-#[derive(Debug, Resource)]
+#[derive(Component, Debug, Resource)]
 pub struct BiomeGenerator {
     config: BiomeGenConfig,
     biome_definitions: FastHashMap<String, BiomeDefinition>,
@@ -191,6 +191,50 @@ impl BiomeGenerator {
         Ok(final_biome)
     }
     
+    /// Generate biome synchronously (without caching for systems)
+    pub fn generate_biome_sync(
+        &self,
+        tile_id: TileId,
+        climate: &EnhancedClimate,
+        terrain: &EnhancedTerrainType,
+        elevation: &Elevation,
+    ) -> ScriptResult<Biome> {
+        // Find best matching biome using existing suitability calculator
+        let best_match = BiomeSuitabilityCalculator::find_best_biome(
+            climate.temperature,
+            climate.rainfall,
+            climate.humidity,
+            elevation.final_elevation,
+            &terrain.to_string(),
+            &self.biome_definitions,
+        );
+        
+        let (biome_type, suitability) = best_match
+            .unwrap_or_else(|| ("temperate_grassland".to_string(), 0.5));
+        
+        // Apply minimum threshold
+        if suitability < self.config.min_suitability_threshold {
+            return Ok(Biome::new("barren".to_string(), suitability));
+        }
+        
+        // Get biome definition for modifiers
+        let biome_def = self.biome_definitions.get(&biome_type)
+            .ok_or_else(|| crate::scripting::ScriptError::ExecutionFailed { 
+                reason: format!("Biome definition not found: {}", biome_type)
+            })?;
+        
+        let mut biome = Biome::with_modifiers(biome_type.clone(), suitability, biome_def.modifiers.clone());
+        
+        // Apply Lua rules if enabled (synchronous version)
+        let final_biome = if self.config.use_lua_rules {
+            self.apply_lua_biome_rules(tile_id, biome, climate, terrain, elevation)?
+        } else {
+            biome
+        };
+        
+        Ok(final_biome)
+    }
+    
     /// Apply Lua biome rules
     #[instrument(skip(self, biome, climate, terrain, elevation))]
     fn apply_lua_biome_rules(
@@ -292,21 +336,26 @@ impl BiomeGenerator {
         for (chunk_idx, chunk) in tiles.chunks(chunk_size).enumerate() {
             let results_clone = Arc::clone(&results);
             let chunk_data = chunk.to_vec();
-            let generator_ptr = self as *const Self;
+            let config_clone = self.config.clone();
+            let biome_definitions = self.biome_definitions.clone();
+            let script_manager = Arc::clone(&self.script_manager);
             
             batch.add_task_with_resources(
                 format!("biome_batch_{}_{}", batch_hash, chunk_idx),
                 vec![SchedulerResource::write::<FastHashMap<TileId, Biome>>()],
                 move || -> Result<(), crate::core::scheduler::SchedulerError> {
-                    let generator = unsafe { &*generator_ptr };
+                    // Create a temporary generator with cloned data
+                    let temp_generator = BiomeGenerator {
+                        config: config_clone,
+                        biome_definitions,
+                        script_manager,
+                        cache: GameCache::new(CacheConfig::default()),
+                    };
                     let mut local_results = FastHashMap::default();
                     
-                    // Process chunk in deterministic order using tokio runtime
-                    let rt = tokio::runtime::Handle::try_current()
-                        .unwrap_or_else(|_| tokio::runtime::Runtime::new().unwrap().handle().clone());
-                        
+                    // Process chunk in deterministic order using sync methods
                     for (tile_id, climate, terrain, elevation) in chunk_data {
-                        match rt.block_on(generator.generate_biome(tile_id, &climate, &terrain, &elevation)) {
+                        match temp_generator.generate_biome_sync(tile_id, &climate, &terrain, &elevation) {
                             Ok(biome) => {
                                 local_results.insert(tile_id, biome);
                             }
@@ -324,10 +373,20 @@ impl BiomeGenerator {
         
         scheduler.add_batch(batch);
         scheduler.run_stage(Stage::Update).map_err(|errors| {
-            errors.into_iter().next().unwrap_or_else(|| SchedulerError::TaskFailed("Unknown scheduler error".to_string()))
+            if errors.is_empty() {
+                "Unknown scheduler error".to_string()
+            } else {
+                format!("Scheduler errors: {}", 
+                    errors.iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )
+            }
         })?;
         
-        Ok(results.lock().unwrap().clone())
+        let final_results = results.lock().unwrap().clone();
+        Ok(final_results)
     }
     
     /// Get biome definitions

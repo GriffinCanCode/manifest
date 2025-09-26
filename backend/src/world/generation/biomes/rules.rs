@@ -10,7 +10,7 @@ use tracing::{debug, instrument};
 use crate::scripting::{ScriptManager, ScriptResult, LuaEventData, LuaEventValue};
 
 /// Lua-based biome rules processor
-#[derive(Debug, Resource)]
+#[derive(Component, Debug, Resource)]
 pub struct LuaBiomeRules {
     script_manager: Arc<ScriptManager>,
     decision_trees: Vec<BiomeDecisionTree>,

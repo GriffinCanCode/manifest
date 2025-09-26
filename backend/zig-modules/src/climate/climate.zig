@@ -61,14 +61,14 @@ pub const ClimateProcessingParams = struct {
 
 /// Complete climate processing pipeline for a batch of tiles
 pub fn processClimateEffects(
-    positions: [][2]f32,
-    elevations: []f32,
-    base_temperatures: []i8,
-    base_rainfall: []f32,
-    base_humidity: []u8,
-    climate_zones: []ClimateZone,
-    latitudes: []f32,
-    wind_directions: []f32,
+    positions: []const [2]f32,
+    elevations: []const f32,
+    base_temperatures: []const i8,
+    base_rainfall: []const f32,
+    base_humidity: []const u8,
+    climate_zones: []const ClimateZone,
+    latitudes: []const f32,
+    wind_directions: []const f32,
     mountain_ranges: []orographic.MountainRange,
     params: ClimateProcessingParams,
     temperature_results: []i8,
@@ -86,25 +86,26 @@ pub fn processClimateEffects(
     const len = positions.len;
 
     // Allocate temporary buffers for intermediate calculations
-    var orographic_multipliers = std.ArrayList(f32).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer orographic_multipliers.deinit();
-    orographic_multipliers.resize(len) catch unreachable;
+    const allocator = std.heap.page_allocator;
+    var orographic_multipliers = std.ArrayList(f32).initCapacity(allocator, len) catch unreachable;
+    defer orographic_multipliers.deinit(allocator);
+    orographic_multipliers.resize(std.heap.page_allocator, len) catch unreachable;
 
-    var rain_shadow_effects = std.ArrayList(f32).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer rain_shadow_effects.deinit();
-    rain_shadow_effects.resize(len) catch unreachable;
+    var rain_shadow_effects = std.ArrayList(f32).initCapacity(allocator, len) catch unreachable;
+    defer rain_shadow_effects.deinit(allocator);
+    rain_shadow_effects.resize(allocator, len) catch unreachable;
 
-    var modified_rainfall = std.ArrayList(f32).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer modified_rainfall.deinit();
-    modified_rainfall.resize(len) catch unreachable;
+    var modified_rainfall = std.ArrayList(f32).initCapacity(allocator, len) catch unreachable;
+    defer modified_rainfall.deinit(allocator);
+    modified_rainfall.resize(allocator, len) catch unreachable;
 
-    var continental_temps = std.ArrayList(i8).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer continental_temps.deinit();
-    continental_temps.resize(len) catch unreachable;
+    var continental_temps = std.ArrayList(i8).initCapacity(allocator, len) catch unreachable;
+    defer continental_temps.deinit(allocator);
+    continental_temps.resize(allocator, len) catch unreachable;
 
-    var continental_humidity = std.ArrayList(u8).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer continental_humidity.deinit();
-    continental_humidity.resize(len) catch unreachable;
+    var continental_humidity = std.ArrayList(u8).initCapacity(allocator, len) catch unreachable;
+    defer continental_humidity.deinit(allocator);
+    continental_humidity.resize(allocator, len) catch unreachable;
 
     // Step 1: Apply orographic effects to rainfall
     orographic.batchOrographicEffects(
@@ -152,17 +153,17 @@ pub fn processClimateEffects(
     );
 
     // Convert rainfall from f32 to u16 for seasonal processing
-    var rainfall_u16 = std.ArrayList(u16).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer rainfall_u16.deinit();
-    rainfall_u16.resize(len) catch unreachable;
+    var rainfall_u16 = std.ArrayList(u16).initCapacity(allocator, len) catch unreachable;
+    defer rainfall_u16.deinit(allocator);
+    rainfall_u16.resize(allocator, len) catch unreachable;
 
     for (modified_rainfall.items, rainfall_u16.items) |rain_f32, *rain_u16| {
         rain_u16.* = @as(u16, @intFromFloat(@max(0.0, @min(500.0, rain_f32))));
     }
 
-    var seasonal_rainfall = std.ArrayList(u16).initCapacity(std.heap.page_allocator, len) catch unreachable;
-    defer seasonal_rainfall.deinit();
-    seasonal_rainfall.resize(len) catch unreachable;
+    var seasonal_rainfall = std.ArrayList(u16).initCapacity(allocator, len) catch unreachable;
+    defer seasonal_rainfall.deinit(allocator);
+    seasonal_rainfall.resize(allocator, len) catch unreachable;
 
     seasonal.batchSeasonalRainfall(
         rainfall_u16.items,
@@ -186,12 +187,12 @@ pub fn processClimateEffects(
 
 /// Simplified climate processing for basic use cases
 pub fn simpleClimateProcessing(
-    positions: [][2]f32,
-    elevations: []f32,
-    base_temperatures: []i8,
-    base_rainfall: []f32,
-    base_humidity: []u8,
-    wind_directions: []f32,
+    positions: []const [2]f32,
+    elevations: []const f32,
+    base_temperatures: []const i8,
+    base_rainfall: []const f32,
+    base_humidity: []const u8,
+    wind_directions: []const f32,
     temperature_results: []i8,
     rainfall_results: []f32,
     humidity_results: []u8,
@@ -200,18 +201,19 @@ pub fn simpleClimateProcessing(
     const params = ClimateProcessingParams.default();
 
     // Create default climate zones (temperate for all)
-    var climate_zones = std.ArrayList(ClimateZone).initCapacity(std.heap.page_allocator, positions.len) catch unreachable;
-    defer climate_zones.deinit();
-    climate_zones.resize(positions.len) catch unreachable;
+    const allocator = std.heap.page_allocator;
+    var climate_zones = std.ArrayList(ClimateZone).initCapacity(allocator, positions.len) catch unreachable;
+    defer climate_zones.deinit(allocator);
+    climate_zones.resize(allocator, positions.len) catch unreachable;
 
     for (climate_zones.items) |*zone| {
         zone.* = ClimateZone.Temperate;
     }
 
     // Create default latitudes based on Y position
-    var latitudes = std.ArrayList(f32).initCapacity(std.heap.page_allocator, positions.len) catch unreachable;
-    defer latitudes.deinit();
-    latitudes.resize(positions.len) catch unreachable;
+    var latitudes = std.ArrayList(f32).initCapacity(allocator, positions.len) catch unreachable;
+    defer latitudes.deinit(allocator);
+    latitudes.resize(allocator, positions.len) catch unreachable;
 
     for (positions, latitudes.items) |pos, *lat| {
         // Convert Y position to latitude (-90 to +90)
@@ -240,21 +242,22 @@ pub fn simpleClimateProcessing(
 
 /// Process only orographic effects (for testing or specialized use)
 pub fn processOrographicOnly(
-    positions: [][2]f32,
-    elevations: []f32,
-    base_rainfall: []f32,
-    wind_directions: []f32,
+    positions: []const [2]f32,
+    elevations: []const f32,
+    base_rainfall: []const f32,
+    wind_directions: []const f32,
     mountain_ranges: []orographic.MountainRange,
     params: OrographicParams,
     rainfall_results: []f32,
 ) void {
-    var orographic_multipliers = std.ArrayList(f32).initCapacity(std.heap.page_allocator, positions.len) catch unreachable;
-    defer orographic_multipliers.deinit();
-    orographic_multipliers.resize(positions.len) catch unreachable;
+    const allocator = std.heap.page_allocator;
+    var orographic_multipliers = std.ArrayList(f32).initCapacity(allocator, positions.len) catch unreachable;
+    defer orographic_multipliers.deinit(allocator);
+    orographic_multipliers.resize(allocator, positions.len) catch unreachable;
 
-    var rain_shadow_effects = std.ArrayList(f32).initCapacity(std.heap.page_allocator, positions.len) catch unreachable;
-    defer rain_shadow_effects.deinit();
-    rain_shadow_effects.resize(positions.len) catch unreachable;
+    var rain_shadow_effects = std.ArrayList(f32).initCapacity(allocator, positions.len) catch unreachable;
+    defer rain_shadow_effects.deinit(allocator);
+    rain_shadow_effects.resize(allocator, positions.len) catch unreachable;
 
     orographic.batchOrographicEffects(
         positions,

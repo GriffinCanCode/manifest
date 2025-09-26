@@ -7,6 +7,7 @@ description = "Manifest - A sophisticated grand strategy game"
 license = "MIT"
 repository = "https://github.com/GriffinCanCode/manifest"
 rust-version = "1.77.2"
+default-run = "manifest"
 
 [[bin]]
 name = "manifest"
@@ -48,6 +49,9 @@ serde_yaml = "0.9"
 bincode = "1.3"
 rmp-serde = "1.1"
 
+# Error Handling
+thiserror = "1.0"
+
 # Database & Storage
 sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite"] }
 
@@ -65,6 +69,7 @@ hecs = "0.10"  # Additional sparse storage for tiles
 indexmap = { version = "2.2", features = ["serde"] }  # Ordered maps for adjacency graphs
 arrayvec = { version = "0.7", features = ["serde"] }  # Fixed-capacity arrays
 bitvec = { version = "1.0", features = ["serde"] }  # Bit vectors for ownership layers
+ordered-float = { version = "4.2", features = ["serde"] }  # Hash-able float types
 
 # Modular bitfield operations
 modular-bitfield = "0.11"
@@ -102,9 +107,6 @@ chrono = { version = "0.4", features = ["serde"] }
 spin_sleep = "1.2"
 spin_sleep_util = "0.1"
 
-# Deterministic Float Operations
-ordered-float = { version = "4.2", features = ["serde"] }
-
 # Compression for log rotation
 flate2 = "1.0"
 lz4_flex = "0.11"
@@ -120,9 +122,6 @@ zstd = "0.13"
 rayon = "1.8"
 crossbeam = "0.8"
 parking_lot = "0.12"
-
-# Error handling
-thiserror = "1.0"
 
 # Entity Storage
 slotmap = "1.0"
