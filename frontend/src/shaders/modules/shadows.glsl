@@ -26,7 +26,7 @@ uniform float csmBias;
  */
 float sampleShadowPCF(sampler2D shadowMap, vec2 shadowCoord, float currentDepth, float bias) {
     float shadowFactor = 0.0;
-    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
     
     // 3x3 PCF sampling
     for(int x = -1; x <= 1; x++) {
@@ -63,20 +63,15 @@ float calculateCSMShadow(vec3 worldPosition, vec3 worldNormal) {
     
     // Calculate shadow coordinates for selected cascade
     mat4 shadowMatrix;
-    sampler2D shadowMap;
     
     if (cascadeIndex == 0) {
         shadowMatrix = csmMatrix0;
-        shadowMap = csmTexture0;
     } else if (cascadeIndex == 1) {
         shadowMatrix = csmMatrix1;
-        shadowMap = csmTexture1;
     } else if (cascadeIndex == 2) {
         shadowMatrix = csmMatrix2;
-        shadowMap = csmTexture2;
     } else {
         shadowMatrix = csmMatrix3;
-        shadowMap = csmTexture3;
     }
     
     vec4 shadowCoord = shadowMatrix * vec4(worldPosition, 1.0);
@@ -93,8 +88,16 @@ float calculateCSMShadow(vec3 worldPosition, vec3 worldNormal) {
     // Calculate bias based on surface normal and light direction
     float bias = max(csmBias * (1.0 - dot(worldNormal, normalize(vec3(0.5, 1.0, 0.3)))), csmBias * 0.1);
     
-    // Sample shadow map with PCF
-    return sampleShadowPCF(shadowMap, shadowCoord.xy, shadowCoord.z, bias);
+    // Sample from the correct cascade shadow map
+    if (cascadeIndex == 0) {
+        return sampleShadowPCF(csmTexture0, shadowCoord.xy, shadowCoord.z, bias);
+    } else if (cascadeIndex == 1) {
+        return sampleShadowPCF(csmTexture1, shadowCoord.xy, shadowCoord.z, bias);
+    } else if (cascadeIndex == 2) {
+        return sampleShadowPCF(csmTexture2, shadowCoord.xy, shadowCoord.z, bias);
+    } else {
+        return sampleShadowPCF(csmTexture3, shadowCoord.xy, shadowCoord.z, bias);
+    }
 }
 
 /**
@@ -172,22 +175,19 @@ float calculateCSMShadowFromVaryings(vec4 shadowCoords[4], float viewDepth, vec3
     }
     
     // Select shadow map
-    sampler2D shadowMap;
-    if (cascadeIndex == 0) {
-        shadowMap = csmTexture0;
-    } else if (cascadeIndex == 1) {
-        shadowMap = csmTexture1;
-    } else if (cascadeIndex == 2) {
-        shadowMap = csmTexture2;
-    } else {
-        shadowMap = csmTexture3;
-    }
-    
     // Calculate bias
     float bias = max(csmBias * (1.0 - dot(worldNormal, normalize(vec3(0.5, 1.0, 0.3)))), csmBias * 0.1);
     
-    // Sample with PCF
-    return sampleShadowPCF(shadowMap, shadowCoord.xy, shadowCoord.z, bias);
+    // Sample from the correct cascade shadow map
+    if (cascadeIndex == 0) {
+        return sampleShadowPCF(csmTexture0, shadowCoord.xy, shadowCoord.z, bias);
+    } else if (cascadeIndex == 1) {
+        return sampleShadowPCF(csmTexture1, shadowCoord.xy, shadowCoord.z, bias);
+    } else if (cascadeIndex == 2) {
+        return sampleShadowPCF(csmTexture2, shadowCoord.xy, shadowCoord.z, bias);
+    } else {
+        return sampleShadowPCF(csmTexture3, shadowCoord.xy, shadowCoord.z, bias);
+    }
 }
 
 #ifdef USE_SHADOWS

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+import SaveBrowser from './SaveBrowser';
+
 import { useGameStore } from '@/stores/game-store';
 
 interface GameUIProps {

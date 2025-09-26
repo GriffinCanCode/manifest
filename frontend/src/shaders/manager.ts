@@ -70,21 +70,23 @@ export class ShaderManager {
 
     // Enhanced shader defines based on capabilities
     const defines: Record<string, string | number> = {
-      // Device capabilities
+      // Custom defines first (can be overridden by built-in defines)
+      ...definition.defines,
+      ...options.defines,
+
+      // Device capabilities (these override custom defines if there are conflicts)
       USE_WEBGL2: capabilities?.supportsWebGL2 ? 1 : 0,
-      USE_INSTANCING: capabilities?.supportsInstancing ? 1 : 0,
+      // Note: USE_INSTANCING should be handled by Three.js, not manually defined
+      // USE_INSTANCING: capabilities?.supportsInstancing ? 1 : 0,
 
       // Quality settings
       QUALITY_LEVEL: this.getQualityLevel(),
       USE_SHADOWS: settings?.shadows ? 1 : 0,
       USE_FOG: !useRenderStore.getState().debug.disableFog ? 1 : 0,
+      USE_HDR: 1, // Enable HDR processing
 
       // Precision settings
       PRECISION: this.getPrecisionLevel(),
-
-      // Custom defines
-      ...definition.defines,
-      ...options.defines,
     };
 
     // Process shader source with includes
@@ -170,7 +172,7 @@ export class ShaderManager {
    * Hot reload support for development
    */
   private setupHotReload(name: string, cacheKey: string): void {
-    if (process.env.NODE_ENV !== 'development') return;
+    if (import.meta.env?.MODE !== 'development') return;
 
     const reload = () => {
       const entry = this.cache.get(cacheKey);
@@ -194,7 +196,7 @@ export class ShaderManager {
    */
   private needsRecompile(entry: ShaderEntry): boolean {
     // In development, always check for updates
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env?.MODE === 'development') {
       return entry.material.needsUpdate;
     }
     return false;
@@ -246,7 +248,7 @@ export class ShaderManager {
 export const shaderManager = new ShaderManager();
 
 // Development helpers
-if (process.env.NODE_ENV === 'development') {
+if (import.meta.env?.MODE === 'development') {
   (window as Window & { __shaderManager?: ShaderManager }).__shaderManager =
     shaderManager;
 }

@@ -7,25 +7,22 @@
 import { useFrame } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  Color,
   CylinderGeometry,
   DynamicDrawUsage,
   Matrix4,
   MeshLambertMaterial,
-  ShaderMaterial,
   Vector3,
   type InstancedMesh,
-  type IUniform,
+  type ShaderMaterial,
 } from 'three';
 
-import animatedWaterFrag from '../../../../shaders/water/animated-water.frag';
-import animatedWaterVert from '../../../../shaders/water/animated-water.vert';
 import { useRenderStore } from '../../../../stores/render-store';
 import {
   HexUtils,
   TerrainType,
   type GameTile,
 } from '../../../../utils/game-types';
+import { useShader } from '../../hooks/shader-hooks';
 
 // Import shaders
 
@@ -35,24 +32,6 @@ interface HexWaterRendererProps {
   readonly waveHeight?: number;
   readonly waveSpeed?: number;
   readonly transparency?: number;
-}
-
-interface WaterUniforms {
-  [uniform: string]: IUniform<number | Color | Vector3>;
-  u_time: IUniform<number>;
-  u_waterColor: IUniform<Color>;
-  u_foamColor: IUniform<Color>;
-  u_deepWaterColor: IUniform<Color>;
-  u_waveHeight: IUniform<number>;
-  u_waveSpeed: IUniform<number>;
-  u_foamThreshold: IUniform<number>;
-  u_transparency: IUniform<number>;
-  u_cameraPosition: IUniform<Vector3>;
-  u_lightDirection: IUniform<Vector3>;
-  u_ambientColor: IUniform<Color>;
-  u_ambientIntensity: IUniform<number>;
-  u_specularIntensity: IUniform<number>;
-  u_roughness: IUniform<number>;
 }
 
 /**
@@ -67,8 +46,8 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
   transparency = 0.8,
 }) => {
   const { quality, debug } = useRenderStore();
+  const animatedWaterShader = useShader('animated-water');
   const meshRef = useRef<InstancedMesh>(null);
-  const materialRef = useRef<ShaderMaterial>(null);
   const waterTilesRef = useRef<GameTile[]>([]);
 
   // Filter water tiles
@@ -79,32 +58,44 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
 
   // Water shader material
   const waterMaterial = useMemo(() => {
-    const uniforms: WaterUniforms = {
-      u_time: { value: 0 },
-      u_waterColor: { value: new Color(0x4a90e2) },
-      u_foamColor: { value: new Color(0xffffff) },
-      u_deepWaterColor: { value: new Color(0x1e3a8a) },
-      u_waveHeight: { value: waveHeight },
-      u_waveSpeed: { value: waveSpeed },
-      u_foamThreshold: { value: 0.6 },
-      u_transparency: { value: transparency },
-      u_cameraPosition: { value: new Vector3() },
-      u_lightDirection: { value: new Vector3(-0.5, -1, -0.3) },
-      u_ambientColor: { value: new Color(0x404040) },
-      u_ambientIntensity: { value: 0.3 },
-      u_specularIntensity: { value: 1.2 },
-      u_roughness: { value: 0.1 },
-    };
+    if (!animatedWaterShader) {
+      // Fallback to basic material if shader not ready
+      return new MeshLambertMaterial({
+        color: 0x4a90e2,
+        transparent: true,
+        opacity: transparency,
+        wireframe: debug.showWireframe,
+      });
+    }
 
-    return new ShaderMaterial({
-      uniforms,
-      vertexShader: animatedWaterVert,
-      fragmentShader: animatedWaterFrag,
-      transparent: true,
-      depthWrite: false, // For proper alpha blending
-      wireframe: debug.showWireframe,
-    });
-  }, [waveHeight, waveSpeed, transparency, debug.showWireframe]);
+    // Clone the shader material and update uniforms
+    const material = animatedWaterShader.clone();
+
+    // Update custom uniforms (safely check if they exist)
+    const { uniforms } = material;
+    if (uniforms && typeof uniforms === 'object') {
+      if ('u_waveHeight' in uniforms && uniforms.u_waveHeight) {
+        uniforms.u_waveHeight.value = waveHeight;
+      }
+      if ('u_waveSpeed' in uniforms && uniforms.u_waveSpeed) {
+        uniforms.u_waveSpeed.value = waveSpeed;
+      }
+      if ('u_transparency' in uniforms && uniforms.u_transparency) {
+        uniforms.u_transparency.value = transparency;
+      }
+    }
+
+    // Update wireframe mode
+    material.wireframe = debug.showWireframe;
+
+    return material;
+  }, [
+    animatedWaterShader,
+    waveHeight,
+    waveSpeed,
+    transparency,
+    debug.showWireframe,
+  ]);
 
   // Create hex geometry based on quality
   const hexGeometry = useMemo(() => {
@@ -145,26 +136,37 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
 
   // Update uniforms on each frame
   useFrame(({ clock, camera: frameCamera }) => {
-    const material = materialRef.current;
-    if (!material) return;
+    const mesh = meshRef.current;
+    if (!mesh || !animatedWaterShader) return;
+
+    const material = mesh.material as ShaderMaterial;
+    if (!material?.uniforms) return;
 
     // Update time for animation
-    material.uniforms.u_time.value = clock.elapsedTime;
+    if (material.uniforms.u_time) {
+      material.uniforms.u_time.value = clock.elapsedTime;
+    }
 
     // Update camera position
-    if (material.uniforms.u_cameraPosition.value instanceof Vector3) {
+    if (material.uniforms.u_cameraPosition?.value instanceof Vector3) {
       material.uniforms.u_cameraPosition.value.copy(frameCamera.position);
     }
 
     // Quality-based animation adjustments
     const qualityMultiplier = quality.level === 'low' ? 0.5 : 1.0;
-    material.uniforms.u_waveHeight.value = waveHeight * qualityMultiplier;
-    material.uniforms.u_waveSpeed.value = waveSpeed * qualityMultiplier;
+    if (material.uniforms.u_waveHeight) {
+      material.uniforms.u_waveHeight.value = waveHeight * qualityMultiplier;
+    }
+    if (material.uniforms.u_waveSpeed) {
+      material.uniforms.u_waveSpeed.value = waveSpeed * qualityMultiplier;
+    }
 
     // LOD adjustments
     const cameraDistance = frameCamera.position.length();
     const lodFactor = Math.min(1.0, 50.0 / cameraDistance);
-    material.uniforms.u_waveHeight.value *= lodFactor;
+    if (material.uniforms.u_waveHeight) {
+      material.uniforms.u_waveHeight.value *= lodFactor;
+    }
   });
 
   // Update instances when tiles change
@@ -172,8 +174,8 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
     updateInstances();
   }, [updateInstances]);
 
-  // Don't render if no water tiles
-  if (waterTiles.length === 0) {
+  // Don't render if no water tiles or material not ready
+  if (waterTiles.length === 0 || !waterMaterial) {
     return null;
   }
 
@@ -185,9 +187,7 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
         waterMaterial,
         Math.min(waterTiles.length, maxInstances),
       ]}
-    >
-      <shaderMaterial ref={materialRef} attach='material' {...waterMaterial} />
-    </instancedMesh>
+    />
   );
 };
 

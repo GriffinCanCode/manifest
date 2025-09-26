@@ -11,7 +11,7 @@ import {
   CylinderGeometry,
   Frustum,
   Matrix4,
-  MeshLambertMaterial,
+  MeshStandardMaterial,
   Vector3,
 } from 'three';
 
@@ -33,6 +33,7 @@ import {
   type InstanceDataStreamerOptions,
 } from '../../../../utils/instance-data-streamer';
 import { InstancedBVHManager } from '../../../../utils/instanced-bvh-manager';
+import { useShader } from '../../hooks/shader-hooks';
 
 export interface HexInstanceRendererProps {
   readonly tiles: readonly GameTile[];
@@ -68,6 +69,7 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
 }) => {
   const { camera } = useThree();
   const { quality, debug, culling } = useRenderStore();
+  const hexTerrainShader = useShader('hex-terrain');
   const managerRef = useRef<InstancedBVHManager | null>(null);
   const streamerRef = useRef<InstanceDataStreamer | null>(null);
   const renderDataRef = useRef<Map<number, HexRenderData>>(new Map());
@@ -98,14 +100,44 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     return new CylinderGeometry(1, 1, 1, detail);
   }, [quality.level]);
 
-  // Create material with quality optimizations
+  // SMART TEMPORARY FIX: Use basic material while fixing shader compilation
   const hexMaterial = useMemo(() => {
-    return new MeshLambertMaterial({
-      wireframe: debug.showWireframe,
-      transparent: false,
-      fog: quality.level !== 'low',
-    });
-  }, [debug.showWireframe, quality.level]);
+    // Always return a working material - never null!
+    // This ensures HexInstanceRenderer can always render something
+
+    if (!hexTerrainShader) {
+      // Fallback to basic material if shader not ready
+      console.warn(
+        'HexInstanceRenderer: Using fallback MeshStandardMaterial (shader not ready)'
+      );
+      return new MeshStandardMaterial({
+        color: 0x4caf50,
+        wireframe: debug.showWireframe,
+        roughness: 0.8,
+        metalness: 0.1,
+      });
+    }
+
+    // Try to use custom shader, but catch any errors
+    try {
+      const material = hexTerrainShader.clone();
+      if (material.uniforms.u_wireframe) {
+        material.uniforms.u_wireframe.value = debug.showWireframe;
+      }
+      return material;
+    } catch (error) {
+      console.warn(
+        'HexInstanceRenderer: Shader failed, using fallback material',
+        error
+      );
+      return new MeshStandardMaterial({
+        color: 0x4caf50,
+        wireframe: debug.showWireframe,
+        roughness: 0.8,
+        metalness: 0.1,
+      });
+    }
+  }, [hexTerrainShader, debug.showWireframe]);
 
   // Streaming configuration
   const finalStreamingConfig = useMemo(
@@ -134,6 +166,14 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
   const initializeManager = useCallback(() => {
     if (managerRef.current) {
       managerRef.current.dispose();
+    }
+
+    // Don't initialize if material isn't ready
+    if (!hexMaterial) {
+      console.warn(
+        'HexInstanceRenderer: Shader material not ready, skipping initialization'
+      );
+      return () => {};
     }
 
     const options: InstancedBVHManagerOptions = {
@@ -332,7 +372,34 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
   });
 
   // Render the instanced mesh
-  if (!managerRef.current) {
+  if (!managerRef.current || !hexMaterial) {
+    console.warn('HexInstanceRenderer: Not ready', {
+      hasManager: !!managerRef.current,
+      hasMaterial: !!hexMaterial,
+      tilesCount: tiles.length,
+      hexTerrainShader: !!hexTerrainShader,
+    });
+
+    // FALLBACK: Render simple cubes for tiles instead of returning null
+    if (tiles.length > 0) {
+      return (
+        <group>
+          {tiles.slice(0, 100).map((tile, index) => {
+            const [x, z] = HexUtils.hexToPixel(tile.hex);
+            const y = tile.elevation * 0.5;
+            return (
+              <mesh key={tile.id || index} position={[x, y, z]}>
+                <boxGeometry args={[0.8, Math.max(0.1, tile.elevation), 0.8]} />
+                <meshStandardMaterial
+                  color={terrainColors[tile.terrain] || '#64748b'}
+                />
+              </mesh>
+            );
+          })}
+        </group>
+      );
+    }
+
     return null;
   }
 

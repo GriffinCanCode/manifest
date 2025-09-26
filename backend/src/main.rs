@@ -21,6 +21,9 @@ use manifest::core::benchmarks;
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // Startup timestamp for debugging
+            let startup_time = std::time::SystemTime::now();
+            println!("⏰ STARTUP: Application setup beginning at {:?}", startup_time);
             // Initialize basic console-only logging to avoid Tokio runtime issues
             let mut logging_config = if cfg!(debug_assertions) {
                 LoggingConfig::development()
@@ -28,12 +31,25 @@ fn main() {
                 LoggingConfig::production()
             };
             
-            // Disable file logging temporarily to avoid async runtime issues during startup
+            // Disable async file logging to avoid Tokio runtime issues during startup
+            // The logging system tries to spawn async tasks before Tauri's runtime is ready
             logging_config.files.clear();
+            
+            println!("⚠️  FILE LOGGING DISABLED: Async file logging conflicts with Tauri startup");
+            println!("🔧 WORKAROUND: All logs will go to console only during this session");
             
             let _logging_system = LoggingSystem::init(logging_config)
                 .expect("Failed to initialize logging system");
 
+            // Immediate console output to verify logging is working
+            println!("🚀 STARTUP: Manifest backend starting...");
+            eprintln!("🔍 DEBUG: Backend console logging active");
+
+            // Force console output for debugging
+            println!("🎮 Manifest - Grand Strategy Game v{}", env!("CARGO_PKG_VERSION"));
+            println!("===========================================");
+            println!("Mode: {}", if cfg!(debug_assertions) { "development" } else { "production" });
+            
             info!(
                 target: "manifest::main",
                 version = env!("CARGO_PKG_VERSION"),
@@ -41,6 +57,14 @@ fn main() {
                 "🎮 Manifest - Grand Strategy Game"
             );
             info!("==================================");
+            
+            // Auto-open devtools in debug mode
+            #[cfg(debug_assertions)]
+            {
+                let window = app.get_webview_window("main").unwrap();
+                window.open_devtools();
+                println!("🔧 DEV: Developer tools opened automatically");
+            }
             
             // Run quick performance test for hashing
             #[cfg(feature = "bench")]
@@ -55,10 +79,12 @@ fn main() {
             
             // Continue with existing setup logic...
             // Get application data directory for saves
+            println!("💾 SETUP: Configuring save system...");
             let app_data_dir = app.path().app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("./saves"));
             
             let saves_dir = app_data_dir.join("saves");
+            println!("📁 SAVES DIR: {:?}", saves_dir);
             
             // Initialize save system
             let save_system = SaveSystem::new(saves_dir.clone())
@@ -71,7 +97,9 @@ fn main() {
             );
             
             // Initialize game world
+            println!("🌍 ECS: Initializing game world...");
             let world = GameWorld::new();
+            println!("✅ ECS: Game world created successfully");
             
             info!(
                 target: "manifest::ecs",
@@ -79,11 +107,13 @@ fn main() {
             );
             
             // Initialize command cache
+            println!("💾 CACHE: Setting up command cache...");
             let command_cache = GameCacheBuilder::new()
                 .max_memory_mb(128)
                 .default_ttl(std::time::Duration::from_secs(300))
                 .enable_metrics(true)
                 .build();
+            println!("✅ CACHE: Command cache initialized with 128MB limit");
             
             info!(
                 target: "manifest::cache",
@@ -91,6 +121,7 @@ fn main() {
             );
             
             // Create application state
+            println!("🔧 STATE: Creating application state...");
             let state = AppState {
                 world: Mutex::new(world),
                 command_cache,
@@ -98,7 +129,12 @@ fn main() {
             };
             
             // Manage state globally
+            println!("📊 TAURI: Registering state with Tauri...");
             app.manage(state);
+            
+            println!("✅ READY: All systems initialized - Game ready to launch!");
+            println!("📊 Active components: ECS, Saves, Cache, UI");
+            println!("🎮 Manifest is now running and ready for interaction");
             
             info!(
                 target: "manifest::main",

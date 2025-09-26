@@ -4,6 +4,14 @@
  */
 
 import type { Camera, Scene, WebGLRenderer, WebGLRenderTarget } from 'three';
+import {
+  Color,
+  Mesh,
+  MeshBasicMaterial,
+  OrthographicCamera,
+  PlaneGeometry,
+  Scene as ThreeScene,
+} from 'three';
 
 export interface RenderPassConfig {
   name: string;
@@ -102,10 +110,30 @@ export class GeometryPass extends RenderPass {
     renderer: WebGLRenderer,
     scene: Scene,
     camera: Camera,
-    writeBuffer?: WebGLRenderTarget
+    writeBuffer?: WebGLRenderTarget | null
   ): void {
-    this.setRenderTarget(renderer, writeBuffer);
-    renderer.render(scene, camera);
+    // Render to screen if writeBuffer is null/undefined OR renderToScreen is true
+    const shouldRenderToScreen =
+      writeBuffer === null || writeBuffer === undefined || this.renderToScreen;
+
+    if (shouldRenderToScreen) {
+      renderer.setRenderTarget(null);
+      renderer.clear(true, true, false);
+      renderer.render(scene, camera);
+    } else {
+      this.setRenderTarget(renderer, writeBuffer);
+      renderer.render(scene, camera);
+    }
+
+    // Reduced debug logging
+    if (import.meta.env.MODE === 'development') {
+      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      if (frameCount % 60 === 0) {
+        console.warn(
+          `GeometryPass: Rendered scene to ${shouldRenderToScreen ? 'screen' : 'buffer'}`
+        );
+      }
+    }
   }
 }
 
@@ -134,8 +162,13 @@ export class ShadowPass extends RenderPass {
 
 /**
  * Post-process pass for effects processing
+ * Coordinates with PostProcessingComposer for intelligent integration
  */
 export class PostProcessPass extends RenderPass {
+  private postProcessingCallback:
+    | ((renderer: any, inputBuffer: any, camera: any) => void)
+    | null = null;
+
   constructor(config: Partial<RenderPassConfig> = {}) {
     super({
       name: 'postprocess',
@@ -148,15 +181,103 @@ export class PostProcessPass extends RenderPass {
     });
   }
 
+  /**
+   * Set the PostProcessingComposer callback for coordination
+   */
+  setPostProcessingCallback(
+    callback: (renderer: any, inputBuffer: any, camera: any) => void
+  ): void {
+    this.postProcessingCallback = callback;
+  }
+
   render(
     renderer: WebGLRenderer,
-    _scene: Scene,
-    _camera: Camera,
+    scene: Scene,
+    camera: Camera,
     writeBuffer?: WebGLRenderTarget,
-    _readBuffer?: WebGLRenderTarget
+    readBuffer?: WebGLRenderTarget
   ): void {
-    // Post-processing handled by EffectComposer
-    // This pass coordinates with existing PostProcessingComposer
-    this.setRenderTarget(renderer, writeBuffer);
+    // This pass coordinates with PostProcessingComposer for intelligent integration
+    const shouldRenderToScreen =
+      writeBuffer === null || writeBuffer === undefined || this.renderToScreen;
+
+    if (shouldRenderToScreen) {
+      // Final pass: Use PostProcessingComposer to apply effects and render to screen
+      if (readBuffer && this.postProcessingCallback) {
+        // Smart integration: Use PostProcessingComposer's render function with our input buffer
+        this.postProcessingCallback(renderer, readBuffer, camera);
+      } else if (readBuffer) {
+        // Fallback: Simple copy to screen
+        this.copyBufferToScreen(renderer, readBuffer);
+      } else {
+        // Last resort: direct scene render
+        renderer.setRenderTarget(null);
+        renderer.clear(true, true, false);
+        renderer.render(scene, camera);
+      }
+    } else {
+      // Intermediate pass: just copy buffer
+      this.setRenderTarget(renderer, writeBuffer);
+      if (readBuffer) {
+        this.copyBufferToScreen(renderer, readBuffer);
+      }
+    }
+
+    // Reduced debug logging
+    if (import.meta.env.MODE === 'development') {
+      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      if (frameCount % 60 === 0) {
+        const method = this.postProcessingCallback
+          ? 'PostProcessingComposer'
+          : 'direct copy';
+        console.warn(
+          `PostProcessPass: ${shouldRenderToScreen ? 'Applied effects to screen' : 'Applied effects to buffer'} using ${method}`
+        );
+      }
+    }
+  }
+
+  private copyBufferToScreen(
+    renderer: WebGLRenderer,
+    sourceBuffer: WebGLRenderTarget
+  ): void {
+    // Advanced buffer copy using Three.js render-to-texture functionality
+    try {
+      // Create a temporary scene with a fullscreen quad
+      const copyScene = new ThreeScene();
+      const copyCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const copyMaterial = new MeshBasicMaterial({
+        map: sourceBuffer.texture,
+        transparent: false,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const copyMesh = new Mesh(new PlaneGeometry(2, 2), copyMaterial);
+
+      copyScene.add(copyMesh);
+
+      // Render the buffer to screen
+      const currentClearColor = renderer.getClearColor(new Color());
+      const currentClearAlpha = renderer.getClearAlpha();
+
+      renderer.setRenderTarget(null);
+      renderer.clear(false, false, false); // Don't clear, just composite
+      renderer.render(copyScene, copyCamera);
+
+      // Restore previous state
+      renderer.setClearColor(currentClearColor, currentClearAlpha);
+
+      // Cleanup
+      copyMaterial.dispose();
+      copyMesh.geometry.dispose();
+
+      // Reduced logging
+      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      if (frameCount % 60 === 0) {
+        console.warn('PostProcessPass: Successfully copied buffer to screen');
+      }
+    } catch (error) {
+      console.warn('PostProcessPass: Buffer copy failed', error);
+    }
   }
 }

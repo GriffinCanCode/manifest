@@ -1,25 +1,39 @@
 /**
- * Enhanced Post-Processing Composer integrated with RenderPipeline
- * Comprehensive post-processing pipeline using @react-three/postprocessing
+ * Enhanced Post-Processing Composer integrated with custom shader system
+ * Uses our custom shaders instead of @react-three/postprocessing
  */
 
-import { useFrame } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  Bloom,
-  ChromaticAberration,
-  EffectComposer,
-  FXAA,
-  N8AO,
-  ToneMapping,
-  Vignette,
-} from '@react-three/postprocessing';
-import { BlendFunction, KernelSize, ToneMappingMode } from 'postprocessing';
-import React, { useMemo, useRef } from 'react';
-import { Vector2 } from 'three';
+  HalfFloatType,
+  Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
+  RGBAFormat,
+  Scene,
+  Vector2,
+  WebGLRenderTarget,
+  type Camera,
+  type WebGLRenderer,
+} from 'three';
 
 import { useRenderStore } from '../../../../stores/render-store';
+import { useShader } from '../../hooks';
 
 import { ShadowCascadeRenderer } from './ShadowCascadeRenderer';
+
+// Context for coordinating with RenderPipeline
+const PostProcessingContext = React.createContext<{
+  renderFromBuffer: (
+    renderer: WebGLRenderer,
+    inputBuffer: WebGLRenderTarget,
+    camera: Camera
+  ) => void;
+} | null>(null);
+
+export const usePostProcessingContext = () =>
+  React.useContext(PostProcessingContext);
 
 interface PostProcessingComposerProps {
   children?: React.ReactNode;
@@ -29,37 +43,74 @@ interface PostProcessingComposerProps {
 }
 
 /**
- * Enhanced post-processing composer with pipeline integration
+ * Custom post-processing composer using our shader system
  */
 export const PostProcessingComposer: React.FC<PostProcessingComposerProps> = ({
   children,
   enabled = true,
   enableTAA = true,
-  enableSelectiveBloom = false,
+  enableSelectiveBloom: _enableSelectiveBloom = false,
 }) => {
   const { postprocessing, quality, capabilities, isInitialized, shadows } =
     useRenderStore();
+  const { gl, size } = useThree();
 
-  const composerRef = useRef<React.ElementRef<typeof EffectComposer> | null>(
-    null
-  );
-  const frameCount = useRef(0);
+  // Get all postprocessing shaders
+  const ssaoShader = useShader('ssao');
+  const bloomShader = useShader('bloom');
+  const fxaaShader = useShader('fxaa');
+  const hdrToneMappingShader = useShader('hdr-tonemapping');
+  const colorCorrectionShader = useShader('color-correction');
+  const taaShader = useShader('taa');
+  const motionBlurShader = useShader('motion-blur');
+
+  // Render targets
+  const renderTargets = useRef<{
+    read: WebGLRenderTarget;
+    write: WebGLRenderTarget;
+  }>();
+  const quadGeometry = useRef<PlaneGeometry>();
+  const quadMesh = useRef<Mesh>();
+  const postprocessingScene = useRef<Scene>();
+
+  // Initialize render targets and geometry
+  useEffect(() => {
+    if (!gl || !enabled) return;
+
+    // Create render targets
+    const createRenderTarget = () => {
+      return new WebGLRenderTarget(size.width, size.height, {
+        format: RGBAFormat,
+        type: capabilities?.supportsHDR ? HalfFloatType : undefined,
+        generateMipmaps: false,
+        stencilBuffer: false,
+      });
+    };
+
+    renderTargets.current = {
+      read: createRenderTarget(),
+      write: createRenderTarget(),
+    };
+
+    // Create quad geometry and mesh
+    quadGeometry.current = new PlaneGeometry(2, 2);
+    quadMesh.current = new Mesh(quadGeometry.current);
+    postprocessingScene.current = new Scene();
+    postprocessingScene.current.add(quadMesh.current);
+
+    return () => {
+      renderTargets.current?.read.dispose();
+      renderTargets.current?.write.dispose();
+      quadGeometry.current?.dispose();
+    };
+  }, [gl, size.width, size.height, capabilities?.supportsHDR, enabled]);
 
   // Adaptive quality settings
   const adaptiveSettings = useMemo(() => {
     const gpuTier = capabilities?.gpuTier ?? 'medium';
 
     return {
-      kernelSize:
-        {
-          low: KernelSize.VERY_SMALL,
-          medium: KernelSize.SMALL,
-          high: KernelSize.MEDIUM,
-          ultra: KernelSize.LARGE,
-        }[quality.level] ?? KernelSize.MEDIUM,
-
       samples: gpuTier === 'high' ? 8 : gpuTier === 'medium' ? 4 : 2,
-
       effectIntensities: {
         bloom: quality.level === 'low' ? 0.3 : 0.5,
         aoRadius:
@@ -77,138 +128,320 @@ export const PostProcessingComposer: React.FC<PostProcessingComposerProps> = ({
   // Effect enable/disable logic
   const effectsEnabled = useMemo(
     () => ({
-      ssao: postprocessing.ssao && capabilities?.supportsFloatTextures,
-      bloom: postprocessing.bloom && capabilities?.supportsHDR,
-      toneMapping: capabilities?.supportsHDR,
-      fxaa: postprocessing.fxaa && quality.antialias && !enableTAA,
-      taa: enableTAA && quality.level !== 'low',
-      vignette: quality.level !== 'low',
-      chromaticAberration: quality.level === 'ultra',
+      ssao:
+        postprocessing.ssao &&
+        capabilities?.supportsFloatTextures &&
+        ssaoShader,
+      bloom: postprocessing.bloom && capabilities?.supportsHDR && bloomShader,
+      toneMapping: capabilities?.supportsHDR && hdrToneMappingShader,
+      fxaa:
+        postprocessing.fxaa && quality.antialias && !enableTAA && fxaaShader,
+      taa: enableTAA && quality.level !== 'low' && taaShader,
+      colorCorrection: colorCorrectionShader && quality.level !== 'low',
+      motionBlur: motionBlurShader && quality.level === 'ultra',
     }),
-    [postprocessing, quality, capabilities, enableTAA]
+    [
+      postprocessing,
+      quality,
+      capabilities,
+      enableTAA,
+      ssaoShader,
+      bloomShader,
+      hdrToneMappingShader,
+      fxaaShader,
+      taaShader,
+      colorCorrectionShader,
+      motionBlurShader,
+    ]
   );
 
-  // Frame tracking for TAA
-  useFrame(() => {
-    frameCount.current++;
-  });
+  // Custom postprocessing render
+  const renderPostProcessing = useCallback(
+    (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
+      if (
+        !renderTargets.current ||
+        !quadMesh.current ||
+        !postprocessingScene.current
+      ) {
+        return;
+      }
+
+      const { read, write } = renderTargets.current;
+      let currentRead = read;
+      let currentWrite = write;
+
+      // Helper function to swap render targets
+      const swapTargets = () => {
+        [currentRead, currentWrite] = [currentWrite, currentRead];
+      };
+
+      // NOTE: Scene rendering is now handled by RenderPipeline GeometryPass
+      // Input should come from the pipeline's render buffer
+      // For now, render scene as fallback if no input buffer provided
+      renderer.setRenderTarget(currentWrite);
+      renderer.clear(true, true, false);
+      renderer.render(scene, camera);
+
+      // Apply postprocessing passes
+      renderer.autoClear = false;
+
+      // SSAO Pass
+      if (effectsEnabled.ssao && ssaoShader) {
+        swapTargets();
+        const ssaoMaterial = ssaoShader.clone();
+        quadMesh.current.material = ssaoMaterial;
+        if (ssaoMaterial.uniforms) {
+          ssaoMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+          ssaoMaterial.uniforms.u_resolution = {
+            value: new Vector2(size.width, size.height),
+          };
+        }
+        renderer.setRenderTarget(currentWrite);
+        renderer.render(postprocessingScene.current, camera);
+      }
+
+      // Bloom Pass
+      if (effectsEnabled.bloom && bloomShader) {
+        swapTargets();
+        const bloomMaterial = bloomShader.clone();
+        quadMesh.current.material = bloomMaterial;
+        if (bloomMaterial.uniforms) {
+          bloomMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+          bloomMaterial.uniforms.u_intensity = {
+            value: adaptiveSettings.effectIntensities.bloom,
+          };
+        }
+        renderer.setRenderTarget(currentWrite);
+        renderer.render(postprocessingScene.current, camera);
+      }
+
+      // HDR Tone Mapping Pass
+      if (effectsEnabled.toneMapping && hdrToneMappingShader) {
+        swapTargets();
+        const toneMappingMaterial = hdrToneMappingShader.clone();
+        quadMesh.current.material = toneMappingMaterial;
+        if (toneMappingMaterial.uniforms) {
+          toneMappingMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+        }
+        renderer.setRenderTarget(currentWrite);
+        renderer.render(postprocessingScene.current, camera);
+      }
+
+      // Color Correction Pass
+      if (effectsEnabled.colorCorrection && colorCorrectionShader) {
+        swapTargets();
+        const colorCorrectionMaterial = colorCorrectionShader.clone();
+        quadMesh.current.material = colorCorrectionMaterial;
+        if (colorCorrectionMaterial.uniforms) {
+          colorCorrectionMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+        }
+        renderer.setRenderTarget(currentWrite);
+        renderer.render(postprocessingScene.current, camera);
+      }
+
+      // TAA Pass
+      if (effectsEnabled.taa && taaShader) {
+        swapTargets();
+        const taaMaterial = taaShader.clone();
+        quadMesh.current.material = taaMaterial;
+        if (taaMaterial.uniforms) {
+          taaMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+          taaMaterial.uniforms.u_alpha = {
+            value: adaptiveSettings.effectIntensities.taa,
+          };
+        }
+        renderer.setRenderTarget(currentWrite);
+        renderer.render(postprocessingScene.current, camera);
+      }
+
+      // Motion Blur Pass
+      if (effectsEnabled.motionBlur && motionBlurShader) {
+        swapTargets();
+        const motionBlurMaterial = motionBlurShader.clone();
+        quadMesh.current.material = motionBlurMaterial;
+        if (motionBlurMaterial.uniforms) {
+          motionBlurMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+        }
+        renderer.setRenderTarget(currentWrite);
+        renderer.render(postprocessingScene.current, camera);
+      }
+
+      // FXAA Pass (final)
+      if (effectsEnabled.fxaa && fxaaShader) {
+        swapTargets();
+        const fxaaMaterial = fxaaShader.clone();
+        quadMesh.current.material = fxaaMaterial;
+        if (fxaaMaterial.uniforms) {
+          fxaaMaterial.uniforms.tDiffuse = {
+            value: currentRead.texture,
+          };
+          fxaaMaterial.uniforms.u_resolution = {
+            value: new Vector2(size.width, size.height),
+          };
+        }
+      } else {
+        // Copy to screen if no FXAA
+        swapTargets();
+      }
+
+      // Final render to screen
+      renderer.setRenderTarget(null);
+      renderer.render(postprocessingScene.current, camera);
+
+      renderer.autoClear = true;
+    },
+    [
+      effectsEnabled,
+      adaptiveSettings,
+      ssaoShader,
+      bloomShader,
+      hdrToneMappingShader,
+      colorCorrectionShader,
+      taaShader,
+      motionBlurShader,
+      fxaaShader,
+      size.width,
+      size.height,
+    ]
+  );
+
+  /**
+   * Render post-processing effects from an input buffer (called by RenderPipeline)
+   */
+  const renderFromBuffer = useCallback(
+    (
+      renderer: WebGLRenderer,
+      inputBuffer: WebGLRenderTarget,
+      camera: Camera
+    ) => {
+      if (
+        !renderTargets.current ||
+        !quadMesh.current ||
+        !postprocessingScene.current
+      ) {
+        console.warn('PostProcessingComposer: Not ready, skipping render');
+        return;
+      }
+
+      const currentRead = inputBuffer; // Start with input from RenderPipeline
+
+      // Apply postprocessing passes using the input buffer
+      renderer.autoClear = false;
+
+      // STEP 3: Enable FXAA anti-aliasing effect (reduced logging)
+      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      if (frameCount % 180 === 0) {
+        console.warn('PostProcessingComposer: effectsEnabled:', {
+          fxaa: effectsEnabled.fxaa,
+          fxaaShader: !!fxaaShader,
+          bloom: effectsEnabled.bloom,
+          ssao: effectsEnabled.ssao,
+          toneMapping: effectsEnabled.toneMapping,
+        });
+      }
+
+      // Enable FXAA with smart fallback
+      if (effectsEnabled.fxaa && fxaaShader) {
+        try {
+          const fxaaMaterial = fxaaShader.clone();
+          if (fxaaMaterial.uniforms) {
+            fxaaMaterial.uniforms.tDiffuse = { value: currentRead.texture };
+            fxaaMaterial.uniforms.u_resolution = {
+              value: new Vector2(size.width, size.height),
+            };
+          }
+          quadMesh.current.material = fxaaMaterial;
+          if (frameCount % 180 === 0) {
+            console.warn('PostProcessingComposer: ✅ FXAA enabled');
+          }
+        } catch (error) {
+          console.warn(
+            'PostProcessingComposer: FXAA failed, using copy fallback:',
+            error
+          );
+          quadMesh.current.material = new MeshBasicMaterial({
+            map: currentRead.texture,
+          });
+        }
+      } else {
+        // Simple copy material as fallback
+        const copyMaterial = new MeshBasicMaterial({
+          map: currentRead.texture,
+        });
+        quadMesh.current.material = copyMaterial;
+        if (frameCount % 180 === 0) {
+          console.warn('PostProcessingComposer: Using copy material fallback');
+        }
+      }
+
+      // Final render to screen
+      renderer.setRenderTarget(null);
+      renderer.clear(false, false, false);
+      renderer.render(postprocessingScene.current, camera);
+
+      renderer.autoClear = true;
+
+      if (frameCount % 180 === 0) {
+        console.warn(
+          'PostProcessingComposer: ✅ Successfully rendered from input buffer to screen'
+        );
+      }
+    },
+    [effectsEnabled, fxaaShader, size.width, size.height]
+  );
+
+  // Remove competing useFrame hook - let RenderPipeline control the render loop
 
   if (!isInitialized || !enabled || !postprocessing.enabled) {
-    return children ? (children as React.ReactElement) : null;
+    return (
+      <PostProcessingContext.Provider value={{ renderFromBuffer }}>
+        <ShadowCascadeRenderer
+          enabled={shadows.enabled && capabilities?.supportsShadows}
+          cascades={shadows.cascades}
+          shadowMapSize={shadows.mapSize}
+          maxFar={shadows.maxDistance}
+          shadowBias={shadows.bias}
+        >
+          {children}
+        </ShadowCascadeRenderer>
+      </PostProcessingContext.Provider>
+    );
   }
 
   return (
-    <ShadowCascadeRenderer
-      enabled={shadows.enabled && capabilities?.supportsShadows}
-      cascades={shadows.cascades}
-      shadowMapSize={shadows.mapSize}
-      maxFar={shadows.maxDistance}
-      shadowBias={shadows.bias}
-    >
-      <EffectComposer
-        ref={composerRef}
-        multisampling={adaptiveSettings.samples}
-        depthBuffer
-        enabled={enabled && postprocessing.enabled}
-        enableNormalPass
+    <PostProcessingContext.Provider value={{ renderFromBuffer }}>
+      <ShadowCascadeRenderer
+        enabled={shadows.enabled && capabilities?.supportsShadows}
+        cascades={shadows.cascades}
+        shadowMapSize={shadows.mapSize}
+        maxFar={shadows.maxDistance}
+        shadowBias={shadows.bias}
       >
-        {
-          [
-            children as React.ReactElement,
+        {/* Children will be rendered through our custom postprocessing pipeline */}
+        {children}
 
-            /* Screen Space Ambient Occlusion */
-            effectsEnabled.ssao && (
-              <N8AO
-                key='ssao'
-                aoRadius={adaptiveSettings.effectIntensities.aoRadius}
-                distanceFalloff={quality.level === 'low' ? 0.5 : 1.0}
-                intensity={adaptiveSettings.effectIntensities.aoIntensity}
-                quality={
-                  quality.level === 'low'
-                    ? 'low'
-                    : quality.level === 'medium'
-                      ? 'medium'
-                      : 'high'
-                }
-                halfRes={quality.level === 'low'}
-                screenSpaceRadius={quality.level !== 'low'}
-                color='#000000'
-                aoSamples={quality.level === 'low' ? 16 : 32}
-                denoiseSamples={quality.level === 'low' ? 4 : 8}
-              />
-            ),
-
-            /* Bloom Effect */
-            effectsEnabled.bloom && (
-              <Bloom
-                key='bloom'
-                intensity={adaptiveSettings.effectIntensities.bloom}
-                luminanceThreshold={quality.level === 'low' ? 1.1 : 0.9}
-                luminanceSmoothing={quality.level === 'low' ? 0.025 : 0.05}
-                mipmapBlur={quality.level !== 'low'}
-                kernelSize={adaptiveSettings.kernelSize}
-                blendFunction={BlendFunction.ADD}
-                // Selective bloom for performance
-                {...(enableSelectiveBloom && {
-                  luminanceThreshold: 1.5,
-                  intensity: 0.8,
-                })}
-              />
-            ),
-
-            /* HDR Tone Mapping */
-            effectsEnabled.toneMapping && (
-              <ToneMapping
-                key='toneMapping'
-                mode={ToneMappingMode.ACES_FILMIC}
-                whitePoint={16.0}
-                middleGrey={0.6}
-                minLuminance={0.01}
-                averageLuminance={1.0}
-                adaptationRate={quality.level === 'low' ? 2.0 : 1.0}
-                blendFunction={BlendFunction.NORMAL}
-              />
-            ),
-
-            /* Fast Approximate Anti-Aliasing */
-            effectsEnabled.fxaa && (
-              // eslint-disable-next-line react/jsx-pascal-case
-              <FXAA
-                key='fxaa'
-                blendFunction={BlendFunction.NORMAL}
-                // Enhanced quality for higher settings
-                {...(quality.level === 'ultra' && {
-                  edgeThresholdMin: 0.0312,
-                  edgeThreshold: 0.063,
-                })}
-              />
-            ),
-
-            /* Vignette Effect */
-            effectsEnabled.vignette && (
-              <Vignette
-                key='vignette'
-                offset={quality.level === 'medium' ? 0.4 : 0.3}
-                darkness={quality.level === 'low' ? 0.05 : 0.1}
-                eskil={false}
-                blendFunction={BlendFunction.MULTIPLY}
-              />
-            ),
-
-            /* Chromatic Aberration (Ultra only) */
-            effectsEnabled.chromaticAberration && (
-              <ChromaticAberration
-                key='chromaticAberration'
-                offset={new Vector2(0.0008, 0.0012)}
-                blendFunction={BlendFunction.NORMAL}
-                radialModulation={false}
-                modulationOffset={0.15}
-              />
-            ),
-          ].filter(Boolean) as React.ReactElement[]
-        }
-      </EffectComposer>
-    </ShadowCascadeRenderer>
+        {/* Expose render functions for parent pipeline to use */}
+        <primitive
+          object={{
+            renderPostProcessing,
+            renderFromBuffer,
+            isCustomPostProcessing: true,
+          }}
+        />
+      </ShadowCascadeRenderer>
+    </PostProcessingContext.Provider>
   );
 };
 

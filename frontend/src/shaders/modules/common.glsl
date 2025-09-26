@@ -87,11 +87,7 @@ mat2 rotate2DMat(float a) {
   return mat2(c, -s, s, c);
 }
 
-// Distance functions for terrain
-float hexDistance(vec2 a, vec2 b) {
-  vec2 diff = abs(a - b);
-  return max(diff.x, max(diff.y, (diff.x + diff.y + abs(diff.x - diff.y)) * 0.5));
-}
+// Distance functions for terrain (hexDistance moved to hex.glsl to avoid conflicts)
 
 // UV coordinate helpers
 vec2 tileUV(vec2 uv, float tiles) {
@@ -138,7 +134,6 @@ vec3 softLight(vec3 base, vec3 blend) {
 #pragma glslify: export(hash33)
 #pragma glslify: export(rotate2D)
 #pragma glslify: export(rotate2DMat)
-#pragma glslify: export(hexDistance)
 #pragma glslify: export(tileUV)
 #pragma glslify: export(mirrorUV)
 #pragma glslify: export(overlay)

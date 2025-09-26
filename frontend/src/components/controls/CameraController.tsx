@@ -3,6 +3,7 @@
  * Main orchestrator for camera modes and input handling
  */
 
+import { Html } from '@react-three/drei';
 import React, { useCallback, useEffect } from 'react';
 
 import { useCameraStore } from '../../stores/camera-store';
@@ -39,7 +40,7 @@ export const CameraController: React.FC<CameraControlsProps> = ({
   });
 
   // Initialize camera effects
-  const _cameraEffects = useCameraEffects({
+  useCameraEffects({
     enableShake,
     enableFocus,
     enableTransitions: smoothTransitions,
@@ -115,29 +116,38 @@ export const CameraController: React.FC<CameraControlsProps> = ({
   };
 
   return (
-    <>
+    <group>
       {/* Main camera component */}
       {renderCameraComponent()}
 
       {/* Input overlay for gesture handling */}
       {inputHandling.bind && (
-        <div
-          {...inputHandling.bind()}
+        <Html
+          fullscreen
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
             pointerEvents: 'auto',
             touchAction: 'none',
           }}
-        />
+        >
+          <div
+            {...inputHandling.bind()}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'auto',
+              touchAction: 'none',
+            }}
+          />
+        </Html>
       )}
 
       {/* Context menu */}
       {inputHandling.contextMenu.visible && (
-        <div
+        <Html
+          position={[0, 0, 0]}
           style={{
             position: 'absolute',
             left: inputHandling.contextMenu.position.x,
@@ -147,36 +157,40 @@ export const CameraController: React.FC<CameraControlsProps> = ({
             padding: '8px 0',
             minWidth: '150px',
             zIndex: 1000,
+            pointerEvents: 'auto',
           }}
         >
-          {inputHandling.contextMenu.items.map(item => (
-            <button
-              key={item.id}
-              onClick={() => {
-                item.action();
-                inputHandling.hideContextMenu();
-              }}
-              disabled={item.disabled}
-              style={{
-                display: 'block',
-                width: '100%',
-                padding: '8px 16px',
-                border: 'none',
-                background: 'transparent',
-                color: 'white',
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+          <div>
+            {inputHandling.contextMenu.items.map(item => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  item.action();
+                  inputHandling.hideContextMenu();
+                }}
+                disabled={item.disabled}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '8px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'white',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </Html>
       )}
 
       {/* Tooltip */}
       {inputHandling.tooltip.visible && (
-        <div
+        <Html
+          position={[0, 0, 0]}
           style={{
             position: 'absolute',
             left: inputHandling.tooltip.position.x,
@@ -190,13 +204,14 @@ export const CameraController: React.FC<CameraControlsProps> = ({
             zIndex: 1001,
           }}
         >
-          {inputHandling.tooltip.content}
-        </div>
+          <div>{inputHandling.tooltip.content}</div>
+        </Html>
       )}
 
       {/* Selection box */}
       {inputHandling.selectionBox.active && (
-        <div
+        <Html
+          position={[0, 0, 0]}
           style={{
             position: 'absolute',
             left: Math.min(
@@ -220,9 +235,11 @@ export const CameraController: React.FC<CameraControlsProps> = ({
             pointerEvents: 'none',
             zIndex: 999,
           }}
-        />
+        >
+          <div />
+        </Html>
       )}
-    </>
+    </group>
   );
 };
 

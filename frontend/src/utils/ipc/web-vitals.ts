@@ -500,7 +500,7 @@ export const createVitalsIntegration = (monitor: WebVitalsMonitor) => {
 
 // Default singleton instance
 export const webVitalsMonitor = new WebVitalsMonitor({
-  enabled: process.env.NODE_ENV === 'production',
+  enabled: (import.meta as any)?.env?.MODE === 'production',
   reportThreshold: 100,
   trackCommandImpact: true,
 });

@@ -69,7 +69,7 @@ export { default as taaFragment } from './postprocessing/taa.frag';
  * Call this during application startup
  */
 export const initializeShaderSystem = (): void => {
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.MODE === 'development') {
     console.warn('🎨 Initializing GLSL Shader System...');
     console.warn(
       '📁 Modules: common, hex, noise, shadows, screen-space, color, sampling'
@@ -97,7 +97,7 @@ export const shaderDev = {
 };
 
 // Attach to window in development
-if (process.env.NODE_ENV === 'development') {
+if (import.meta.env.MODE === 'development') {
   (window as unknown as { __shaderDev: typeof shaderDev }).__shaderDev =
     shaderDev;
 }

@@ -3,7 +3,7 @@
  * Integrates with Rust backend hex mathematics (Zig SIMD optimized)
  */
 
-#include common.glsl
+#include ./common.glsl
 
 // Hex grid constants
 #define HEX_SIZE 1.0
@@ -162,7 +162,7 @@ vec4 hexPattern(vec2 uv, float scale, float time) {
   // Animated hex pattern
   float pulse = sin(time * 2.0 + tileID * TAU) * 0.5 + 0.5;
   float edge = hexEdge(localUV, 0.02);
-  float fill = 1.0 - isInsideHex(localUV, vec2(0.0), 0.8) ? 0.0 : 1.0;
+  float fill = isInsideHex(localUV, vec2(0.0), 0.8) ? 1.0 : 0.0;
   
   return vec4(localUV, edge * pulse, fill);
 }

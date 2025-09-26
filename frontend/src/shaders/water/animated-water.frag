@@ -3,8 +3,12 @@
  * GPU-optimized water animation with waves, foam, and transparency
  */
 
-#include common.glsl
-#include noise.glsl
+#ifdef GL_ES
+precision highp float;
+#endif
+
+#include ../modules/common.glsl
+#include ../modules/noise.glsl
 
 // Water animation uniforms
 uniform float u_time;

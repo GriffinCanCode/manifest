@@ -3,10 +3,12 @@
  * Handles instanced hex tile rendering with height displacement
  */
 
-// Standard attributes
-attribute vec3 position;
-attribute vec3 normal;
-attribute vec2 uv;
+#ifdef GL_ES
+precision highp float;
+#endif
+
+// Note: Standard attributes (position, normal, uv) and uniforms (modelMatrix, viewMatrix, etc.)
+// are automatically provided by Three.js - no need to declare them explicitly
 
 // Instanced attributes (per-hex data)
 attribute vec3 instancePosition;
@@ -15,13 +17,6 @@ attribute float instanceHeight;
 attribute float instanceBiome;
 attribute vec2 instanceTexCoords;
 attribute float instanceResourceMask;
-
-// Standard uniforms
-uniform mat4 modelMatrix;
-uniform mat4 viewMatrix;
-uniform mat4 projectionMatrix;
-uniform mat3 normalMatrix;
-uniform vec3 cameraPosition;
 
 // Custom uniforms
 uniform float u_time;
@@ -56,11 +51,7 @@ varying float v_shadowDistance;
 
 #ifdef USE_SHADOWS
 #include ../modules/shadows.glsl
-// Shadow matrices (injected by CSM system)
-uniform mat4 csmMatrix0;
-uniform mat4 csmMatrix1; 
-uniform mat4 csmMatrix2;
-uniform mat4 csmMatrix3;
+// Note: CSM matrices are declared in shadows.glsl module
 #endif
 
 // Calculate LOD based on distance to camera

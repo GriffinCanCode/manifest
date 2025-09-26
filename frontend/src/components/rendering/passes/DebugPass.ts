@@ -46,7 +46,7 @@ export class DebugPass extends RenderPass {
     super({
       name: 'debug',
       priority: 200,
-      enabled: process.env.NODE_ENV === 'development',
+      enabled: (import.meta as any)?.env?.MODE === 'development',
       renderToScreen: true,
       clearColor: false,
       clearDepth: false,

@@ -23,19 +23,19 @@ export interface TileQuery {
 }
 
 export interface TileStreamingRequest {
-  readonly cameraPosition: readonly [number, number, number];
-  readonly viewRadius: number;
-  readonly maxTiles: number;
-  readonly lodLevels: readonly number[];
+  readonly camera_position: readonly [number, number, number];
+  readonly view_radius: number;
+  readonly max_tiles: number;
+  readonly lod_levels: readonly number[];
   readonly generation: number; // For change detection
 }
 
 export interface TileStreamingResponse {
   readonly tiles: readonly GameTile[];
-  readonly instanceData: readonly TileInstanceData[];
+  readonly instance_data: readonly TileInstanceData[];
   readonly generation: number;
-  readonly hasMore: boolean;
-  readonly nextOffset?: number;
+  readonly has_more: boolean;
+  readonly next_offset?: number;
 }
 
 export interface TileUpdateBatch {
@@ -91,7 +91,7 @@ export class TileDataService {
         !response ||
         typeof response !== 'object' ||
         !Array.isArray(response.tiles) ||
-        !Array.isArray(response.instanceData)
+        !Array.isArray(response.instance_data)
       ) {
         console.error('Invalid response structure from backend');
         return this.getEmptyResponse();
@@ -287,7 +287,7 @@ export class TileDataService {
     }
 
     // Update instance data cache
-    for (const instanceData of response.instanceData) {
+    for (const instanceData of response.instance_data) {
       this.instanceCache.set(instanceData.tileId, instanceData);
       this.dirtyTiles.delete(instanceData.tileId); // No longer dirty
     }
@@ -300,15 +300,15 @@ export class TileDataService {
     const cachedInstanceData: TileInstanceData[] = [];
 
     // Return cached data that matches the request
-    const centerPos = new Vector3(...request.cameraPosition);
+    const centerPos = new Vector3(...request.camera_position);
 
     for (const [tileId, tile] of this.tileCache) {
       const tilePos = new Vector3(tile.worldX, tile.elevation, tile.worldZ);
       const distance = centerPos.distanceTo(tilePos);
 
       if (
-        distance <= request.viewRadius &&
-        cachedTiles.length < request.maxTiles
+        distance <= request.view_radius &&
+        cachedTiles.length < request.max_tiles
       ) {
         cachedTiles.push(tile);
 
@@ -321,18 +321,18 @@ export class TileDataService {
 
     return {
       tiles: cachedTiles,
-      instanceData: cachedInstanceData,
+      instance_data: cachedInstanceData,
       generation: this.lastStreamingGeneration,
-      hasMore: false,
+      has_more: false,
     };
   }
 
   private getEmptyResponse(): TileStreamingResponse {
     return {
       tiles: [],
-      instanceData: [],
+      instance_data: [],
       generation: this.lastStreamingGeneration,
-      hasMore: false,
+      has_more: false,
     };
   }
 

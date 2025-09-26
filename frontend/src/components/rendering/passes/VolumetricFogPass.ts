@@ -4,22 +4,20 @@
  */
 
 import {
-  type Camera,
-  DoubleSide,
   Mesh,
-  type PerspectiveCamera,
   PlaneGeometry,
-  ShaderMaterial,
   Scene as ThreeScene,
-  Uniform,
   Vector2,
   Vector3,
-  type WebGLRenderer,
   WebGLRenderTarget,
+  type Camera,
+  type PerspectiveCamera,
+  type ShaderMaterial,
+  type WebGLRenderer,
 } from 'three';
 
-import volumetricFogFragmentShader from '../../../shaders/fog/volumetric-fog.frag';
-import volumetricFogVertexShader from '../../../shaders/fog/volumetric-fog.vert';
+import { getShaderDefinition } from '../../../shaders/definitions';
+import { shaderManager } from '../../../shaders/manager';
 import { RenderPass, type RenderPassConfig } from '../core/RenderPass';
 
 interface VolumetricFogOptions {
@@ -88,42 +86,43 @@ export class VolumetricFogPass extends RenderPass {
   }
 
   private setupMaterial(): void {
-    this.fogMaterial = new ShaderMaterial({
-      uniforms: {
-        tColor: new Uniform(null),
-        tDepth: new Uniform(null),
-        u_resolution: new Uniform(new Vector2()),
-        u_time: new Uniform(0),
-        u_cameraPosition: new Uniform(new Vector3()),
-        u_cameraMatrix: new Uniform(null),
-        u_projectionMatrixInverse: new Uniform(null),
-        u_viewMatrixInverse: new Uniform(null),
-        u_cameraNear: new Uniform(0.1),
-        u_cameraFar: new Uniform(1000.0),
+    const fogShaderDef = getShaderDefinition('volumetric-fog');
 
-        // Fog properties
-        u_fogDensity: new Uniform(this.options.density),
-        u_fogColor: new Uniform(this.options.color),
-        u_scatteringCoeff: new Uniform(this.options.scatteringCoefficient),
-        u_absorptionCoeff: new Uniform(this.options.absorptionCoefficient),
-        u_fogNear: new Uniform(this.options.fogNear),
-        u_fogFar: new Uniform(this.options.fogFar),
-        u_steps: new Uniform(this.getStepCount()),
-
-        // Lighting
-        u_lightDirection: new Uniform(this.options.lightDirection),
-        u_lightIntensity: new Uniform(this.options.lightIntensity),
-
-        // Wind and noise
-        u_useNoise: new Uniform(this.options.useNoise ? 1 : 0),
-        u_windSpeed: new Uniform(this.options.windSpeed),
-        u_windDirection: new Uniform(this.options.windDirection),
+    this.fogMaterial = shaderManager.compile('volumetric-fog', fogShaderDef, {
+      defines: {
+        USE_VOLUMETRIC_FOG: 1,
+        USE_NOISE: this.options.useNoise ? 1 : 0,
       },
-      vertexShader: volumetricFogVertexShader,
-      fragmentShader: volumetricFogFragmentShader,
-      side: DoubleSide,
       transparent: false,
     });
+
+    // Update uniforms with custom values
+    const { uniforms } = this.fogMaterial;
+    if (uniforms) {
+      // Fog properties
+      if (uniforms.u_fogDensity)
+        uniforms.u_fogDensity.value = this.options.density;
+      if (uniforms.u_fogColor) uniforms.u_fogColor.value = this.options.color;
+      if (uniforms.u_scatteringCoeff)
+        uniforms.u_scatteringCoeff.value = this.options.scatteringCoefficient;
+      if (uniforms.u_absorptionCoeff)
+        uniforms.u_absorptionCoeff.value = this.options.absorptionCoefficient;
+      if (uniforms.u_fogNear) uniforms.u_fogNear.value = this.options.fogNear;
+      if (uniforms.u_fogFar) uniforms.u_fogFar.value = this.options.fogFar;
+      if (uniforms.u_steps) uniforms.u_steps.value = this.getStepCount();
+
+      // Lighting
+      if (uniforms.u_lightDirection)
+        uniforms.u_lightDirection.value = this.options.lightDirection;
+      if (uniforms.u_lightIntensity)
+        uniforms.u_lightIntensity.value = this.options.lightIntensity;
+
+      // Wind and noise
+      if (uniforms.u_windSpeed)
+        uniforms.u_windSpeed.value = this.options.windSpeed;
+      if (uniforms.u_windDirection)
+        uniforms.u_windDirection.value = this.options.windDirection;
+    }
   }
 
   private setupGeometry(): void {
@@ -159,10 +158,13 @@ export class VolumetricFogPass extends RenderPass {
       depthBuffer: false,
     });
 
-    (this.fogMaterial.uniforms.u_resolution.value as Vector2).set(
-      size.x,
-      size.y
-    );
+    // Set resolution with safety check
+    if (this.fogMaterial.uniforms.u_resolution) {
+      (this.fogMaterial.uniforms.u_resolution.value as Vector2).set(
+        size.x,
+        size.y
+      );
+    }
   }
 
   resize(width: number, height: number): void {
@@ -170,10 +172,13 @@ export class VolumetricFogPass extends RenderPass {
       this.fogTarget.setSize(width, height);
     }
 
-    (this.fogMaterial.uniforms.u_resolution.value as Vector2).set(
-      width,
-      height
-    );
+    // Set resolution with safety check
+    if (this.fogMaterial.uniforms.u_resolution) {
+      (this.fogMaterial.uniforms.u_resolution.value as Vector2).set(
+        width,
+        height
+      );
+    }
   }
 
   render(
@@ -187,59 +192,95 @@ export class VolumetricFogPass extends RenderPass {
 
     this.frameCount++;
 
-    // Update time-dependent uniforms
-    this.fogMaterial.uniforms.u_time.value = this.frameCount * 0.016;
-    (this.fogMaterial.uniforms.u_cameraPosition.value as Vector3).copy(
-      camera.position
-    );
-    (
-      this.fogMaterial.uniforms.u_cameraMatrix.value as typeof camera.matrix
-    ).copy(camera.matrix);
-    (
-      this.fogMaterial.uniforms.u_projectionMatrixInverse
-        .value as typeof camera.projectionMatrixInverse
-    ).copy(camera.projectionMatrixInverse);
-    (
-      this.fogMaterial.uniforms.u_viewMatrixInverse
-        .value as typeof camera.matrixWorld
-    ).copy(camera.matrixWorld);
+    // Update time-dependent uniforms with safety checks
+    const { uniforms } = this.fogMaterial;
+
+    if (uniforms.u_time) {
+      uniforms.u_time.value = this.frameCount * 0.016;
+    }
+
+    if (uniforms.u_cameraPosition) {
+      const { position } = camera;
+      (uniforms.u_cameraPosition.value as Vector3).copy(position);
+    }
+
+    if (uniforms.u_projectionMatrixInverse) {
+      const { projectionMatrixInverse } = camera;
+      (
+        uniforms.u_projectionMatrixInverse
+          .value as typeof projectionMatrixInverse
+      ).copy(projectionMatrixInverse);
+    }
+
+    if (uniforms.u_viewMatrixInverse) {
+      const { matrixWorld } = camera;
+      (uniforms.u_viewMatrixInverse.value as typeof matrixWorld).copy(
+        matrixWorld
+      );
+    }
+
     // Handle camera properties safely
     const perspectiveCamera = camera as PerspectiveCamera;
-    this.fogMaterial.uniforms.u_cameraNear.value =
-      perspectiveCamera.near ?? 0.1;
-    this.fogMaterial.uniforms.u_cameraFar.value =
-      perspectiveCamera.far ?? 1000.0;
+    if (uniforms.u_cameraNear) {
+      uniforms.u_cameraNear.value = perspectiveCamera.near ?? 0.1;
+    }
+    if (uniforms.u_cameraFar) {
+      uniforms.u_cameraFar.value = perspectiveCamera.far ?? 1000.0;
+    }
 
-    // Update fog parameters
-    this.fogMaterial.uniforms.u_fogDensity.value = this.options.density;
-    (this.fogMaterial.uniforms.u_fogColor.value as Vector3).copy(
-      this.options.color
-    );
-    this.fogMaterial.uniforms.u_scatteringCoeff.value =
-      this.options.scatteringCoefficient;
-    this.fogMaterial.uniforms.u_absorptionCoeff.value =
-      this.options.absorptionCoefficient;
-    this.fogMaterial.uniforms.u_fogNear.value = this.options.fogNear;
-    this.fogMaterial.uniforms.u_fogFar.value = this.options.fogFar;
-    this.fogMaterial.uniforms.u_steps.value = this.getStepCount();
+    // Update fog parameters with safety checks
+    if (uniforms.u_fogDensity) {
+      uniforms.u_fogDensity.value = this.options.density;
+    }
+    if (uniforms.u_fogColor) {
+      (uniforms.u_fogColor.value as Vector3).copy(this.options.color);
+    }
+    if (uniforms.u_scatteringCoeff) {
+      uniforms.u_scatteringCoeff.value = this.options.scatteringCoefficient;
+    }
+    if (uniforms.u_absorptionCoeff) {
+      uniforms.u_absorptionCoeff.value = this.options.absorptionCoefficient;
+    }
+    if (uniforms.u_fogNear) {
+      uniforms.u_fogNear.value = this.options.fogNear;
+    }
+    if (uniforms.u_fogFar) {
+      uniforms.u_fogFar.value = this.options.fogFar;
+    }
+    if (uniforms.u_steps) {
+      uniforms.u_steps.value = this.getStepCount();
+    }
 
-    // Update lighting
-    (this.fogMaterial.uniforms.u_lightDirection.value as Vector3).copy(
-      this.options.lightDirection
-    );
-    this.fogMaterial.uniforms.u_lightIntensity.value =
-      this.options.lightIntensity;
+    // Update lighting with safety checks
+    if (uniforms.u_lightDirection) {
+      (uniforms.u_lightDirection.value as Vector3).copy(
+        this.options.lightDirection
+      );
+    }
+    if (uniforms.u_lightIntensity) {
+      uniforms.u_lightIntensity.value = this.options.lightIntensity;
+    }
 
-    // Update wind and noise
-    this.fogMaterial.uniforms.u_useNoise.value = this.options.useNoise ? 1 : 0;
-    this.fogMaterial.uniforms.u_windSpeed.value = this.options.windSpeed;
-    (this.fogMaterial.uniforms.u_windDirection.value as Vector2).copy(
-      this.options.windDirection
-    );
+    // Update wind and noise with safety checks
+    if (uniforms.u_useNoise) {
+      uniforms.u_useNoise.value = this.options.useNoise ? 1 : 0;
+    }
+    if (uniforms.u_windSpeed) {
+      uniforms.u_windSpeed.value = this.options.windSpeed;
+    }
+    if (uniforms.u_windDirection) {
+      (uniforms.u_windDirection.value as Vector2).copy(
+        this.options.windDirection
+      );
+    }
 
-    // Set input textures
-    this.fogMaterial.uniforms.tColor.value = readBuffer.texture;
-    this.fogMaterial.uniforms.tDepth.value = readBuffer.depthTexture;
+    // Set input textures with safety checks
+    if (uniforms.tColor) {
+      uniforms.tColor.value = readBuffer.texture;
+    }
+    if (uniforms.tDepth) {
+      uniforms.tDepth.value = readBuffer.depthTexture;
+    }
 
     // Render volumetric fog
     this.setRenderTarget(renderer, writeBuffer);

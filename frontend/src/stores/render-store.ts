@@ -7,10 +7,27 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 
+import { PerformanceLogger, RenderLogger } from '../services/logger';
 import type {
   DeviceCapabilities,
   RenderingSettings,
 } from '../utils/capabilities';
+
+// Type-safe import.meta interface for Vite environment
+interface ViteImportMeta {
+  env?: {
+    MODE?: string;
+    [key: string]: unknown;
+  };
+}
+
+// Extend Window interface for performance tracking
+declare global {
+  interface Window {
+    lastPerformanceWarning?: number;
+    lastPerformanceDebug?: number;
+  }
+}
 
 export interface PerformanceMetrics {
   fps: number;
@@ -226,7 +243,7 @@ export const useRenderStore = create<RenderStoreState>()(
         camera: DEFAULT_CAMERA,
 
         debug: DEFAULT_DEBUG,
-        devMode: process.env.NODE_ENV === 'development',
+        devMode: (import.meta as ViteImportMeta)?.env?.MODE === 'development',
 
         viewport: {
           width: 1920,
@@ -260,25 +277,57 @@ export const useRenderStore = create<RenderStoreState>()(
         },
 
         // Actions
-        setCapabilities: capabilities =>
+        setCapabilities: capabilities => {
+          RenderLogger.info('Device capabilities set', {
+            preferredBackend: capabilities.preferredBackend,
+            maxTextureSize: capabilities.maxTextureSize,
+            supportsHDR: capabilities.supportsHDR,
+            supportsShadows: capabilities.supportsShadows,
+            supportsWebGPU: capabilities.supportsWebGPU,
+            gpuTier: capabilities.gpuTier,
+          });
+
           set(
             state => {
               state.capabilities = capabilities;
             },
             false,
             'setCapabilities'
-          ),
+          );
+        },
 
-        setSettings: settings =>
+        setSettings: settings => {
+          RenderLogger.info('Render settings applied', {
+            backend: settings.backend,
+            pixelRatio: settings.pixelRatio,
+            antialias: settings.antialias,
+            shadows: settings.shadows,
+            powerPreference: settings.powerPreference,
+            precision: settings.precision,
+          });
+
           set(
             state => {
               state.settings = settings;
             },
             false,
             'setSettings'
-          ),
+          );
+        },
 
-        setInitialized: (initialized, error) =>
+        setInitialized: (initialized, error) => {
+          if (initialized) {
+            RenderLogger.info('Render system marked as initialized');
+          } else {
+            RenderLogger.error(
+              'Render system initialization failed',
+              error ? new Error(error) : new Error('Unknown error'),
+              {
+                errorMessage: error,
+              }
+            );
+          }
+
           set(
             state => {
               state.isInitialized = initialized;
@@ -286,16 +335,49 @@ export const useRenderStore = create<RenderStoreState>()(
             },
             false,
             'setInitialized'
-          ),
+          );
+        },
 
-        updateMetrics: metrics =>
+        updateMetrics: metrics => {
+          // Only log significant metric changes or performance issues
+          const shouldLogWarning = metrics.fps && metrics.fps < 30;
+          const shouldLogHighFrameTime =
+            metrics.frameTime && metrics.frameTime > 33.33; // >30fps
+
+          // Rate limit performance warnings to avoid spam (max once per 5 seconds)
+          const now = Date.now();
+          if (shouldLogWarning || shouldLogHighFrameTime) {
+            const lastWarning = window.lastPerformanceWarning ?? 0;
+            if (now - lastWarning > 5000) {
+              PerformanceLogger.warn('Performance metrics indicate issues', {
+                ...metrics,
+                warning: shouldLogWarning ? 'Low FPS detected' : undefined,
+                highFrameTime: shouldLogHighFrameTime
+                  ? 'Frame time exceeded threshold'
+                  : undefined,
+              });
+              window.lastPerformanceWarning = now;
+            }
+          } else if (
+            (import.meta as ViteImportMeta)?.env?.MODE === 'development' &&
+            metrics.fps
+          ) {
+            // Debug logging for development (also rate limited to once per 2 seconds)
+            const lastDebug = window.lastPerformanceDebug ?? 0;
+            if (now - lastDebug > 2000) {
+              PerformanceLogger.debug('Performance metrics updated', metrics);
+              window.lastPerformanceDebug = now;
+            }
+          }
+
           set(
             state => {
               Object.assign(state.metrics, metrics);
             },
             false,
             'updateMetrics'
-          ),
+          );
+        },
 
         setTargetFPS: fps =>
           set(
@@ -315,14 +397,17 @@ export const useRenderStore = create<RenderStoreState>()(
             'toggleAdaptiveQuality'
           ),
 
-        setQuality: quality =>
+        setQuality: quality => {
+          RenderLogger.debug('Render quality updated', quality);
+
           set(
             state => {
               Object.assign(state.quality, quality);
             },
             false,
             'setQuality'
-          ),
+          );
+        },
 
         setQualityPreset: level =>
           set(
@@ -412,14 +497,22 @@ export const useRenderStore = create<RenderStoreState>()(
             'toggleDevMode'
           ),
 
-        setViewport: (width, height, pixelRatio) =>
+        setViewport: (width, height, pixelRatio) => {
+          RenderLogger.debug('Viewport updated', {
+            width,
+            height,
+            pixelRatio,
+            aspectRatio: width / height,
+          });
+
           set(
             state => {
               state.viewport = { width, height, pixelRatio };
             },
             false,
             'setViewport'
-          ),
+          );
+        },
 
         setCulling: culling =>
           set(
@@ -570,6 +663,15 @@ export const usePerformanceMonitoring = () => {
             : currentQuality === 'high'
               ? 'medium'
               : 'low';
+
+        PerformanceLogger.info('Adaptive quality decreased due to low FPS', {
+          currentFPS: fps,
+          currentFrameTime: frameTime,
+          oldQuality: currentQuality,
+          newQuality,
+          threshold: 45,
+        });
+
         setQualityPreset(newQuality);
       } else if (fps > 55 && currentQuality !== 'ultra') {
         const newQuality =
@@ -578,6 +680,15 @@ export const usePerformanceMonitoring = () => {
             : currentQuality === 'medium'
               ? 'high'
               : 'ultra';
+
+        PerformanceLogger.info('Adaptive quality increased due to good FPS', {
+          currentFPS: fps,
+          currentFrameTime: frameTime,
+          oldQuality: currentQuality,
+          newQuality,
+          threshold: 55,
+        });
+
         setQualityPreset(newQuality);
       }
     }

@@ -115,13 +115,13 @@ export const useTileStreaming = ({
 
         // Create streaming request
         const request: TileStreamingRequest = {
-          cameraPosition: cameraPosition
+          camera_position: cameraPosition
             ? [cameraPosition.x, cameraPosition.y, cameraPosition.z]
             : [centerHex.q * 3, 0, centerHex.r * 3],
-          viewRadius: maxDistance,
-          maxTiles:
+          view_radius: maxDistance,
+          max_tiles:
             quality === 'low' ? 1000 : quality === 'medium' ? 5000 : 20000,
-          lodLevels:
+          lod_levels:
             quality === 'low' ? [0] : quality === 'medium' ? [0, 1] : [0, 1, 2],
           generation: 0, // TODO: Track actual generation for change detection
         };

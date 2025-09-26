@@ -12,6 +12,8 @@ import type { NotificationConfig } from './notifications';
 import type { ProgressConfig } from './progress';
 import type { CommandInput, CommandName, CommandOutput } from './schemas';
 import type { IPCConfig } from './service';
+import type { ValtioSyncConfig } from './valtio-sync';
+import type { WebVitalsConfig } from './web-vitals';
 
 // Performance memory types
 interface PerformanceMemory {
@@ -93,8 +95,6 @@ export type { WebVitalsConfig, WebVitalsData } from './web-vitals';
 export type { ValtioSyncConfig } from './valtio-sync';
 
 // Helper type imports for initialization function
-import type { ValtioSyncConfig } from './valtio-sync';
-import type { WebVitalsConfig } from './web-vitals';
 
 // Utility functions and constants
 
@@ -141,7 +141,9 @@ export const initializeIPC = async (
 
   // Wire up automatic history tracking
   const originalCommand = service.command.bind(service);
-  service.command = async <T extends CommandName>(
+
+  // Create a properly typed command wrapper
+  const wrappedCommand = async <T extends CommandName>(
     name: T,
     input: CommandInput<T>,
     options: {
@@ -160,11 +162,7 @@ export const initializeIPC = async (
 
     try {
       const startTime = performance.now();
-      const result: CommandOutput<T> = await originalCommand(
-        name,
-        input,
-        options
-      );
+      const result = await originalCommand(name, input, options);
       const duration = performance.now() - startTime;
 
       // Complete history entry
@@ -175,13 +173,17 @@ export const initializeIPC = async (
         commandNotifications.commandSucceeded(name, duration);
       }
 
-      return result;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+      return result as CommandOutput<T>;
     } catch (error) {
       // Show error notification
       commandNotifications.commandFailed(name, (error as Error).message);
       throw error;
     }
   };
+
+  // Replace the service command with our wrapper
+  service.command = wrappedCommand;
 
   // Wire up event notifications
   service.onEvent('performance_warning', data => {
@@ -358,7 +360,7 @@ export const createIPCErrorBoundary = () => {
     };
 
     return React.createElement(ErrorBoundary, {
-      fallback: fallback ?? DefaultIPCErrorFallback,
+      FallbackComponent: fallback ?? DefaultIPCErrorFallback,
       onError: handleError,
       children,
     });
@@ -501,7 +503,14 @@ export const IPCPerformance = {
 };
 
 // Debug utilities (development only)
-if (process.env.NODE_ENV === 'development') {
+if (
+  typeof import.meta !== 'undefined' &&
+  'env' in import.meta &&
+  typeof import.meta.env === 'object' &&
+  import.meta.env !== null &&
+  'MODE' in import.meta.env &&
+  import.meta.env.MODE === 'development'
+) {
   // Expose to window for debugging (load async to avoid circular imports)
   void Promise.all([
     import('./service'),

@@ -25,7 +25,8 @@
         "decorations": true,
         "alwaysOnTop": false,
         "dragDropEnabled": false,
-        "shadow": true
+        "shadow": true,
+        "devtools": true
       }
     ],
     "security": {

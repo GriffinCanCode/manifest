@@ -1,3 +1,7 @@
+#ifdef GL_ES
+precision highp float;
+#endif
+
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform vec2 u_resolution;

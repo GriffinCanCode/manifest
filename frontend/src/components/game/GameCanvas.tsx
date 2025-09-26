@@ -10,6 +10,8 @@ import React, { Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import type * as THREE from 'three';
 import { Vector3 } from 'three';
 
+import { LoggingUtils } from '../../config/logging';
+import { useLogger, usePerformanceLogger } from '../../hooks/use-logger';
 import { useTileStreaming } from '../../hooks/use-tile-streaming';
 import { usePostProcessingMetrics } from '../../hooks/usePostProcessingMetrics';
 import {
@@ -22,11 +24,20 @@ import type {
   DeviceCapabilities,
   RenderingSettings,
 } from '../../utils/capabilities';
-import { HexUtils, type GameTile, type GameUnit } from '../../utils/game-types';
+import {
+  HexUtils,
+  TerrainType,
+  type GameTile,
+  type GameUnit,
+} from '../../utils/game-types';
 import { CameraController } from '../controls';
-import { HexInstanceRenderer as OptimizedHexRenderer } from '../rendering/components/hex/HexInstanceRenderer';
+import { HexInstanceRenderer } from '../rendering/components/hex/HexInstanceRenderer';
 import { MultiStepRenderer } from '../rendering/components/pipeline/MultiStepRenderer';
 import RenderInitializer from '../rendering/components/pipeline/RenderInitializer';
+
+/**
+ * Now using sophisticated HexInstanceRenderer with BVH acceleration and advanced materials
+ */
 
 /**
  * Game scene with performance optimizations and adaptive quality
@@ -34,15 +45,21 @@ import RenderInitializer from '../rendering/components/pipeline/RenderInitialize
 const GameScene: React.FC = () => {
   const [selectedTile, setSelectedTile] = useState<GameTile | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<GameUnit | null>(null);
-  const [highlightedTiles, setHighlightedTiles] = useState<Set<number>>(
+  const [_highlightedTiles, setHighlightedTiles] = useState<Set<number>>(
     new Set()
   );
 
   const { capabilities, quality, debug } = useRenderStore();
   const { checkPerformance } = usePerformanceMonitoring();
 
+  // Initialize logging for game scene
+  const gameLogger = useLogger('game', 'GameScene');
+  const renderLogger = useLogger('render', 'GameScene');
+  const performanceLogger = usePerformanceLogger('performance', 'GameScene');
+
   // Camera position ref for tile streaming
   const cameraPositionRef = useRef(new Vector3(15, 15, 15));
+  const lastCameraLogRef = useRef(0);
 
   // Real tile streaming from backend (replaces mock data)
   const {
@@ -63,6 +80,29 @@ const GameScene: React.FC = () => {
     autoStream: true,
   });
 
+  // Log tile streaming events
+  React.useEffect(() => {
+    if (tileError) {
+      gameLogger.error('Tile streaming error occurred', new Error(tileError), {
+        cameraPosition: {
+          x: cameraPositionRef.current.x,
+          y: cameraPositionRef.current.y,
+          z: cameraPositionRef.current.z,
+        },
+        qualityLevel: quality.level,
+      });
+    }
+  }, [tileError, gameLogger, quality.level]);
+
+  React.useEffect(() => {
+    gameLogger.info('Tile streaming metrics updated', {
+      tilesLoaded: metrics.tilesLoaded,
+      streamingTimeMs: metrics.streamingTimeMs,
+      isLoading: tilesLoading,
+      qualityLevel: quality.level,
+    });
+  }, [metrics, tilesLoading, gameLogger, quality.level]);
+
   // Create game world structure with real tiles
   const gameWorld = useMemo(
     () => ({
@@ -75,15 +115,63 @@ const GameScene: React.FC = () => {
   // Performance monitoring and camera tracking
   useFrame(state => {
     // Update camera position for tile streaming
+    const previousPosition = cameraPositionRef.current.clone();
     cameraPositionRef.current.copy(state.camera.position);
 
-    if (process.env.NODE_ENV === 'development') {
-      checkPerformance(state.clock.elapsedTime, state.clock.getDelta() * 1000);
+    // CRITICAL DEBUG: Log camera state every few seconds
+    const now = Date.now();
+    if (now - lastCameraLogRef.current > 3000) {
+      lastCameraLogRef.current = now;
+      renderLogger.info('🎥 CAMERA DEBUG:', {
+        position: {
+          x: Math.round(cameraPositionRef.current.x * 100) / 100,
+          y: Math.round(cameraPositionRef.current.y * 100) / 100,
+          z: Math.round(cameraPositionRef.current.z * 100) / 100,
+        },
+        fov: 'fov' in state.camera ? state.camera.fov : 'N/A',
+        lookingAt: state.camera.getWorldDirection(new Vector3()),
+        tilesCount: gameWorld.tiles.length,
+        renderingCubes: gameWorld.tiles.length > 0 ? 'YES' : 'NO',
+        cameraType: state.camera.type,
+        projectionMatrix: state.camera.projectionMatrix.elements.slice(0, 4),
+      });
+    }
+
+    // Log significant camera movements
+    const distanceMoved = previousPosition.distanceTo(
+      cameraPositionRef.current
+    );
+    if (distanceMoved > 5) {
+      // Only log significant movements
+      renderLogger.debug('Camera position updated', {
+        position: {
+          x: Math.round(cameraPositionRef.current.x * 100) / 100,
+          y: Math.round(cameraPositionRef.current.y * 100) / 100,
+          z: Math.round(cameraPositionRef.current.z * 100) / 100,
+        },
+        distanceMoved: Math.round(distanceMoved * 100) / 100,
+      });
+    }
+
+    if (LoggingUtils.isDevelopment()) {
+      const deltaMs = state.clock.getDelta() * 1000;
+      checkPerformance(state.clock.elapsedTime, deltaMs);
+
+      // Log performance warnings
+      if (deltaMs > 50) {
+        // Frame took longer than 50ms
+        performanceLogger.warn('Slow frame detected', {
+          frameTime: Math.round(deltaMs * 100) / 100,
+          fps: Math.round(1000 / deltaMs),
+          qualityLevel: quality.level,
+          tilesCount: tiles.length,
+        });
+      }
     }
   });
 
   // Dev controls for testing (only in development)
-  if (process.env.NODE_ENV === 'development') {
+  if (LoggingUtils.isDevelopment()) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useControls(
       'Render Settings',
@@ -125,15 +213,27 @@ const GameScene: React.FC = () => {
     );
   }
 
-  const handleTileClick = useCallback((tile: GameTile) => {
-    setSelectedTile(tile);
-    setSelectedUnit(null);
-    setHighlightedTiles(new Set());
-    console.warn('Selected tile:', tile);
-  }, []);
+  const handleTileClick = useCallback(
+    (tile: GameTile) => {
+      setSelectedTile(tile);
+      setSelectedUnit(null);
+      setHighlightedTiles(new Set());
+
+      gameLogger.info('Tile selected by user', {
+        tileId: tile.id,
+        position: { q: tile.hex.q, r: tile.hex.r },
+        terrain: tile.terrain,
+        elevation: tile.elevation,
+        hasResources: !!tile.resources?.length,
+      });
+    },
+    [gameLogger]
+  );
 
   const handleUnitClick = useCallback(
     (unit: GameUnit) => {
+      const timer = performanceLogger.startTimer('unit-selection');
+
       setSelectedUnit(unit);
       setSelectedTile(null);
 
@@ -148,10 +248,27 @@ const GameScene: React.FC = () => {
           );
         return distance <= movementRange;
       });
-      setHighlightedTiles(new Set(inRange.map(t => t.id)));
-      console.warn('Selected unit:', unit);
+
+      const highlightedTileIds = new Set(inRange.map(t => t.id));
+      setHighlightedTiles(highlightedTileIds);
+
+      timer.end('Unit selection and range calculation completed', {
+        unitId: unit.id,
+        unitType: unit.type,
+        movementRange,
+        tilesInRange: inRange.length,
+      });
+
+      gameLogger.info('Unit selected by user', {
+        unitId: unit.id,
+        unitType: unit.type,
+        playerId: unit.playerId,
+        position: { q: unit.position.q, r: unit.position.r },
+        health: unit.health,
+        tilesInMovementRange: inRange.length,
+      });
     },
-    [gameWorld.tiles]
+    [gameWorld.tiles, gameLogger, performanceLogger]
   );
 
   // Monitor post-processing performance
@@ -159,6 +276,18 @@ const GameScene: React.FC = () => {
 
   // Show error overlay if tile streaming fails
   if (tileError) {
+    const handleRetry = () => {
+      gameLogger.info('User initiated tile streaming retry', {
+        error: tileError,
+        cameraPosition: {
+          x: cameraPositionRef.current.x,
+          y: cameraPositionRef.current.y,
+          z: cameraPositionRef.current.z,
+        },
+      });
+      void refreshTiles();
+    };
+
     return (
       <group>
         <Html center>
@@ -174,7 +303,7 @@ const GameScene: React.FC = () => {
             <h3>🌍 Backend Connection Error</h3>
             <p>{tileError}</p>
             <button
-              onClick={() => void refreshTiles()}
+              onClick={handleRetry}
               style={{
                 padding: '0.5rem 1rem',
                 marginTop: '0.5rem',
@@ -193,24 +322,79 @@ const GameScene: React.FC = () => {
     );
   }
 
+  // STEP 1: Re-enable MultiStepRenderer with minimal passes
   return (
     <MultiStepRenderer
-      enableSelection
-      enableDebug={process.env.NODE_ENV === 'development'}
-      enableTAA={capabilities?.supportsHDR && quality.level !== 'low'}
+      enableSelection={false}
+      enableDebug={false}
+      enableTAA={false}
     >
-      {/* Adaptive Lighting based on capabilities */}
-      <AdaptiveLighting capabilities={capabilities} quality={quality} />
+      {/* SIMPLE LIGHTING - no complex shader dependencies */}
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[10, 10, 5]} intensity={1} />
 
-      {/* Render tiles with instanced BVH optimization */}
-      <OptimizedHexRenderer
+      {/* SOPHISTICATED HEX RENDERING: Advanced instanced rendering with BVH acceleration */}
+      {/* DEBUG: Monitor tile data flow */}
+      {(() => {
+        console.warn(`🔍 TILE FLOW DEBUG:`, {
+          'gameWorld.tiles.length': gameWorld.tiles.length,
+          'raw tiles.length': tiles.length,
+          tilesLoading,
+          'tiles sample': gameWorld.tiles.slice(0, 2),
+        });
+        return null;
+      })()}
+
+      <HexInstanceRenderer
         tiles={gameWorld.tiles}
         onTileClick={handleTileClick}
         selectedTileId={selectedTile?.id}
-        highlightedTiles={highlightedTiles}
-        maxInstances={20000}
+        maxInstances={5000}
         enableSpatialQueries
+        enableStreaming
       />
+
+      {/* EMERGENCY FALLBACK: Simple cube rendering if sophisticated renderer fails */}
+      {gameWorld.tiles.length > 0 && (
+        <group>
+          {/* Green indicator: tiles are loaded */}
+          <mesh position={[0, 8, 0]}>
+            <sphereGeometry args={[0.5, 8, 6]} />
+            <meshBasicMaterial color='#00ff00' />
+          </mesh>
+
+          {/* Simple fallback tiles - positioned slightly higher to be visible */}
+          {gameWorld.tiles.slice(0, 30).map((tile, index) => {
+            const [x, z] = HexUtils.hexToPixel(tile.hex);
+            const y = tile.elevation * 0.5;
+            return (
+              <mesh
+                key={`fallback-${tile.id || index}`}
+                position={[x, y + 2, z]}
+              >
+                <boxGeometry
+                  args={[
+                    0.6,
+                    Math.max(0.1, Math.abs(tile.elevation * 0.5)),
+                    0.6,
+                  ]}
+                />
+                <meshBasicMaterial
+                  color={
+                    tile.terrain === TerrainType.Ocean
+                      ? '#1e40af'
+                      : tile.terrain === TerrainType.Grassland
+                        ? '#22c55e'
+                        : '#84cc16'
+                  }
+                  transparent
+                  opacity={0.8}
+                />
+              </mesh>
+            );
+          })}
+        </group>
+      )}
 
       {/* Render units with instancing optimization */}
       <UnitsRenderer
@@ -231,6 +415,8 @@ const GameScene: React.FC = () => {
         enableFocus
         smoothTransitions
       />
+
+      {/* Clean scene - no debug geometry - showing actual game map */}
 
       {/* Adaptive environment */}
       <AdaptiveEnvironment capabilities={capabilities} quality={quality} />
@@ -264,17 +450,20 @@ const GameScene: React.FC = () => {
         </Html>
       )}
 
-      {/* Conditional fog based on quality */}
-      {quality.level !== 'low' && !debug.disableFog && (
+      {/* Conditional fog - disabled for now */}
+      {/* {quality.level !== 'low' && !debug.disableFog && (
         <fog attach='fog' args={['#87CEEB', 20, 80]} />
-      )}
+      )} */}
     </MultiStepRenderer>
   );
 };
 
 /**
  * Adaptive lighting system that adjusts based on device capabilities
+ * Currently disabled in favor of simple lighting for debugging
  */
+// DISABLED: Using simple lighting instead
+/*
 const AdaptiveLighting: React.FC<{
   capabilities: DeviceCapabilities | null;
   quality: RenderQuality;
@@ -317,6 +506,7 @@ const AdaptiveLighting: React.FC<{
     </>
   );
 };
+*/
 
 /**
  * Optimized units renderer
@@ -485,34 +675,46 @@ const AdaptiveEnvironment: React.FC<{
  * Main Game Canvas component
  */
 const GameCanvas: React.FC = () => {
+  const renderLogger = useLogger('render', 'GameCanvas');
+
   const handleInitialized = useCallback(
     (capabilities: DeviceCapabilities, settings: RenderingSettings) => {
-      console.warn('Render system initialized:', { capabilities, settings });
+      renderLogger.info('Render system initialized successfully', {
+        capabilities: {
+          supportsHDR: capabilities.supportsHDR,
+          supportsShadows: capabilities.supportsShadows,
+          maxTextureSize: capabilities.maxTextureSize,
+          preferredBackend: capabilities.preferredBackend,
+        },
+        settings: {
+          backend: settings.backend,
+          pixelRatio: settings.pixelRatio,
+          antialias: settings.antialias,
+        },
+      });
     },
-    []
+    [renderLogger]
   );
 
-  const handleInitError = useCallback((error: Error) => {
-    console.error('Render initialization failed:', error);
-  }, []);
+  const handleInitError = useCallback(
+    (error: Error) => {
+      renderLogger.error('Render initialization failed', error, {
+        errorName: error.name,
+        errorMessage: error.message,
+        userAgent: navigator.userAgent,
+      });
+    },
+    [renderLogger]
+  );
 
   return (
     <div className='game-canvas'>
       <RenderInitializer
-        enableDevTools={process.env.NODE_ENV === 'development'}
+        enableDevTools={LoggingUtils.isDevelopment()}
         onInitialized={handleInitialized}
         onError={handleInitError}
       >
-        <Suspense
-          fallback={
-            <Html center>
-              <div className='game-loading'>
-                <div className='loading-spinner' />
-                <p>Loading game world...</p>
-              </div>
-            </Html>
-          }
-        >
+        <Suspense fallback={null}>
           <GameScene />
         </Suspense>
       </RenderInitializer>

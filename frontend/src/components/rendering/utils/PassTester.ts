@@ -451,7 +451,7 @@ export class PassTester {
  * Quick test utility for development
  */
 export const quickTestPass = (pass: RenderPass): void => {
-  if (process.env.NODE_ENV !== 'development') {
+  if (import.meta.env?.MODE !== 'development') {
     return;
   }
 
@@ -481,7 +481,7 @@ export const quickTestPass = (pass: RenderPass): void => {
  * Test all registered passes in the registry
  */
 export const testAllRegisteredPasses = async (): Promise<void> => {
-  if (process.env.NODE_ENV !== 'development') {
+  if (import.meta.env?.MODE !== 'development') {
     console.warn('Pass testing is only available in development mode');
     return;
   }

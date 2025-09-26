@@ -15,12 +15,8 @@ import {
 } from 'three';
 
 import { useRenderStore } from '../../../../stores/render-store';
-import {
-  GeometryPass,
-  PostProcessPass,
-  ShadowPass,
-  type RenderPass,
-} from '../../core/RenderPass';
+import { type RenderPass, PostProcessPass } from '../../core/RenderPass';
+import { usePostProcessingContext } from '../effects/PostProcessingComposer';
 
 interface RenderTargetConfig {
   name: string;
@@ -48,6 +44,7 @@ export const RenderPipeline: React.FC<RenderPipelineProps> = ({
 }) => {
   const { gl, scene, camera, size } = useThree();
   const { capabilities, quality, postprocessing } = useRenderStore();
+  const postProcessingContext = usePostProcessingContext();
 
   const renderTargetsRef = useRef<Map<string, WebGLRenderTarget>>(new Map());
   const passesRef = useRef<RenderPass[]>([]);
@@ -146,21 +143,8 @@ export const RenderPipeline: React.FC<RenderPipelineProps> = ({
    * Initialize rendering passes
    */
   const initializePasses = useCallback(() => {
-    const passes: RenderPass[] = [
-      // Shadow pass (if shadows enabled)
-      ...(capabilities?.supportsShadows ? [new ShadowPass()] : []),
-
-      // Main geometry pass
-      new GeometryPass({
-        renderTarget: renderTargetsRef.current.get('color'),
-      }),
-
-      // Post-processing pass (if enabled)
-      ...(postprocessing.enabled ? [new PostProcessPass()] : []),
-
-      // Custom passes
-      ...customPasses,
-    ];
+    // Use only the passes provided by MultiStepRenderer - no duplicates!
+    const passes = [...customPasses];
 
     // Sort by priority
     passes.sort((a, b) => a.priority - b.priority);
@@ -171,7 +155,7 @@ export const RenderPipeline: React.FC<RenderPipelineProps> = ({
     });
 
     passesRef.current = passes;
-  }, [capabilities?.supportsShadows, postprocessing.enabled, customPasses, gl]);
+  }, [customPasses, gl]);
 
   /**
    * Handle viewport resize
@@ -201,13 +185,7 @@ export const RenderPipeline: React.FC<RenderPipelineProps> = ({
       renderTargets.forEach(target => target.dispose());
       passes.forEach(pass => pass.dispose?.());
     };
-  }, [
-    capabilities,
-    gl,
-    postprocessing.enabled,
-    initializeRenderTargets,
-    initializePasses,
-  ]);
+  }, [capabilities, gl, initializeRenderTargets, initializePasses]);
 
   // Handle resize
   useEffect(() => {
@@ -231,6 +209,29 @@ export const RenderPipeline: React.FC<RenderPipelineProps> = ({
     const passes = passesRef.current.filter(pass => pass.enabled);
     const targets = renderTargetsRef.current;
 
+    // Debug logging for development
+    if (import.meta.env.MODE === 'development') {
+      if (passes.length === 0) {
+        console.warn(
+          'RenderPipeline: No enabled passes found - falling back to direct render'
+        );
+        // Fallback: render scene directly to screen
+        gl.setRenderTarget(null);
+        gl.clear(true, true, false);
+        gl.render(scene, camera);
+        return;
+      }
+      // Reduced logging: Only log every 60 frames (1 second at 60fps)
+      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      ((window as any).__renderFrameCount as number) = frameCount + 1;
+
+      if (frameCount % 60 === 0) {
+        console.warn(
+          `RenderPipeline: Executing ${passes.length} passes: ${passes.map(p => `${p.name}(${p.priority})`).join(', ')}`
+        );
+      }
+    }
+
     let readBuffer = targets.get('color');
     let writeBuffer = targets.get('postprocess');
 
@@ -239,10 +240,64 @@ export const RenderPipeline: React.FC<RenderPipelineProps> = ({
       const isLastPass = index === passes.length - 1;
 
       // Determine buffers for this pass
-      const currentWriteBuffer = isLastPass ? undefined : writeBuffer;
+      const currentWriteBuffer = isLastPass ? null : writeBuffer; // Render to screen if last pass
       const currentReadBuffer = index === 0 ? undefined : readBuffer;
 
-      pass.render(gl, scene, camera, currentWriteBuffer, currentReadBuffer);
+      // Force the last pass to render to screen
+      if (isLastPass) {
+        pass.renderToScreen = true;
+      }
+
+      // SMART INTEGRATION: Connect PostProcessPass with PostProcessingComposer
+      if (
+        pass.name === 'postprocess' &&
+        postProcessingContext &&
+        pass instanceof PostProcessPass
+      ) {
+        // Connect the PostProcessingComposer's renderFromBuffer to PostProcessPass
+        if (postProcessingContext.renderFromBuffer) {
+          pass.setPostProcessingCallback(
+            postProcessingContext.renderFromBuffer
+          );
+
+          const currentFrameCount =
+            ((window as any).__renderFrameCount as number) ?? 0;
+          if (currentFrameCount % 180 === 0) {
+            console.warn(
+              'RenderPipeline: ✅ Connected PostProcessPass with PostProcessingComposer'
+            );
+          }
+        }
+      } else if (pass.name === 'postprocess') {
+        const currentFrameCount =
+          ((window as any).__renderFrameCount as number) ?? 0;
+        if (currentFrameCount % 180 === 0) {
+          console.warn(
+            'RenderPipeline: PostProcessingComposer context not available, using fallback'
+          );
+        }
+      }
+
+      // SMART FALLBACK: If this is a GeometryPass and no postprocessing, render to screen
+      if (
+        pass.name === 'geometry' &&
+        !passes.some(p => p.name === 'postprocess')
+      ) {
+        // If no post-processing pass exists, let geometry render to screen
+        pass.renderToScreen = true;
+      }
+
+      try {
+        pass.render(
+          gl,
+          scene,
+          camera,
+          currentWriteBuffer ?? undefined,
+          currentReadBuffer
+        );
+      } catch (error) {
+        console.error(`RenderPipeline: Error in ${pass.name} pass:`, error);
+      }
 
       // Swap buffers for next pass
       if (!isLastPass && readBuffer && writeBuffer) {

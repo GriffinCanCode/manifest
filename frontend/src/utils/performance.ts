@@ -363,7 +363,7 @@ export const usePerformanceMonitor = (
     }
 
     // Auto-initialize in development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       monitor.init();
     }
 

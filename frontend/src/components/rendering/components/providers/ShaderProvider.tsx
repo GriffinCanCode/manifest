@@ -7,6 +7,14 @@ import { useFrame, useThree } from '@react-three/fiber';
 import React, { useEffect, useRef } from 'react';
 import { Vector3, type Color, type ShaderMaterial } from 'three';
 
+// Browser-compatible environment check with proper typing
+interface ViteImportMeta {
+  env?: {
+    MODE?: string;
+    [key: string]: unknown;
+  };
+}
+
 import {
   getShaderDefinition,
   updateShaderUniforms,
@@ -73,13 +81,37 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
               USE_SHADOWS:
                 settings?.shadows && capabilities.supportsShadows ? 1 : 0,
               USE_FOG: !disableFog ? 1 : 0,
-              USE_INSTANCING: capabilities.supportsInstancing ? 1 : 0,
+              // Note: USE_INSTANCING is automatically handled by Three.js when using instanced geometry
               USE_HDR: capabilities.supportsHDR ? 1 : 0,
             },
           }
         );
 
         shadersRef.current.set('hex-terrain', hexTerrainMaterial);
+
+        // Initialize animated water shader
+        const animatedWaterDef = getShaderDefinition('animated-water');
+        const animatedWaterMaterial = shaderManager.compile(
+          'animated-water',
+          animatedWaterDef,
+          {
+            defines: {
+              QUALITY_LEVEL:
+                quality.level === 'low'
+                  ? 1
+                  : quality.level === 'medium'
+                    ? 2
+                    : quality.level === 'high'
+                      ? 3
+                      : 4,
+              USE_WATER_ANIMATION: 1,
+              USE_FOAM: capabilities.supportsFloatTextures ? 1 : 0,
+            },
+            transparent: true,
+            depthWrite: false,
+          }
+        );
+        shadersRef.current.set('animated-water', animatedWaterMaterial);
 
         // Initialize debug grid shader
         const debugGridDef = getShaderDefinition('debug-grid');
@@ -96,6 +128,46 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
           uiOverlayDef
         );
         shadersRef.current.set('ui-overlay', uiOverlayMaterial);
+
+        // Initialize postprocessing shaders
+        const postprocessingShaders = [
+          'volumetric-fog',
+          'hdr-tonemapping',
+          'bloom',
+          'fxaa',
+          'ssao',
+          'depth-of-field',
+          'color-correction',
+          'ssr',
+          'taa',
+          'motion-blur',
+        ];
+
+        for (const shaderName of postprocessingShaders) {
+          try {
+            const shaderDef = getShaderDefinition(shaderName as ShaderName);
+            const shaderMaterial = shaderManager.compile(
+              shaderName,
+              shaderDef,
+              {
+                defines: {
+                  QUALITY_LEVEL:
+                    quality.level === 'low'
+                      ? 1
+                      : quality.level === 'medium'
+                        ? 2
+                        : quality.level === 'high'
+                          ? 3
+                          : 4,
+                  USE_HDR: capabilities.supportsHDR ? 1 : 0,
+                },
+              }
+            );
+            shadersRef.current.set(shaderName as ShaderName, shaderMaterial);
+          } catch (error) {
+            console.warn(`⚠️ Failed to compile ${shaderName} shader:`, error);
+          }
+        }
 
         isReadyRef.current = true;
       } catch (error) {
@@ -146,7 +218,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
         useRenderStore.getState().debug.showWireframe;
 
       // Update fog color based on time of day (future enhancement)
-      if (process.env.NODE_ENV === 'development') {
+      if ((import.meta as ViteImportMeta)?.env?.MODE === 'development') {
         const dayFactor = Math.sin(timeRef.current * 0.1) * 0.5 + 0.5;
         const fogColor = hexTerrainMaterial.uniforms.u_fogColor.value as Color;
         if (fogColor && typeof fogColor.setHSL === 'function') {
@@ -157,11 +229,75 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
       hexTerrainMaterial.uniformsNeedUpdate = true;
     }
 
-    // Update other shaders as needed
+    // Update animated water shader uniforms
+    const animatedWaterMaterial = shadersRef.current.get('animated-water');
+    if (animatedWaterMaterial?.uniforms) {
+      if (animatedWaterMaterial.uniforms.u_time) {
+        animatedWaterMaterial.uniforms.u_time.value = timeRef.current;
+      }
+      if (
+        animatedWaterMaterial.uniforms.u_cameraPosition?.value instanceof
+        Vector3
+      ) {
+        animatedWaterMaterial.uniforms.u_cameraPosition.value.copy(
+          cameraPosition
+        );
+      }
+      animatedWaterMaterial.uniformsNeedUpdate = true;
+    }
+
+    // Update postprocessing and other shaders
+    const postprocessingShaders = [
+      'volumetric-fog',
+      'hdr-tonemapping',
+      'bloom',
+      'fxaa',
+      'ssao',
+      'depth-of-field',
+      'color-correction',
+      'ssr',
+      'taa',
+      'motion-blur',
+    ];
+
     shadersRef.current.forEach((material, name) => {
-      if (name !== 'hex-terrain' && material.uniforms?.u_time) {
-        material.uniforms.u_time.value = timeRef.current;
-        material.uniformsNeedUpdate = true;
+      if (name !== 'hex-terrain' && name !== 'animated-water') {
+        let needsUpdate = false;
+
+        // Update time for all shaders that have it
+        if (material.uniforms?.u_time) {
+          material.uniforms.u_time.value = timeRef.current;
+          needsUpdate = true;
+        }
+
+        // Update camera position for relevant shaders
+        if (material.uniforms?.u_cameraPosition?.value instanceof Vector3) {
+          material.uniforms.u_cameraPosition.value.copy(cameraPosition);
+          needsUpdate = true;
+        }
+
+        // Update resolution for postprocessing shaders
+        if (
+          postprocessingShaders.includes(name) &&
+          material.uniforms?.u_resolution?.value
+        ) {
+          const { width, height } = useRenderStore.getState().viewport;
+          const resolutionUniform = material.uniforms.u_resolution;
+          if (
+            resolutionUniform?.value &&
+            typeof resolutionUniform.value === 'object' &&
+            'set' in resolutionUniform.value
+          ) {
+            (
+              resolutionUniform.value as { set: (x: number, y: number) => void }
+            ).set(width, height);
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          material.uniformsNeedUpdate = true;
+        }
       }
     });
   });

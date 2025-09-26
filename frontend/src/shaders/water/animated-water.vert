@@ -3,7 +3,11 @@
  * Provides wave displacement and vertex data for water animation
  */
 
-#include common.glsl
+#ifdef GL_ES
+precision highp float;
+#endif
+
+#include ../modules/common.glsl
 
 // Uniforms
 uniform float u_time;

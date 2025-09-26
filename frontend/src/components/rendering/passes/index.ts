@@ -286,7 +286,7 @@ export const passRegistry = new PassRegistry();
  * Debug utilities for pass registry
  */
 export const debugPassRegistry = () => {
-  if (process.env.NODE_ENV === 'development') {
+  if (__DEV__) {
     const info = passRegistry.getDebugInfo();
     console.warn('🎨 Pass Registry Debug Info:', info.passes);
 
@@ -325,7 +325,7 @@ import { SelectionPass } from './SelectionPass';
 import { VolumetricFogPass } from './VolumetricFogPass';
 
 passRegistry.register('volumetric-fog', {
-  type: 'fog',
+  type: 'volumetric-fog',
   factory: () => new VolumetricFogPass(),
   priority: 85,
   dependencies: ['geometry'],
@@ -335,7 +335,7 @@ passRegistry.register('depth-of-field', {
   type: 'dof',
   factory: () => new DepthOfFieldPass(),
   priority: 90,
-  dependencies: ['geometry', 'volumetric-fog'],
+  dependencies: ['geometry'],
 });
 
 passRegistry.register('selection', {

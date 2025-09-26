@@ -4,6 +4,7 @@ pub mod conflict_detection;
 pub mod control;
 pub mod game_state;
 pub mod hashing;
+pub mod heartbeat;
 pub mod interpolate;
 pub mod logging;
 pub mod reloader;
@@ -18,6 +19,7 @@ pub use caching::*;
 pub use control::*;
 pub use game_state::*;
 pub use hashing::*;
+pub use heartbeat::*;
 pub use interpolate::*;
 // Re-export logging without metrics to avoid conflict with caching::metrics
 pub use logging::{

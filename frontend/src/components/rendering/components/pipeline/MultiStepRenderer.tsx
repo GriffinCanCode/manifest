@@ -6,6 +6,7 @@
 import React from 'react';
 
 import { useRenderStore } from '../../../../stores/render-store';
+import { GeometryPass, PostProcessPass } from '../../core/RenderPass';
 import { passRegistry } from '../../passes';
 import { DebugPass } from '../../passes/DebugPass';
 import { SelectionPass } from '../../passes/SelectionPass';
@@ -26,7 +27,7 @@ interface MultiStepRendererProps {
 export const MultiStepRenderer: React.FC<MultiStepRendererProps> = ({
   children,
   enableSelection = true,
-  enableDebug = process.env.NODE_ENV === 'development',
+  enableDebug = import.meta.env?.MODE === 'development',
   enableTAA = true,
 }) => {
   const { debug, capabilities, devMode } = useRenderStore();
@@ -53,20 +54,26 @@ export const MultiStepRenderer: React.FC<MultiStepRendererProps> = ({
     return passes;
   }, [enableSelection, enableDebug, debug, devMode]);
 
-  // Registry-based pass creation for extensibility
-  const registryPasses = React.useMemo(() => {
+  // SMART FIX: Only add essential passes, not all registry passes
+  const essentialPasses = React.useMemo(() => {
     if (!capabilities) return [];
 
-    return passRegistry.createOrderedPasses().filter(pass => {
-      // Filter passes based on capabilities
-      if (pass.name === 'shadow' && !capabilities.supportsShadows) {
-        return false;
-      }
-      return true;
-    });
+    const passes = [];
+
+    // Always add geometry pass (essential for rendering)
+    const geometryReg = passRegistry.get('geometry');
+    passes.push(geometryReg ? geometryReg.factory() : new GeometryPass());
+
+    // Only add postprocess pass (for our smart integration)
+    const postprocessReg = passRegistry.get('postprocess');
+    passes.push(
+      postprocessReg ? postprocessReg.factory() : new PostProcessPass()
+    );
+
+    return passes;
   }, [capabilities]);
 
-  const allPasses = [...registryPasses, ...customPasses];
+  const allPasses = [...essentialPasses, ...customPasses];
 
   return (
     <RenderPipeline
@@ -74,7 +81,7 @@ export const MultiStepRenderer: React.FC<MultiStepRendererProps> = ({
       enableMultiSampling={capabilities?.supportsFloatTextures}
     >
       <PostProcessingComposer
-        enabled
+        enabled // Re-enable post-processing
         enableTAA={enableTAA && capabilities?.supportsHDR}
         enableSelectiveBloom={capabilities?.gpuTier === 'high'}
       >

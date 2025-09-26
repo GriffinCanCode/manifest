@@ -88,7 +88,7 @@ export const HEX_TERRAIN_SHADER: ShaderDefinition = {
     u_showHeight: { value: false },
   } as TerrainShaderUniforms,
   defines: {
-    USE_INSTANCING: 1,
+    // Note: USE_INSTANCING is handled automatically by Three.js
     USE_LOD: 1,
     HEX_TILES: 1,
     TERRAIN_DISPLACEMENT: 1,
