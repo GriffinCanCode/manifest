@@ -8,7 +8,7 @@
 import { useFrame } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { Matrix4, Vector3 } from 'three';
+import { Matrix4 } from 'three';
 
 import { useRenderStore } from '../../../../stores/render-store';
 import {
@@ -21,7 +21,10 @@ import {
   InstanceDataStreamer,
   type InstanceDataStreamerOptions,
 } from '../../../../utils/instance-data-streamer';
-import { useShader } from '../../hooks/shader-hooks';
+import { useShader, useShaders } from '../../hooks/shader-hooks';
+
+// Import WebGL diagnostics for browser console
+import '../../../../utils/webgl-diagnostic';
 
 export interface HexInstanceRendererProps {
   readonly tiles: readonly GameTile[];
@@ -50,7 +53,9 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
 }) => {
   const { debug } = useRenderStore();
   const streamerRef = useRef<InstanceDataStreamer | null>(null);
+  const { isReady: shadersReady } = useShaders();
   const hexTerrainShader = useShader('hex-terrain');
+  const diagnosticRanRef = useRef<boolean>(false);
 
   // HEX-TERRAIN SHADER: Initialize instanced attributes for shader
   const initializeInstancedMesh = useCallback(
@@ -108,16 +113,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
       // Force initial visibility
       mesh.visible = true;
       mesh.frustumCulled = false;
-
-      console.warn('🎨 InstancedMesh HEX-TERRAIN SHADER initialization:', {
-        count: mesh.count,
-        maxInstances,
-        visible: mesh.visible,
-        material: (mesh.material as THREE.Material).type,
-        attributes: Object.keys(geometry.attributes),
-        hasInstancedPosition: !!geometry.attributes.instancePosition,
-        hasInstancedColor: !!geometry.attributes.instanceColor,
-      });
     },
     [maxInstances]
   );
@@ -141,7 +136,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
 
   // PROPER HEXAGON geometry for Civ-style tiles (keeping working material)
   const hexGeometry = useMemo(() => {
-    console.warn('🔧 Creating CIV-STYLE hexagon geometry...');
     const geometry = new THREE.CylinderGeometry(
       0.9, // radiusTop - slightly smaller than 1.0 for tile spacing
       0.9, // radiusBottom
@@ -154,41 +148,26 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     // Rotate to lay flat (hexagons are created vertically by default)
     geometry.rotateX(-Math.PI / 2);
 
-    console.warn('✅ Hexagon geometry created:', {
-      vertices: geometry.attributes.position.count,
-      triangles: geometry.index ? geometry.index.count / 3 : 'no index',
-      radiusTop: 0.9,
-      height: 0.1,
-      segments: 6,
-    });
     return geometry;
   }, []);
 
   // CIV-STYLE: Use hex-terrain custom shader material
   const hexMaterial = useMemo(() => {
-    console.warn('🎨 Setting up hex-terrain shader material...');
-
-    if (!hexTerrainShader) {
-      // Fallback to basic material while shader loads
-      console.warn('⏳ Hex-terrain shader not ready, using fallback...');
-      return new THREE.MeshBasicMaterial({
-        color: 0x00aa00, // Solid green fallback
-        wireframe: debug.showWireframe,
-        transparent: false,
-      });
+    if (!shadersReady || !hexTerrainShader) {
+      return null;
     }
 
     // Clone the shader material and configure it
     const material = hexTerrainShader.clone();
     material.wireframe = debug.showWireframe;
 
-    console.warn('✅ Hex-terrain shader material created:', {
-      type: material.type,
-      wireframe: material.wireframe,
-      uniforms: Object.keys(material.uniforms || {}),
-    });
+    // TEMPORARY TEST: Enable biome debug mode to see if shader is running
+    if (material.uniforms?.u_showBiomes) {
+      material.uniforms.u_showBiomes.value = true;
+    }
+
     return material;
-  }, [hexTerrainShader, debug.showWireframe]);
+  }, [shadersReady, hexTerrainShader, debug.showWireframe]);
 
   // Simple wireframe border material (disabled for now)
   // const _wireframeMaterial = useMemo(() => {
@@ -250,31 +229,13 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
   const updateInstances = useCallback(() => {
     const instancedMesh = instancedMeshRef.current;
     if (!instancedMesh || tiles.length === 0) {
-      console.warn('❌ updateInstances FAILED:', {
-        hasInstancedMesh: !!instancedMesh,
-        tilesLength: tiles.length,
-        instancedMeshRef: instancedMeshRef.current,
-      });
       return;
     }
-
-    console.warn('🔄 Updating CIV-STYLE hex renderer:', {
-      tilesLength: tiles.length,
-      hasInstancedMesh: !!instancedMesh,
-      instancedMeshVisible: instancedMesh.visible,
-      instancedMeshCount: instancedMesh.count,
-      hasInstanceColor: !!instancedMesh.instanceColor,
-      meshPosition: `${instancedMesh.position.x}, ${instancedMesh.position.y}, ${instancedMesh.position.z}`,
-      meshScale: `${instancedMesh.scale.x}, ${instancedMesh.scale.y}, ${instancedMesh.scale.z}`,
-      materialType: (instancedMesh.material as THREE.MeshBasicMaterial).type,
-      geometryType: instancedMesh.geometry.type,
-    });
 
     // Ensure we have the right number of instances
     const targetCount = Math.min(tiles.length, maxInstances);
     if (instancedMesh.count !== targetCount) {
       instancedMesh.count = targetCount;
-      console.warn('🔢 Set instancedMesh.count to:', targetCount);
     }
 
     const matrix = new Matrix4();
@@ -286,11 +247,8 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
       const [x, z] = HexUtils.hexToPixel(tile.hex);
       const y = tile.elevation * 0.5;
 
-      // Civ-style hex scaling - reasonable size
-      matrix.makeTranslation(x, y, z);
-      const scaleSize = 0.95; // Slightly smaller than 1.0 for proper tile spacing
-      const height = Math.max(0.1, 0.1 + Math.abs(tile.elevation) * 0.2); // Subtle elevation
-      matrix.scale(new Vector3(scaleSize, height, scaleSize));
+      // SHADER TEST: Let shader handle positioning, use identity matrix
+      matrix.identity(); // No transformation - let shader do it
       instancedMesh.setMatrixAt(i, matrix);
 
       // Set instanced attributes for hex-terrain shader
@@ -345,19 +303,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
         resourceArray[i] = 0.0; // No resources for now
       }
 
-      // DEBUG: Log first few instances
-      if (i < 3) {
-        console.warn(`🎯 Instance ${i} setup:`, {
-          tileId: tile.id,
-          hex: tile.hex,
-          pixelPos: [x, z],
-          worldPos: [x, y, z],
-          scaleSize,
-          height,
-          terrain: tile.terrain,
-          colorHex: terrainColors[tile.terrain] || '#64748b',
-        });
-      }
     }
 
     // Mark all instanced attributes for update
@@ -388,27 +333,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     instancedMesh.visible = true;
     instancedMesh.frustumCulled = false; // Disable frustum culling for debugging
 
-    console.warn('🎨 InstancedMesh CIV-STYLE visible:', {
-      visible: instancedMesh.visible,
-      frustumCulled: instancedMesh.frustumCulled,
-      count: instancedMesh.count,
-      hasInstanceColor: !!instancedMesh.instanceColor,
-      materialType: (instancedMesh.material as THREE.MeshBasicMaterial).type,
-      boundingBox: instancedMesh.geometry.boundingBox,
-    });
-
-    console.warn(
-      `✅ Updated ${Math.min(tiles.length, maxInstances)} hex instances with positions:`,
-      {
-        samplePositions: tiles.slice(0, 3).map(t => {
-          const [x, z] = HexUtils.hexToPixel(t.hex);
-          return `${t.terrain} at (${x.toFixed(1)}, ${t.elevation * 0.5}, ${z.toFixed(1)})`;
-        }),
-        sampleColors: tiles
-          .slice(0, 3)
-          .map(t => terrainColors[t.terrain] || '#64748b'),
-      }
-    );
   }, [tiles, terrainColors, maxInstances]);
 
   // Handle click events using raycasting
@@ -416,8 +340,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     (_event: THREE.Event) => {
       if (onTileClick) {
         // TODO: Implement proper raycasting to determine which tile was clicked
-        // For now, just a placeholder
-        console.warn('Tile clicked - raycasting not implemented yet');
       }
     },
     [onTileClick]
@@ -425,8 +347,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
 
   // Initialize simple renderer on mount
   useEffect(() => {
-    console.warn('🚀 HexInstanceRenderer: Initializing simple renderer...');
-
     const cleanupRenderer = initializeSimpleRenderer();
     const cleanupStreamer = initializeStreamer();
 
@@ -435,6 +355,14 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
       cleanupStreamer();
     };
   }, [initializeSimpleRenderer, initializeStreamer]);
+
+  // Run shader diagnostics when ready but potentially having issues
+  useEffect(() => {
+    if (shadersReady && !hexTerrainShader && !diagnosticRanRef.current) {
+      diagnosticRanRef.current = true;
+      // Shader diagnostic code can be enabled if needed for debugging
+    }
+  }, [shadersReady, hexTerrainShader]);
 
   // Wire frame mesh reference
   // Wireframe mesh disabled for now
@@ -452,18 +380,6 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
 
   // Simplified single effect for tile updates
   useEffect(() => {
-    console.warn('🔄 TILES CHANGED - HexInstanceRenderer received new tiles:', {
-      tilesLength: tiles.length,
-      timestamp: Date.now(),
-      firstTile: tiles[0]
-        ? {
-            id: tiles[0].id,
-            terrain: tiles[0].terrain,
-            hex: tiles[0].hex,
-          }
-        : null,
-    });
-
     if (tiles.length > 0) {
       // Update main instances
       updateInstances();
@@ -496,64 +412,19 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     // Future: Add LOD, frustum culling, etc. here if needed
   });
 
-  // SIMPLIFIED RENDER: Use simple instanced mesh
-  console.warn('🎨 HexInstanceRenderer CIV-STYLE render:', {
-    hasMaterial: !!hexMaterial,
-    tilesCount: tiles.length,
-    hasGeometry: !!hexGeometry,
-    materialType: hexMaterial?.type,
-    geometryType: hexGeometry?.type,
-    tilesType: typeof tiles,
-    tilesArray: Array.isArray(tiles),
-    firstTileId: tiles[0]?.id,
-    componentTimestamp: Date.now(),
-  });
+  // CRITICAL: Wait for shader system to initialize before rendering
+  if (!shadersReady) {
+    return null;
+  }
 
   // Don't render if no tiles or material
   if (!hexMaterial) {
-    console.warn('❌ HexInstanceRenderer: No material, skipping render');
     return null;
   }
 
   if (tiles.length === 0) {
-    console.warn(
-      '❌ HexInstanceRenderer: No tiles (length=0), skipping render. Waiting for tiles...',
-      {
-        tilesLength: tiles.length,
-        tilesType: typeof tiles,
-        isArray: Array.isArray(tiles),
-      }
-    );
     return null;
   }
-
-  console.warn(
-    '✅ HexInstanceRenderer: Ready to render with',
-    tiles.length,
-    'tiles!'
-  );
-
-  console.warn('🔥 CIV-STYLE HEX RENDER ATTEMPT:', {
-    hexGeometry: !!hexGeometry,
-    hexMaterial: !!hexMaterial,
-    tilesLength: tiles.length,
-    maxInstances,
-    instanceCount: Math.min(tiles.length, maxInstances),
-    geometryType: hexGeometry?.type,
-    materialType: hexMaterial?.type,
-    hasVertexColors: hexMaterial?.vertexColors,
-  });
-
-  console.warn('🚀 RENDERING HEX-TERRAIN SHADER:', {
-    geometry: hexGeometry?.type,
-    material: hexMaterial?.type,
-    shaderName:
-      hexMaterial?.type === 'ShaderMaterial' ? 'hex-terrain' : 'fallback',
-    instances: Math.min(tiles.length, maxInstances),
-    hasGeometry: !!hexGeometry,
-    hasMaterial: !!hexMaterial,
-    hasShader: !!hexTerrainShader,
-  });
 
   return (
     <group name='hex-renderer-group'>

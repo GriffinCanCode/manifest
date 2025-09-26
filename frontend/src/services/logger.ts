@@ -149,24 +149,18 @@ class LoggerService {
     this.sessionId = this.generateSessionId();
     this.isProduction = getEnvironmentMode() === 'production';
 
-    // Force immediate console output to verify system is working
-    console.warn('🔧 LOGGER: LoggerService constructor called');
-    console.warn('🔧 LOGGER: Session ID:', this.sessionId);
-    console.warn('🔧 LOGGER: Environment:', getEnvironmentMode());
-    console.warn('🔧 LOGGER: Production mode:', this.isProduction);
+    // Only log initialization in development if debug logging is enabled
+    if (!this.isProduction && getLoggingConfig().level === 'debug') {
+      console.warn(
+        '🔧 LOGGER: LoggerService initialized for session:',
+        this.sessionId
+      );
+    }
 
-    const config = getLoggingConfig();
-    console.warn('🔧 LOGGER: Config loaded:', {
-      enableConsoleOutput: config.enableConsoleOutput,
-      enableFileOutput: config.enableFileOutput,
-      level: config.level,
-    });
-
-    // Log initialization
+    // Log initialization using normal logging flow
     this.logToBrowser('info', 'Logging system initialized', 'app', undefined, {
       sessionId: this.sessionId,
       environment: getEnvironmentMode(),
-      configuration: getLoggingConfig(),
     });
   }
 
@@ -184,17 +178,7 @@ class LoggerService {
   ): void {
     const config = getLoggingConfig();
 
-    // Force debug output
-    console.warn('🔧 DEBUG: logToBrowser called', {
-      level,
-      message,
-      category,
-      component,
-      consoleOutputEnabled: config.enableConsoleOutput,
-    });
-
     if (!config.enableConsoleOutput) {
-      console.warn('🔧 DEBUG: Console output is DISABLED, skipping log');
       return;
     }
 
@@ -209,9 +193,6 @@ class LoggerService {
     };
 
     const formattedMessage = formatConsoleMessage(logInfo);
-
-    // Force output to console regardless of linting rules for debugging
-    console.warn('🔧 CONSOLE OUTPUT:', formattedMessage, metadata ?? '');
 
     // Use only allowed console methods (warn, error) per project linting rules
     switch (level) {

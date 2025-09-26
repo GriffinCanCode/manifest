@@ -23,7 +23,9 @@
     "build:windows": "cd ../backend/scripts && npm run build:windows",
     "build:macos": "cd ../backend/scripts && npm run build:macos",
     "build:linux": "cd ../backend/scripts && npm run build:linux",
-    "validate:build": "cd ../backend/scripts && npm run validate"
+    "validate:build": "cd ../backend/scripts && npm run validate",
+    "diagnose:shaders": "npx tsx tests/shader-diagnostics.ts",
+    "diagnose:all": "npm run diagnose:shaders && echo '\\n🌐 For runtime diagnostics, open browser console and run: runShaderDiagnostics()'"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

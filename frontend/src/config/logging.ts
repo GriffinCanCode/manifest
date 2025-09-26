@@ -51,22 +51,22 @@ const PRODUCTION_CONFIG: LoggingConfig = {
 
 // Development logging configuration
 const DEVELOPMENT_CONFIG: LoggingConfig = {
-  level: 'debug',
+  level: 'info',
   enableFileOutput: true,
   enableConsoleOutput: true,
   enableBrowserStorage: true,
   maxLogFileSize: 10000, // 10MB
   maxLogAge: 3, // 3 days
   categories: {
-    app: { level: 'debug', enabled: true },
-    render: { level: 'debug', enabled: true },
-    game: { level: 'debug', enabled: true },
-    performance: { level: 'debug', enabled: true },
+    app: { level: 'info', enabled: true },
+    render: { level: 'warn', enabled: true },
+    game: { level: 'info', enabled: true },
+    performance: { level: 'warn', enabled: true },
     network: { level: 'info', enabled: true },
-    storage: { level: 'debug', enabled: true },
+    storage: { level: 'info', enabled: true },
     ui: { level: 'info', enabled: true },
-    shader: { level: 'info', enabled: true },
-    streaming: { level: 'debug', enabled: true },
+    shader: { level: 'warn', enabled: true },
+    streaming: { level: 'warn', enabled: true },
   },
 };
 
