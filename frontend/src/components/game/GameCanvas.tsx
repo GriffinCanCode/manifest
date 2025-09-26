@@ -32,7 +32,6 @@ import {
 } from '../../utils/game-types';
 import { CameraController } from '../controls';
 import { HexInstanceRenderer } from '../rendering/components/hex/HexInstanceRenderer';
-import { MultiStepRenderer } from '../rendering/components/pipeline/MultiStepRenderer';
 import RenderInitializer from '../rendering/components/pipeline/RenderInitializer';
 
 /**
@@ -322,15 +321,11 @@ const GameScene: React.FC = () => {
     );
   }
 
-  // STEP 1: Re-enable MultiStepRenderer with minimal passes
+  // ULTRA-SIMPLE RENDERING: Skip MultiStepRenderer completely to avoid shader issues
   return (
-    <MultiStepRenderer
-      enableSelection={false}
-      enableDebug={false}
-      enableTAA={false}
-    >
-      {/* SIMPLE LIGHTING - no complex shader dependencies */}
-      <ambientLight intensity={0.6} />
+    <>
+      {/* BASIC LIGHTING - absolutely minimal */}
+      <ambientLight intensity={0.8} />
       <directionalLight position={[10, 10, 5]} intensity={1} />
 
       {/* SOPHISTICATED HEX RENDERING: Advanced instanced rendering with BVH acceleration */}
@@ -351,8 +346,17 @@ const GameScene: React.FC = () => {
         selectedTileId={selectedTile?.id}
         maxInstances={5000}
         enableSpatialQueries
-        enableStreaming
+        enableStreaming={false}
       />
+
+      {/* Add hex borders for Civ-like appearance - DISABLED DUE TO WEBGL CONTEXT LOSS */}
+      {/* <HexBorderRenderer
+        tiles={gameWorld.tiles}
+        selectedTileId={selectedTile?.id}
+        showTerrainBorders
+        showSelectionBorder
+        borderWidth={0.02}
+      /> */}
 
       {/* EMERGENCY FALLBACK: Simple cube rendering if sophisticated renderer fails */}
       {gameWorld.tiles.length > 0 && (
@@ -416,6 +420,12 @@ const GameScene: React.FC = () => {
         smoothTransitions
       />
 
+      {/* DEBUG: Force camera to a good viewing position */}
+      <mesh position={[0, 20, 0]}>
+        <sphereGeometry args={[0.1, 8, 8]} />
+        <meshBasicMaterial color='red' />
+      </mesh>
+
       {/* Clean scene - no debug geometry - showing actual game map */}
 
       {/* Adaptive environment */}
@@ -454,7 +464,7 @@ const GameScene: React.FC = () => {
       {/* {quality.level !== 'low' && !debug.disableFog && (
         <fog attach='fog' args={['#87CEEB', 20, 80]} />
       )} */}
-    </MultiStepRenderer>
+    </>
   );
 };
 
