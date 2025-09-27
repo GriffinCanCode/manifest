@@ -112,7 +112,11 @@ export class ValtioStateSync {
    * Get a snapshot of the current state (immutable)
    */
   getSnapshot(): IPCState {
-    return snapshot(this.state);
+    const state = snapshot(this.state);
+    return {
+      ...state,
+      notifications: [...state.notifications], // Convert readonly array to mutable
+    };
   }
 
   /**

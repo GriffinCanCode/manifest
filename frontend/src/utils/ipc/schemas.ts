@@ -43,7 +43,7 @@ export const CommandSchemas = {
 
   initialize_game: z.object({
     input: z.object({
-      player_name: z.string().min(1).max(50),
+      playerName: z.string().min(1).max(50),
       civilization: z.string().min(1).max(50),
     }),
     output: GameStateSchema,
@@ -51,14 +51,14 @@ export const CommandSchemas = {
 
   save_game: z.object({
     input: z.object({
-      save_name: z.string().min(1).max(100),
+      saveName: z.string().min(1).max(100),
     }),
     output: z.string(),
   }),
 
   load_game: z.object({
     input: z.object({
-      save_name: z.string().min(1),
+      saveName: z.string().min(1),
     }),
     output: GameStateSchema,
   }),
@@ -71,11 +71,13 @@ export const CommandSchemas = {
   // Tile streaming commands
   stream_tiles: z.object({
     input: z.object({
-      camera_position: z.tuple([z.number(), z.number(), z.number()]),
-      view_radius: z.number().positive(),
-      max_tiles: z.number().int().positive().max(10000),
-      lod_levels: z.array(z.number().int().min(0).max(5)),
-      generation: z.number().int().nonnegative(),
+      request: z.object({
+        camera_position: z.tuple([z.number(), z.number(), z.number()]),
+        view_radius: z.number().positive(),
+        max_tiles: z.number().int().positive().max(20000),
+        lod_levels: z.array(z.number().int().min(0).max(5)),
+        generation: z.number().int().nonnegative(),
+      }),
     }),
     output: z.object({
       tiles: z.array(z.any()), // GameTile schema would be complex
@@ -88,7 +90,7 @@ export const CommandSchemas = {
 
   get_tile: z.object({
     input: z.object({
-      tile_id: z.number().int().positive(),
+      tileId: z.number().int().positive(),
     }),
     output: z.any().optional(), // GameTile or null
   }),
@@ -151,12 +153,12 @@ export const CommandSchemas = {
   // Tile updates
   get_tile_updates: z.object({
     input: z.object({
-      tile_ids: z.array(z.number().int().positive()),
-      last_update_time: z.number().int().nonnegative(),
+      tileIds: z.array(z.number().int().positive()),
+      lastUpdateTime: z.number().int().nonnegative(),
     }),
     output: z.object({
-      updated_tiles: z.array(z.any()), // TileUpdateData schema would be complex
-      removed_tiles: z.array(z.number().int()),
+      updated_tiles: z.array(z.number().int()), // Updated tile IDs
+      removed_tiles: z.array(z.number().int()), // Removed tile IDs
       timestamp: z.number().int(),
     }),
   }),
@@ -164,29 +166,33 @@ export const CommandSchemas = {
   // Save thumbnail commands
   save_thumbnail_metadata: z.object({
     input: z.object({
-      save_name: z.string().min(1),
-      thumbnail_data: z.object({
-        data: z.string(), // base64 encoded image
-        width: z.number().int().positive(),
-        height: z.number().int().positive(),
-        format: z.enum(['png', 'jpg', 'webp']),
+      saveName: z.string().min(1),
+      thumbnailData: z.object({
+        thumbnail: z.string(), // base64 encoded image
+        dimensions: z.object({
+          width: z.number().int().positive(),
+          height: z.number().int().positive(),
+        }),
         created_at: z.number().int(),
+        file_size: z.number().int().positive(),
       }),
     }),
-    output: z.null(), // Returns void/null
+    output: z.void(), // Returns void/null
   }),
 
   load_thumbnail_metadata: z.object({
     input: z.object({
-      save_name: z.string().min(1),
+      saveName: z.string().min(1),
     }),
     output: z
       .object({
-        data: z.string(),
-        width: z.number().int().positive(),
-        height: z.number().int().positive(),
-        format: z.enum(['png', 'jpg', 'webp']),
+        thumbnail: z.string(),
+        dimensions: z.object({
+          width: z.number().int().positive(),
+          height: z.number().int().positive(),
+        }),
         created_at: z.number().int(),
+        file_size: z.number().int().positive(),
       })
       .optional(),
   }),

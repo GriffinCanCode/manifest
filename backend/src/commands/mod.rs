@@ -4,7 +4,7 @@
 //! Organized by functional area for maintainability
 
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use tracing::{info, error, debug, warn, instrument};
@@ -36,6 +36,7 @@ pub struct AppState {
     pub world: Mutex<GameWorld>,
     pub command_cache: GameCache,
     pub save_system: SaveSystem,
+    pub tile_manager: Arc<crate::world::tiles::TileComponentManager>,
 }
 
 /// Enhanced command context with metrics and event emission

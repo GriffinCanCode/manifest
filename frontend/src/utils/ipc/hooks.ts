@@ -301,7 +301,7 @@ export const useTileStreaming = (
 ) => {
   return useIPCQuery('stream_tiles', request, {
     ...options,
-    enabled: options.enabled ?? Boolean(request.camera_position),
+    enabled: options.enabled ?? Boolean(request.request.camera_position),
     staleTime: 1000, // Tiles change frequently
     gcTime: 30000, // Keep in cache for 30 seconds
   });

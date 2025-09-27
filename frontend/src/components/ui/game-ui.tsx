@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 
+import { IPCStatus } from './IPCStatus';
 import SaveBrowser from './SaveBrowser';
 
 import { useGameStore } from '@/stores/game-store';
@@ -58,6 +59,7 @@ const GameUI: React.FC<GameUIProps> = ({ onSave, onLoad }) => {
           >
             {gameState.is_paused ? 'Resume' : 'Pause'}
           </button>
+          <IPCStatus compact showDetails />
         </div>
       </div>
 

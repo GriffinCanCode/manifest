@@ -126,6 +126,17 @@ export const OrbitalCamera: React.FC<OrbitalCameraProps> = ({
     }
   });
 
+  // Set initial camera position and target for hex world viewing
+  useEffect(() => {
+    if (camera && orbitRef.current) {
+      // Position camera to look down at hex grid from an angle
+      camera.position.set(0, 20, 20);
+      orbitRef.current.target.set(0, 0, 0);
+      orbitRef.current.update();
+      handleChange();
+    }
+  }, [camera, handleChange]);
+
   return (
     <OrbitControls
       ref={orbitRef}

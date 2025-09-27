@@ -14,6 +14,8 @@ use manifest::{
 
 // Import commands module directly to ensure proper macro expansion
 use manifest::commands::{self, AppState};
+use manifest::world::tiles::{TileComponentManager, TerrainType, ChunkCoord};
+use manifest::core::zig_ffi::HexCoord;
 
 #[cfg(feature = "bench")]
 use manifest::core::benchmarks;
@@ -120,12 +122,21 @@ fn main() {
                 "Command cache initialized with 128MB limit"
             );
             
+            // Initialize tile component manager
+            println!("🌐 TILES: Initializing tile component manager...");
+            let tile_manager = std::sync::Arc::new(manifest::world::tiles::TileComponentManager::new());
+            println!("✅ TILES: Tile component manager created");
+            
+            // Populate some initial terrain for testing
+            populate_initial_terrain(&tile_manager);
+            
             // Create application state
             println!("🔧 STATE: Creating application state...");
             let state = AppState {
                 world: Mutex::new(world),
                 command_cache,
                 save_system,
+                tile_manager,
             };
             
             // Manage state globally
@@ -167,4 +178,72 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Populate initial terrain for testing
+fn populate_initial_terrain(tile_manager: &TileComponentManager) {
+    use std::sync::Arc;
+    use tracing::info;
+
+    info!("🌍 Generating initial terrain...");
+
+    // Generate a reasonable sized world for testing (30x30 hex grid)
+    let world_radius = 15i32;
+    let mut tiles_created = 0;
+
+    for q in -world_radius..=world_radius {
+        for r in -world_radius..=world_radius {
+            let s = -q - r;
+            if s.abs() <= world_radius {
+                let hex = HexCoord { q, r };
+                let chunk = ChunkCoord { x: q / 32, y: r / 32 };
+                let local_x = (q % 32) as u8;
+                let local_y = (r % 32) as u8;
+
+                // Generate varied terrain based on distance from origin
+                let distance = ((q * q + r * r + q * r) as f32).sqrt();
+                
+                let terrain_type = match distance as i32 {
+                    0..=3 => {
+                        let seed = (q * 73 + r * 37) as u32;
+                        match seed % 3 {
+                            0 => TerrainType::Grassland,
+                            1 => TerrainType::Plains,
+                            _ => TerrainType::Forest,
+                        }
+                    },
+                    4..=8 => {
+                        let seed = (q * 73 + r * 37) as u32;
+                        match seed % 4 {
+                            0 => TerrainType::Forest,
+                            1 => TerrainType::Hills,
+                            2 => TerrainType::Plains,
+                            _ => TerrainType::Grassland,
+                        }
+                    },
+                    9..=12 => {
+                        let seed = (q * 73 + r * 37) as u32;
+                        match seed % 3 {
+                            0 => TerrainType::Hills,
+                            1 => TerrainType::Mountain,
+                            _ => TerrainType::Desert,
+                        }
+                    },
+                    _ => {
+                        let seed = (q * 73 + r * 37) as u32;
+                        if seed % 10 < 7 {
+                            TerrainType::Ocean
+                        } else {
+                            TerrainType::Snow
+                        }
+                    }
+                };
+
+                tile_manager.create_tile(hex, chunk, local_x, local_y, terrain_type);
+                tiles_created += 1;
+            }
+        }
+    }
+
+    info!("✅ Generated {} terrain tiles", tiles_created);
 }

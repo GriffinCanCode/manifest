@@ -8,29 +8,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
 
+import { useGameCommands } from '@/hooks/use-ipc';
 import { saveThumbnailService } from '@/services/save-thumbnails';
+import type { SaveInfo } from '@/utils/ipc/schemas';
 
-interface SaveInfo {
-  name: string;
-  path: string;
-  metadata: SaveMetadata;
-}
+// Note: SaveMetadata interface was removed as we now use the schema-defined SaveInfo type
 
-interface SaveMetadata {
-  name: string;
-  timestamp: number;
-  game_version: string;
-  playtime: number;
-  civilization: string;
-  thumbnail?: SaveThumbnailMetadata;
-}
-
-interface SaveThumbnailMetadata {
-  thumbnail: string;
-  generated_at: number;
-  dimensions: { width: number; height: number };
-  size: { width: number; height: number };
-}
+// SaveThumbnailMetadata interface removed - not needed with current schema
 
 interface SaveBrowserProps {
   onSaveSelect: (saveName: string) => void;
@@ -51,6 +35,9 @@ const SaveBrowser: React.FC<SaveBrowserProps> = ({
     'timestamp'
   );
 
+  // Game commands hook for sophisticated IPC
+  const gameCommands = useGameCommands();
+
   const loadSaves = useCallback(async () => {
     if (!isOpen) return;
 
@@ -58,7 +45,22 @@ const SaveBrowser: React.FC<SaveBrowserProps> = ({
     setError(null);
 
     try {
-      const savesList = await invoke<SaveInfo[]>('list_saves');
+      let savesList: SaveInfo[];
+
+      // Try to use sophisticated IPC system first
+      try {
+        savesList = await gameCommands.listSaves();
+        console.log('✅ Save list loaded via sophisticated IPC system');
+      } catch (ipcError) {
+        // Fall back to direct invoke
+        console.warn(
+          '⚠️ Falling back to direct invoke for save list:',
+          ipcError
+        );
+        savesList = await invoke<SaveInfo[]>('list_saves');
+        console.log('⚠️ Save list loaded via direct invoke fallback');
+      }
+
       setSaves(savesList);
     } catch (err) {
       setError(`Failed to load saves: ${String(err)}`);
@@ -66,7 +68,7 @@ const SaveBrowser: React.FC<SaveBrowserProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen]);
+  }, [isOpen, gameCommands]);
 
   useEffect(() => {
     if (isOpen) {
@@ -77,19 +79,21 @@ const SaveBrowser: React.FC<SaveBrowserProps> = ({
   const filteredSaves = saves
     .filter(
       save =>
-        save.metadata.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        save.metadata.civilization
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase())
+        save.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        save.civilization.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
       switch (sortBy) {
         case 'name':
-          return a.metadata.name.localeCompare(b.metadata.name);
+          return a.name.localeCompare(b.name);
         case 'timestamp':
-          return b.metadata.timestamp - a.metadata.timestamp; // Most recent first
+          // Use modified_at timestamp (convert string to number for comparison)
+          const aTime = new Date(a.modified_at).getTime();
+          const bTime = new Date(b.modified_at).getTime();
+          return bTime - aTime; // Most recent first
         case 'playtime':
-          return b.metadata.playtime - a.metadata.playtime; // Most playtime first
+          // Use turn number as a proxy for playtime since it's not available
+          return b.turn - a.turn; // Higher turn count first
         default:
           return 0;
       }
@@ -320,12 +324,8 @@ const SaveCard: React.FC<SaveCardProps> = ({ save, onSelect }) => {
   useEffect(() => {
     const loadThumbnail = async () => {
       try {
-        // First check if thumbnail is in save metadata
-        if (save.metadata.thumbnail?.thumbnail) {
-          setThumbnail(save.metadata.thumbnail.thumbnail);
-          setIsLoadingThumbnail(false);
-          return;
-        }
+        // Note: thumbnail metadata is not available in the current schema
+        // Skip to loading from thumbnail service
 
         // Otherwise try to load from thumbnail service
         const thumbnailData = await saveThumbnailService.loadThumbnail(
@@ -342,21 +342,18 @@ const SaveCard: React.FC<SaveCardProps> = ({ save, onSelect }) => {
     };
 
     void loadThumbnail();
-  }, [save.name, save.metadata.thumbnail]);
+  }, [save.name]);
 
-  const formatTimestamp = (timestamp: number): string => {
-    return new Date(timestamp * 1000).toLocaleDateString();
+  const formatTimestamp = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString();
   };
 
-  const formatPlaytime = (playtime: number): string => {
-    const hours = Math.floor(playtime / 3600);
-    const minutes = Math.floor((playtime % 3600) / 60);
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
+  const formatPlaytime = (turn: number): string => {
+    // Use turn number as a proxy for playtime
+    return `Turn ${turn}`;
   };
+
+  // formatPlaytimeOriginal function removed - we now use turn numbers instead
 
   return (
     <div
@@ -375,7 +372,7 @@ const SaveCard: React.FC<SaveCardProps> = ({ save, onSelect }) => {
         {isLoadingThumbnail ? (
           <div className='thumbnail-loading'>Loading...</div>
         ) : thumbnail ? (
-          <img src={thumbnail} alt={`${save.metadata.name} thumbnail`} />
+          <img src={thumbnail} alt={`${save.name} thumbnail`} />
         ) : (
           <div className='thumbnail-placeholder'>
             <div className='placeholder-icon'>🎮</div>
@@ -385,27 +382,25 @@ const SaveCard: React.FC<SaveCardProps> = ({ save, onSelect }) => {
       </div>
 
       <div className='save-card-info'>
-        <h3 className='save-name'>{save.metadata.name}</h3>
+        <h3 className='save-name'>{save.name}</h3>
         <div className='save-details'>
           <div className='detail-row'>
             <span className='detail-label'>Civilization:</span>
-            <span className='detail-value'>{save.metadata.civilization}</span>
+            <span className='detail-value'>{save.civilization}</span>
           </div>
           <div className='detail-row'>
             <span className='detail-label'>Date:</span>
             <span className='detail-value'>
-              {formatTimestamp(save.metadata.timestamp)}
+              {formatTimestamp(save.modified_at)}
             </span>
           </div>
           <div className='detail-row'>
-            <span className='detail-label'>Playtime:</span>
-            <span className='detail-value'>
-              {formatPlaytime(save.metadata.playtime)}
-            </span>
+            <span className='detail-label'>Progress:</span>
+            <span className='detail-value'>{formatPlaytime(save.turn)}</span>
           </div>
           <div className='detail-row'>
-            <span className='detail-label'>Version:</span>
-            <span className='detail-value'>{save.metadata.game_version}</span>
+            <span className='detail-label'>Player:</span>
+            <span className='detail-value'>{save.player_name}</span>
           </div>
         </div>
       </div>

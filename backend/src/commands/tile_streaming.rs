@@ -43,13 +43,16 @@ pub struct TileStreamingResponse {
 pub struct GameTile {
     pub id: u32,
     pub hex: HexCoord,
-    pub terrain: u8, // TerrainType as u8
+    pub terrain: String, // TerrainType as string to match frontend enum
     pub elevation: f32,
+    #[serde(rename = "worldX")]
     pub world_x: f32,
+    #[serde(rename = "worldZ")]
     pub world_z: f32,
-    pub biome: u8,
-    pub resource_mask: u32,
-    pub chunk_id: [i32; 2],
+    pub biome: Option<u8>,
+    #[serde(rename = "resourceMask")]
+    pub resource_mask: Option<u32>,
+    // Remove chunk_id as frontend doesn't expect it
 }
 
 /// Hex coordinate for frontend
@@ -197,41 +200,89 @@ fn pixel_to_hex(x: f32, z: f32) -> HexCoord {
 
 /// Get tile at specific hex coordinate from game state
 async fn get_tile_at_hex(state: &AppState, hex: HexCoord) -> Option<Tile> {
-    // TODO: Implement proper tile lookup from ECS world
-    // This would query the tile component manager
+    // Query tiles in radius around the requested hex coordinate
+    let tiles_in_radius = state.tile_manager.get_tiles_in_radius(hex, 0);
     
-    // For now, generate procedural data
-    Some(Tile {
-        id: TileId((hex.q * 1000 + hex.r) as u32),
-        hex,
-        chunk: ChunkCoord { x: hex.q / 32, y: hex.r / 32 },
-        local_x: (hex.q % 32) as u8,
-        local_y: (hex.r % 32) as u8,
-        terrain_type: TerrainType::Grassland, // Default for now
-        elevation: 0.0,
-    })
+    // Find the exact tile at this hex coordinate
+    for tile_id in tiles_in_radius {
+        if let Ok(tile) = state.tile_manager.get_component::<Tile>(tile_id) {
+            if tile.hex.q == hex.q && tile.hex.r == hex.r {
+                return Some(tile);
+            }
+        }
+    }
+    
+    None
 }
 
 /// Get tile by ID from game state
 async fn get_tile_by_id(state: &AppState, tile_id: TileId) -> Option<Tile> {
-    // TODO: Implement proper tile lookup by ID
-    None
+    state.tile_manager.get_component::<Tile>(tile_id).ok()
 }
 
 /// Convert internal tile to frontend game tile
 fn convert_to_game_tile(tile: Tile, hex: HexCoord) -> GameTile {
     let world_pos = hex_to_pixel(hex);
     
+    // Convert terrain type to frontend string enum
+    let terrain_string = match tile.terrain_type {
+        TerrainType::Ocean => "ocean",
+        TerrainType::Grassland => "grassland",
+        TerrainType::Plains => "plains",
+        TerrainType::Desert => "desert",
+        TerrainType::Tundra => "tundra",
+        TerrainType::Snow => "snow",
+        TerrainType::Forest => "forest",
+        TerrainType::Jungle => "jungle",
+        TerrainType::Hills => "hills",
+        TerrainType::Mountain => "mountain",
+        TerrainType::Mountains => "mountain", // Alias for Mountain
+        TerrainType::River => "ocean", // Rivers treated as water
+        TerrainType::Coast => "ocean", // Coast treated as water
+    }.to_string();
+    
+    // Map terrain type to biome index (0-9 as expected by shader)
+    let biome = match tile.terrain_type {
+        TerrainType::Ocean => 0,
+        TerrainType::Grassland => 1,
+        TerrainType::Plains => 2,
+        TerrainType::Desert => 3,
+        TerrainType::Tundra => 4,
+        TerrainType::Snow => 5,
+        TerrainType::Forest => 6,
+        TerrainType::Jungle => 7,
+        TerrainType::Hills => 8,
+        TerrainType::Mountain => 9,
+        TerrainType::Mountains => 9, // Same as Mountain for biome purposes
+        TerrainType::River => 0,     // Rivers use ocean-like biome
+        TerrainType::Coast => 0,     // Coastal areas use ocean-like biome
+    };
+    
+    // Calculate elevation based on terrain type if not set
+    let elevation = if tile.elevation != 0.0 {
+        tile.elevation
+    } else {
+        match tile.terrain_type {
+            TerrainType::Ocean => -0.2 + (hex.q % 10) as f32 * 0.01,
+            TerrainType::Plains | TerrainType::Grassland => 0.1 + (hex.r % 10) as f32 * 0.03,
+            TerrainType::Forest => 0.2 + ((hex.q + hex.r) % 10) as f32 * 0.04,
+            TerrainType::Hills => 0.4 + (hex.q % 10) as f32 * 0.06,
+            TerrainType::Mountain | TerrainType::Mountains => 0.8 + (hex.r % 10) as f32 * 0.04,
+            TerrainType::Desert => 0.3 + ((hex.q * hex.r) % 10) as f32 * 0.02,
+            TerrainType::Snow => 0.9 + (hex.q % 5) as f32 * 0.02,
+            _ => 0.0,
+        }
+    };
+    
     GameTile {
         id: tile.id.0,
         hex: hex,
-        terrain: tile.terrain_type as u8,
-        elevation: tile.elevation,
+        terrain: terrain_string,
+        elevation,
         world_x: world_pos.0,
         world_z: world_pos.1,
-        biome: 1, // TODO: Get actual biome data
-        resource_mask: 0, // TODO: Get actual resource data
-        chunk_id: [tile.chunk.x, tile.chunk.y],
+        biome: Some(biome),
+        resource_mask: Some(0), // TODO: Get actual resource data
     }
 }
 
@@ -245,18 +296,18 @@ fn hex_to_pixel(hex: HexCoord) -> (f32, f32) {
 
 /// Create instance data for rendering
 fn create_instance_data(tile: &GameTile, generation: u64) -> TileInstanceData {
-    // Determine color based on terrain type
-    let color = match tile.terrain {
-        0 => [0.12, 0.25, 0.69], // Ocean - blue
-        1 => [0.13, 0.77, 0.37], // Grassland - green
-        2 => [0.52, 0.8, 0.09],  // Plains - light green
-        3 => [0.92, 0.70, 0.03], // Desert - yellow
-        4 => [0.39, 0.45, 0.55], // Tundra - gray
-        5 => [0.95, 0.96, 0.97], // Snow - white
-        6 => [0.09, 0.40, 0.20], // Forest - dark green
-        7 => [0.08, 0.33, 0.18], // Jungle - very dark green
-        8 => [0.64, 0.64, 0.64], // Hills - gray
-        9 => [0.32, 0.32, 0.32], // Mountain - dark gray
+    // Determine color based on terrain type string
+    let color = match tile.terrain.as_str() {
+        "ocean" => [0.12, 0.25, 0.69], // Ocean - blue
+        "grassland" => [0.13, 0.77, 0.37], // Grassland - green
+        "plains" => [0.52, 0.8, 0.09],  // Plains - light green
+        "desert" => [0.92, 0.70, 0.03], // Desert - yellow
+        "tundra" => [0.39, 0.45, 0.55], // Tundra - gray
+        "snow" => [0.95, 0.96, 0.97], // Snow - white
+        "forest" => [0.09, 0.40, 0.20], // Forest - dark green
+        "jungle" => [0.08, 0.33, 0.18], // Jungle - very dark green
+        "hills" => [0.64, 0.64, 0.64], // Hills - gray
+        "mountain" => [0.32, 0.32, 0.32], // Mountain - dark gray
         _ => [0.5, 0.5, 0.5],    // Default - medium gray
     };
 
@@ -265,8 +316,8 @@ fn create_instance_data(tile: &GameTile, generation: u64) -> TileInstanceData {
         position: [tile.world_x, tile.elevation * 0.5, tile.world_z],
         color,
         height: tile.elevation,
-        biome: tile.biome as f32,
-        resource_mask: tile.resource_mask as f32,
+        biome: tile.biome.unwrap_or(0) as f32,
+        resource_mask: tile.resource_mask.unwrap_or(0) as f32,
         lod_level: 0.0, // TODO: Calculate based on distance
         flags: 0.0,
         last_updated: generation,

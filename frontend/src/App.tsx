@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import GameCanvas from '@/components/game/GameCanvas';
 import GameUI from '@/components/ui/game-ui';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { useGameCommands } from '@/hooks/use-ipc';
 import { useLogger, usePerformanceLogger } from '@/hooks/use-logger';
 import { saveThumbnailService } from '@/services/save-thumbnails';
 import { useGameStore } from '@/stores/game-store';
+import { initializeGlobalIPC } from '@/utils/ipc';
 
 // Types
 interface GameState {
@@ -18,12 +20,56 @@ interface GameState {
 
 const App = () => {
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isIPCInitialized, setIsIPCInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { setGameState, isLoading, setLoading } = useGameStore();
 
   // Initialize logging for the main app
   const logger = useLogger('app', 'App');
   const performanceLogger = usePerformanceLogger('app', 'App');
+
+  // Initialize IPC system first
+  useEffect(() => {
+    const initIPC = async () => {
+      try {
+        logger.info('🔧 IPC INIT: Initializing sophisticated IPC system...');
+        await initializeGlobalIPC({
+          service: {
+            defaultTimeout: 15000, // Increased timeout for game operations
+            maxConcurrentCommands: 20,
+            retryAttempts: 3,
+            enableMetrics: true,
+          },
+          notifications: {
+            enableToasts: true,
+            showCommandNotifications: true,
+            defaultDuration: 4000,
+            maxHistorySize: 50,
+          },
+          progress: {
+            enabled: true,
+            showSpinner: true,
+            speed: 300,
+          },
+        });
+
+        setIsIPCInitialized(true);
+        logger.info('✅ IPC INIT: Sophisticated IPC system ready');
+      } catch (error) {
+        logger.error(
+          '❌ IPC INIT: Failed to initialize IPC system',
+          error as Error
+        );
+        // Fall back to direct invoke calls if IPC initialization fails
+        setIsIPCInitialized(true); // Still allow app to continue
+      }
+    };
+
+    void initIPC();
+  }, [logger]);
+
+  // Game command hooks (always call hooks, but guard usage)
+  const gameCommands = useGameCommands();
 
   const initializeGame = useCallback(async () => {
     const timer = performanceLogger.startTimer('game-initialization');
@@ -40,29 +86,78 @@ const App = () => {
       logger.info('🤝 BACKEND: Attempting to connect to backend...');
 
       // Check if we're running in Tauri environment
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        const greeting = await invoke<string>('greet', { name: 'Player' });
-        logger.info('✅ BACKEND: Connection successful', { greeting });
-        logger.info('Game greeting received', { greeting });
+      const isTauri =
+        typeof window !== 'undefined' &&
+        '__TAURI__' in (window as unknown as { __TAURI__?: unknown });
+
+      console.warn('🔍 TAURI DETECTION:', {
+        windowUndefined: typeof window === 'undefined',
+        tauriInWindow: isTauri,
+        allWindowProps:
+          typeof window !== 'undefined'
+            ? Object.keys(window).filter(
+                k => k.includes('TAURI') || k.includes('tauri')
+              )
+            : [],
+      });
+
+      if (isTauri) {
+        try {
+          // Use sophisticated IPC system if available, otherwise fall back to direct invoke
+          let greeting: string;
+          if (isIPCInitialized) {
+            logger.info(
+              '🚀 Using sophisticated IPC system for backend communication'
+            );
+            greeting = await gameCommands.greet('Player');
+          } else {
+            logger.warn(
+              '⚠️ Using fallback direct invoke for backend communication'
+            );
+            greeting = await invoke<string>('greet', { name: 'Player' });
+          }
+          logger.info('✅ BACKEND: Connection successful', { greeting });
+          logger.info('Game greeting received', { greeting });
+        } catch (error) {
+          console.error(
+            '❌ BACKEND: Tauri detected but command failed:',
+            error
+          );
+          logger.error(
+            'Backend command failed despite Tauri being available',
+            error as Error
+          );
+        }
       } else {
         logger.warn(
           '⚠️ BROWSER: Running in browser mode - backend connection skipped'
         );
         logger.warn('Running in browser mode, backend commands not available', {
           environment: 'browser',
-          tauriAvailable: '__TAURI__' in window,
+          tauriAvailable: isTauri,
         });
       }
 
       // Initialize game state
       let initialState: GameState;
 
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        initialState = await invoke<GameState>('initialize_game', {
-          playerName: 'Player',
-          civilization: 'Ancient Empire',
-        });
-        logger.info('✅ BACKEND: Game state initialized from backend');
+      if (isTauri) {
+        // Use sophisticated IPC system if available
+        if (isIPCInitialized) {
+          initialState = await gameCommands.initializeGame(
+            'Player',
+            'Ancient Empire'
+          );
+          logger.info(
+            '✅ BACKEND: Game state initialized via sophisticated IPC'
+          );
+        } else {
+          initialState = await invoke<GameState>('initialize_game', {
+            playerName: 'Player',
+            civilization: 'Ancient Empire',
+          });
+          logger.info('✅ BACKEND: Game state initialized via direct invoke');
+        }
       } else {
         // Browser fallback - create mock initial state
         initialState = {
@@ -102,15 +197,22 @@ const App = () => {
     } finally {
       setLoading(false);
     }
-  }, [setGameState, setLoading, logger, performanceLogger]);
+  }, [
+    setGameState,
+    setLoading,
+    logger,
+    performanceLogger,
+    gameCommands,
+    isIPCInitialized,
+  ]);
 
-  // Initialize the game on mount - remove function from dependencies to prevent infinite loop
+  // Initialize the game on mount - only after IPC is ready
   useEffect(() => {
-    if (!isInitialized) {
+    if (!isInitialized && isIPCInitialized) {
       void initializeGame();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInitialized]); // Only depend on isInitialized, not the function
+  }, [isInitialized, isIPCInitialized]); // Only depend on initialization states
 
   // Log app lifecycle and state changes
   useEffect(() => {
@@ -159,9 +261,18 @@ const App = () => {
     try {
       logger.info('Starting game save operation', { saveName });
 
-      // First, save the game state
-      const result = await invoke<string>('save_game', { saveName });
-      logger.info('Game state saved successfully', { saveName, result });
+      // First, save the game state using sophisticated IPC if available
+      let result: string;
+      if (isIPCInitialized) {
+        result = await gameCommands.saveGame(saveName);
+        logger.info('Game state saved via sophisticated IPC', {
+          saveName,
+          result,
+        });
+      } else {
+        result = await invoke<string>('save_game', { saveName });
+        logger.info('Game state saved via direct invoke', { saveName, result });
+      }
 
       // Then, generate and save thumbnail
       try {
@@ -191,7 +302,16 @@ const App = () => {
     try {
       logger.info('Starting game load operation', { saveName });
 
-      const loadedState = await invoke<GameState>('load_game', { saveName });
+      // Load game using sophisticated IPC if available
+      let loadedState: GameState;
+      if (isIPCInitialized) {
+        loadedState = await gameCommands.loadGame(saveName);
+        logger.info('Game loaded via sophisticated IPC', { saveName });
+      } else {
+        loadedState = await invoke<GameState>('load_game', { saveName });
+        logger.info('Game loaded via direct invoke', { saveName });
+      }
+
       setGameState(loadedState);
 
       timer.end('Load operation completed successfully', {
@@ -217,8 +337,11 @@ const App = () => {
   };
 
   // Show loading screen while initializing
-  if (isLoading || !isInitialized) {
-    return <LoadingScreen message='Initializing Manifest...' />;
+  if (isLoading || !isInitialized || !isIPCInitialized) {
+    const message = !isIPCInitialized
+      ? 'Initializing IPC system...'
+      : 'Initializing Manifest...';
+    return <LoadingScreen message={message} />;
   }
 
   // Show error screen if initialization failed

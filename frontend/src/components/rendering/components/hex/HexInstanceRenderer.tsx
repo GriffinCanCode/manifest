@@ -139,19 +139,21 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
     []
   );
 
-  // PROPER HEXAGON geometry for Civ-style tiles (keeping working material)
+  // PROPER HEXAGON geometry for Civ-style tiles
   const hexGeometry = useMemo(() => {
     const geometry = new THREE.CylinderGeometry(
-      0.9, // radiusTop - slightly smaller than 1.0 for tile spacing
-      0.9, // radiusBottom
-      0.1, // height - flat tiles
+      0.85, // radiusTop - smaller for better tile spacing
+      0.85, // radiusBottom
+      0.15, // height - slightly thicker for visibility
       6, // radialSegments - hexagon
       1, // heightSegments
       false // openEnded
     );
 
-    // Rotate to lay flat (hexagons are created vertically by default)
+    // Rotate to lay flat and orient hexagons correctly (flat-top)
     geometry.rotateX(-Math.PI / 2);
+    // Rotate 30 degrees to get flat-top hexagon orientation (pointy sides)
+    geometry.rotateY(Math.PI / 6);
 
     return geometry;
   }, []);
@@ -218,9 +220,15 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
           material.uniforms.u_time.value = 0; // Will be updated in useFrame
         }
 
-        // TEMPORARY TEST: Enable biome debug mode to see if shader is running
+        // Disable debug modes to see actual terrain colors
         if (material.uniforms.u_showBiomes) {
-          material.uniforms.u_showBiomes.value = true;
+          material.uniforms.u_showBiomes.value = false;
+        }
+        if (material.uniforms.u_showLOD) {
+          material.uniforms.u_showLOD.value = false;
+        }
+        if (material.uniforms.u_showHeight) {
+          material.uniforms.u_showHeight.value = false;
         }
       }
 
@@ -385,7 +393,21 @@ export const HexInstanceRenderer: React.FC<HexInstanceRendererProps> = ({
       if (geometry.attributes.instanceBiome) {
         const biomeArray = geometry.attributes.instanceBiome
           .array as Float32Array;
-        biomeArray[i] = Number(tile.terrain) / 10.0; // Normalize terrain type
+        // Convert TerrainType enum to numeric value for shader
+        const biomeMap: Record<TerrainType, number> = {
+          [TerrainType.Ocean]: 0,
+          [TerrainType.Grassland]: 1,
+          [TerrainType.Plains]: 2,
+          [TerrainType.Desert]: 3,
+          [TerrainType.Tundra]: 4,
+          [TerrainType.Snow]: 5,
+          [TerrainType.Forest]: 6,
+          [TerrainType.Jungle]: 7,
+          [TerrainType.Hills]: 8,
+          [TerrainType.Mountain]: 9,
+        };
+        const biomeValue = biomeMap[tile.terrain] ?? 0;
+        biomeArray[i] = biomeValue / 9.0; // Normalize to 0-1 range
       }
 
       // instanceTexCoords (vec2) - hex coordinates

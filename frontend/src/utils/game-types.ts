@@ -59,11 +59,13 @@ export class HexUtils {
   private static readonly HEX_SIZE = 1;
 
   /**
-   * Convert hex coordinates to pixel coordinates
+   * Convert hex coordinates to pixel coordinates (flat-top hexagons)
    */
   static hexToPixel(hex: HexCoord): [number, number] {
-    const x = this.HEX_SIZE * (this.SQRT_3 * hex.q + (this.SQRT_3 / 2) * hex.r);
-    const z = this.HEX_SIZE * ((3 / 2) * hex.r);
+    // Flat-top hexagon layout with proper spacing
+    const size = this.HEX_SIZE * 1.1; // Slightly larger spacing
+    const x = size * (this.SQRT_3 * hex.q + (this.SQRT_3 / 2) * hex.r);
+    const z = size * ((3 / 2) * hex.r);
     return [x, z];
   }
 
@@ -138,8 +140,8 @@ export const createMockGameWorld = (): GameWorld => {
   const tiles: GameTile[] = [];
   const units: GameUnit[] = [];
 
-  // Generate hex grid
-  const radius = 8;
+  // Generate hex grid - smaller radius for better visibility
+  const radius = 6;
   for (let q = -radius; q <= radius; q++) {
     const r1 = Math.max(-radius, -q - radius);
     const r2 = Math.min(radius, -q + radius);
@@ -148,28 +150,53 @@ export const createMockGameWorld = (): GameWorld => {
       const id = tiles.length;
       const hex: HexCoord = { q, r };
 
-      // Assign terrain based on distance from center
+      // Assign terrain based on distance from center - more variety
       const distance = Math.hypot(q, r);
       let terrain: TerrainType;
 
-      if (distance < 1) {
-        terrain = TerrainType.Plains;
-      } else if (distance < 2) {
-        terrain = TerrainType.Grassland;
+      if (distance < 1.5) {
+        // Center: Plains and Grassland
+        terrain =
+          Math.random() > 0.5 ? TerrainType.Plains : TerrainType.Grassland;
       } else if (distance < 3) {
+        // Inner ring: Diverse land types
         const rand = Math.random();
-        if (rand > 0.7) {
-          terrain = TerrainType.Hills;
-        } else if (rand > 0.4) {
+        if (rand > 0.8) {
           terrain = TerrainType.Forest;
-        } else {
+        } else if (rand > 0.6) {
           terrain = TerrainType.Jungle;
+        } else if (rand > 0.4) {
+          terrain = TerrainType.Hills;
+        } else if (rand > 0.2) {
+          terrain = TerrainType.Grassland;
+        } else {
+          terrain = TerrainType.Plains;
         }
       } else if (distance < 5) {
-        terrain =
-          Math.random() > 0.7 ? TerrainType.Mountain : TerrainType.Hills;
+        // Middle ring: Hills and Mountains with some variety
+        const rand = Math.random();
+        if (rand > 0.7) {
+          terrain = TerrainType.Mountain;
+        } else if (rand > 0.4) {
+          terrain = TerrainType.Hills;
+        } else if (rand > 0.2) {
+          terrain = TerrainType.Desert;
+        } else {
+          terrain = TerrainType.Tundra;
+        }
+      } else if (distance < 7) {
+        // Outer ring: Mix of land and water
+        const rand = Math.random();
+        if (rand > 0.6) {
+          terrain = TerrainType.Ocean;
+        } else if (rand > 0.4) {
+          terrain = TerrainType.Tundra;
+        } else {
+          terrain = TerrainType.Snow;
+        }
       } else {
-        terrain = TerrainType.Ocean;
+        // Far edges: Mostly ocean with some islands
+        terrain = Math.random() > 0.8 ? TerrainType.Snow : TerrainType.Ocean;
       }
 
       // Generate elevation based on terrain

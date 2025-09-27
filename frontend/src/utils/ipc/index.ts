@@ -502,6 +502,79 @@ export const IPCPerformance = {
   },
 };
 
+// Global IPC instance for easy access
+let globalIPCInstance: Awaited<ReturnType<typeof initializeIPC>> | null = null;
+
+/**
+ * Get the global IPC instance
+ * Must call initializeGlobalIPC first
+ */
+export const getGlobalIPC = () => {
+  if (!globalIPCInstance) {
+    throw new Error(
+      'Global IPC not initialized. Call initializeGlobalIPC first.'
+    );
+  }
+  return globalIPCInstance;
+};
+
+/**
+ * Initialize global IPC instance with default configuration
+ */
+export const initializeGlobalIPC = async (
+  config: Parameters<typeof initializeIPC>[0] = {}
+) => {
+  if (globalIPCInstance) {
+    console.warn('Global IPC already initialized, returning existing instance');
+    return globalIPCInstance;
+  }
+
+  const defaultConfig = {
+    service: {
+      defaultTimeout: 10000,
+      maxConcurrentCommands: 10,
+      retryAttempts: 2,
+      enableMetrics: true,
+    },
+    notifications: {
+      enableToasts: true,
+      showCommandNotifications: true,
+      defaultDuration: 5000,
+      maxHistorySize: 100,
+    },
+    progress: {
+      enabled: true,
+      showSpinner: true,
+      speed: 200,
+    },
+    webVitals: {
+      enableMetrics: true,
+      reportThreshold: 2500,
+    },
+    valtio: {
+      enabled: true,
+      autoSync: true,
+      syncInterval: 100,
+    },
+    ...config,
+  };
+
+  globalIPCInstance = await initializeIPC(defaultConfig);
+
+  console.warn('🚀 Global IPC system initialized with advanced features');
+  return globalIPCInstance;
+};
+
+/**
+ * Reset global IPC (useful for tests)
+ */
+export const resetGlobalIPC = () => {
+  if (globalIPCInstance) {
+    globalIPCInstance.service.destroy();
+    globalIPCInstance = null;
+  }
+};
+
 // Debug utilities (development only)
 if (
   typeof import.meta !== 'undefined' &&
@@ -522,6 +595,7 @@ if (
       history: commandHistory,
       notifications: ipcNotifications,
       performance: IPCPerformance,
+      global: () => globalIPCInstance,
     };
 
     // Development console log is acceptable

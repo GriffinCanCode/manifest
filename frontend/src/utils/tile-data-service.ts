@@ -13,6 +13,7 @@ import type {
 } from '../types/instanced-rendering';
 
 import type { GameTile, HexCoord } from './game-types';
+import { getGlobalIPC } from './ipc';
 
 export interface TileQuery {
   readonly center: HexCoord;
@@ -56,6 +57,7 @@ export class TileDataService {
   private lastStreamingGeneration = 0;
   private lastUpdateTime = 0;
   private isStreaming = false;
+  private mockGameWorld: { tiles: GameTile[] } | null = null;
 
   private metrics: StreamingMetrics = {
     instancesStreamed: 0,
@@ -81,10 +83,34 @@ export class TileDataService {
     const startTime = performance.now();
 
     try {
-      // Call backend via Tauri IPC
-      const response = await invoke<TileStreamingResponse>('stream_tiles', {
-        request,
-      });
+      let response: TileStreamingResponse;
+
+      // Try to use sophisticated IPC system first
+      try {
+        const ipc = getGlobalIPC();
+        response = await ipc.service.command('stream_tiles', {
+          request: {
+            ...request,
+            camera_position: [...request.camera_position] as [
+              number,
+              number,
+              number,
+            ],
+            lod_levels: [...request.lod_levels],
+          },
+        });
+        console.log('✅ Tile streaming via sophisticated IPC system');
+      } catch (ipcError) {
+        // Fall back to direct invoke if sophisticated IPC is not available
+        console.warn(
+          '⚠️ Falling back to direct invoke for tile streaming:',
+          ipcError
+        );
+        response = await invoke<TileStreamingResponse>('stream_tiles', {
+          request,
+        });
+        console.log('⚠️ Tile streaming via direct invoke fallback');
+      }
 
       // Validate response structure
       if (
@@ -144,8 +170,20 @@ export class TileDataService {
     }
 
     try {
-      // Fetch from backend
-      const tile = await invoke<GameTile | null>('get_tile', { tileId });
+      let tile: GameTile | null;
+
+      // Try to use sophisticated IPC system first
+      try {
+        const ipc = getGlobalIPC();
+        tile = await ipc.service.command('get_tile', { tileId });
+      } catch (ipcError) {
+        // Fall back to direct invoke
+        console.warn(
+          '⚠️ Falling back to direct invoke for tile fetch:',
+          ipcError
+        );
+        tile = await invoke<GameTile | null>('get_tile', { tileId });
+      }
 
       // Validate tile structure
       if (tile && typeof tile === 'object' && 'id' in tile && 'hex' in tile) {
@@ -189,10 +227,31 @@ export class TileDataService {
     tileIds: readonly number[]
   ): Promise<TileUpdateBatch> {
     try {
-      const batch = await invoke<TileUpdateBatch>('get_tile_updates', {
-        tileIds: Array.from(tileIds),
-        lastUpdateTime: this.lastUpdateTime,
-      });
+      let batch: TileUpdateBatch;
+
+      // Try to use sophisticated IPC system first
+      try {
+        const ipc = getGlobalIPC();
+        const result = await ipc.service.command('get_tile_updates', {
+          tileIds: Array.from(tileIds),
+          lastUpdateTime: this.lastUpdateTime,
+        });
+        batch = {
+          updatedTiles: result.updated_tiles,
+          removedTiles: result.removed_tiles,
+          timestamp: result.timestamp,
+        };
+      } catch (ipcError) {
+        // Fall back to direct invoke
+        console.warn(
+          '⚠️ Falling back to direct invoke for tile updates:',
+          ipcError
+        );
+        batch = await invoke<TileUpdateBatch>('get_tile_updates', {
+          tileIds: Array.from(tileIds),
+          lastUpdateTime: this.lastUpdateTime,
+        });
+      }
 
       // Validate batch structure
       if (

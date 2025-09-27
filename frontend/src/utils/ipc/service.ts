@@ -144,7 +144,7 @@ export class IPCService {
       });
 
       // Type assertion for output safety - the output is validated before returning
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
       return result.output;
     } catch (error) {
       const ipcError = this.createIPCError(error, command);

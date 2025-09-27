@@ -130,37 +130,38 @@ float calculateCSMShadowFromVaryings(vec4 shadowCoord[4], float shadowDistance, 
 }
 #endif
 
-// Biome color palette
+// Biome color palette - matches TerrainType enum order
 vec3 getBiomeColor(float biomeID, float height, float moisture) {
   vec3 colors[10];
-  colors[0] = vec3(0.2, 0.6, 0.8);   // Deep ocean
-  colors[1] = vec3(0.3, 0.7, 0.9);   // Shallow water
-  colors[2] = vec3(0.8, 0.7, 0.4);   // Beach/sand
-  colors[3] = vec3(0.2, 0.7, 0.2);   // Grassland
-  colors[4] = vec3(0.1, 0.4, 0.1);   // Forest
-  colors[5] = vec3(0.6, 0.5, 0.3);   // Plains
-  colors[6] = vec3(0.4, 0.3, 0.2);   // Hills
-  colors[7] = vec3(0.6, 0.6, 0.7);   // Mountains
-  colors[8] = vec3(0.9, 0.9, 1.0);   // Snow/ice
-  colors[9] = vec3(0.8, 0.6, 0.2);   // Desert
+  colors[0] = vec3(0.0, 0.4, 0.8);   // Ocean - blue
+  colors[1] = vec3(0.2, 0.8, 0.3);   // Grassland - green
+  colors[2] = vec3(0.5, 0.9, 0.2);   // Plains - light green
+  colors[3] = vec3(0.9, 0.8, 0.2);   // Desert - yellow
+  colors[4] = vec3(0.7, 0.7, 0.8);   // Tundra - gray
+  colors[5] = vec3(0.9, 0.9, 1.0);   // Snow - white
+  colors[6] = vec3(0.1, 0.5, 0.1);   // Forest - dark green
+  colors[7] = vec3(0.2, 0.6, 0.2);   // Jungle - jungle green
+  colors[8] = vec3(0.6, 0.4, 0.2);   // Hills - brown
+  colors[9] = vec3(0.4, 0.4, 0.5);   // Mountain - dark gray
   
-  int index = int(floor(biomeID * 9.0));
+  // Convert 0-1 biomeID back to 0-9 index
+  int index = int(floor(biomeID * 9.0 + 0.5));
   index = clamp(index, 0, 9);
   
   vec3 baseColor = colors[index];
   
-  // Modulate with height and moisture
+  // Modulate with height and moisture for more natural variation
   float heightMod = smoothstep(0.0, 1.0, height);
   float moistureMod = moisture;
   
   // Darken with height (except snow)
-  if (index != 8) {
-    baseColor *= mix(0.7, 1.2, 1.0 - heightMod * 0.5);
+  if (index != 5) { // Snow index is now 5
+    baseColor *= mix(0.8, 1.2, 1.0 - heightMod * 0.3);
   }
   
-  // Green tint with moisture (for applicable biomes)
-  if (index >= 3 && index <= 4) {
-    baseColor = mix(baseColor, vec3(0.1, 0.6, 0.1), moistureMod * 0.3);
+  // Green tint with moisture for vegetation biomes
+  if (index >= 1 && index <= 2 || index >= 6 && index <= 7) { // Grassland, Plains, Forest, Jungle
+    baseColor = mix(baseColor, vec3(0.1, 0.7, 0.1), moistureMod * 0.2);
   }
   
   return baseColor;

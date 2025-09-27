@@ -56,8 +56,8 @@ const GameScene: React.FC = () => {
   const renderLogger = useLogger('render', 'GameScene');
   const performanceLogger = usePerformanceLogger('performance', 'GameScene');
 
-  // Camera position ref for tile streaming
-  const cameraPositionRef = useRef(new Vector3(15, 15, 15));
+  // Camera position ref for tile streaming - positioned to view hex grid centered at origin
+  const cameraPositionRef = useRef(new Vector3(0, 20, 20));
   const lastCameraLogRef = useRef(0);
 
   // Real tile streaming from backend (replaces mock data)
