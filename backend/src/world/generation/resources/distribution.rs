@@ -8,9 +8,9 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 use bevy_ecs::prelude::*;
-use tracing::{debug, info};
+use tracing::debug;
 
-use crate::world::tiles::{TileId, chunks::ChunkManager};
+use crate::world::tiles::TileId;
 use crate::core::zig_ffi::HexCoord;
 use crate::world::generation::noise::{NoiseGenerator, NoiseConfig};
 use crate::world::generation::tectonics::TectonicPlate;

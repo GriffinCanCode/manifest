@@ -28,7 +28,6 @@ pub use caching::{CacheStatistics, QueryCacheStats, ArchetypeCacheStats};
 pub use managers::{WorldManager, SystemCoordinator, SubsystemRegistry};
 
 // Re-export for convenience
-pub use serialization::*;
 
 // Convenient type aliases for frequently used error types
 pub type WorldResult<T> = Result<T, WorldError>;

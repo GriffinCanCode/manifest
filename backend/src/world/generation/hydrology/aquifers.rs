@@ -6,9 +6,8 @@
 use super::{HydrologyConfig, Aquifer, Spring, SpringType};
 use super::zig_ffi::AquiferType;
 use super::zig_ffi::{
-    calculate_darcy_velocity, calculate_seepage_velocity, calculate_theis_solution,
-    calculate_spring_discharge, ZigSpatialTree, zig_elevation_gradient_analysis,
-    zig_elevation_local_statistics, ZigGradientAnalysis, ZigLocalStatistics
+    calculate_darcy_velocity, calculate_theis_solution,
+    calculate_spring_discharge, ZigSpatialTree, zig_elevation_gradient_analysis, ZigGradientAnalysis
 };
 use crate::core::scheduler::SchedulerError;
 use crate::world::{AquiferId, SpringId};

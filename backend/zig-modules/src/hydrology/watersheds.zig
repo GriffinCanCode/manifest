@@ -134,6 +134,8 @@ pub const Watershed = struct {
     }
 };
 
+const QueueItem = struct { x: usize, y: usize };
+
 /// Watershed delineation algorithm
 pub const WatershedDelineator = struct {
     flow_grid: *flow.FlowGrid,
@@ -187,13 +189,13 @@ pub const WatershedDelineator = struct {
         }
 
         // Flood fill from outlet
-        var queue = std.ArrayList(struct { x: usize, y: usize }){};
+        var queue = std.ArrayList(QueueItem){};
         defer queue.deinit(self.allocator);
 
-        try queue.append(.{ .x = outlet_x, .y = outlet_y });
+        try queue.append(self.allocator, QueueItem{ .x = outlet_x, .y = outlet_y });
 
         while (queue.items.len > 0) {
-            const current = queue.pop();
+            const current = queue.pop() orelse break;
             const index = self.flow_grid.getIndex(current.x, current.y);
 
             if (visited[index]) continue;
@@ -218,7 +220,7 @@ pub const WatershedDelineator = struct {
         self: *WatershedDelineator,
         target_x: usize,
         target_y: usize,
-        queue: *std.ArrayList(struct { x: usize, y: usize }),
+        queue: *std.ArrayList(QueueItem),
         visited: []bool,
     ) !void {
         const directions = [_]flow.FlowDirection{ .east, .southeast, .south, .southwest, .west, .northwest, .north, .northeast };
@@ -239,7 +241,7 @@ pub const WatershedDelineator = struct {
             // Check if upstream cell flows into target cell
             const upstream_flow = self.flow_grid.flow_direction[upstream_index];
             if (upstream_flow == direction) {
-                try queue.append(.{ .x = upstream_x, .y = upstream_y });
+                try queue.append(self.allocator, QueueItem{ .x = upstream_x, .y = upstream_y });
             }
         }
     }
@@ -247,7 +249,7 @@ pub const WatershedDelineator = struct {
     /// Trace watershed boundary using Moore neighborhood algorithm
     fn traceBoundary(self: *WatershedDelineator, watershed: *Watershed) !void {
         // Find boundary cells (cells that have at least one neighbor not in watershed)
-        var boundary_cells = std.ArrayList(struct { x: usize, y: usize }){};
+        var boundary_cells = std.ArrayList(QueueItem){};
         defer boundary_cells.deinit(self.allocator);
 
         for (0..self.flow_grid.height) |y| {
@@ -257,7 +259,7 @@ pub const WatershedDelineator = struct {
                 if (self.watershed_id_grid[index] == watershed.id) {
                     // Check if this cell is on the boundary
                     if (self.isBoundaryCell(x, y, watershed.id)) {
-                        try boundary_cells.append(.{ .x = x, .y = y });
+                        try boundary_cells.append(self.allocator, QueueItem{ .x = x, .y = y });
                     }
                 }
             }
@@ -269,7 +271,7 @@ pub const WatershedDelineator = struct {
             const world_y = (@as(f64, @floatFromInt(cell.y)) + 0.5) * self.flow_grid.cell_size;
             const elevation = self.flow_grid.getElevation(cell.x, cell.y);
 
-            try watershed.boundary_points.append(BoundaryPoint.init(world_x, world_y, elevation));
+            try watershed.boundary_points.append(self.allocator, BoundaryPoint.init(world_x, world_y, elevation));
         }
     }
 

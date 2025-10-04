@@ -152,7 +152,7 @@ impl TilePropertyType {
 /// Utility functions for tile properties management
 pub mod utils {
     use super::*;
-    use crate::world::tiles::chunks::TileId;
+    
 
     /// Calculate comprehensive tile suitability for various purposes
     pub fn calculate_tile_suitability(

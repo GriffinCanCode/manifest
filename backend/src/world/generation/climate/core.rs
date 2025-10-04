@@ -64,7 +64,7 @@ impl ClimateGenerator {
             .default_ttl(std::time::Duration::from_secs(180))
             .build();
         
-        let mut generator = Self { config, script_manager, cache };
+        let generator = Self { config, script_manager, cache };
         
         if generator.config.use_lua_rules {
             generator.load_scripts()?;

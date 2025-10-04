@@ -4,15 +4,13 @@
 //! cross-platform reproducible results with performance optimization.
 
 use super::types::*;
-use noise::{NoiseFn, Simplex, Perlin, OpenSimplex};
+use noise::{NoiseFn, Simplex, Perlin};
 use bracket_noise::prelude::*;
-use ordered_float::OrderedFloat;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use cached::proc_macro::cached;
 use rayon::prelude::*;
 use std::sync::Arc;
-use crate::core::scheduler::{Scheduler, TaskBatch, Stage, Resource, Access, SchedulerError};
+use crate::core::scheduler::{Scheduler, TaskBatch, Stage, Resource, SchedulerError};
 
 /// High-performance Simplex noise generator
 pub struct SimplexGenerator {

@@ -3,16 +3,9 @@
 //! Contains the main update loops for running systems and managing time.
 
 use std::time::Instant;
-use tracing::{warn, error, debug};
+use tracing::debug;
 
-use crate::core::{
-    Stage,
-    logging::{LoggingSystem, game_logging}
-};
-use crate::ecs::{
-    resources::GameTime,
-    hierarchy::HierarchyQueries
-};
+use crate::ecs::resources::GameTime;
 
 use super::core::GameWorld;
 

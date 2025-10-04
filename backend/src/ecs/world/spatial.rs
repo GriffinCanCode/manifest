@@ -5,7 +5,6 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::With;
 use glam::IVec2;
-use slotmap::Key;
 
 use super::core::GameWorld;
 

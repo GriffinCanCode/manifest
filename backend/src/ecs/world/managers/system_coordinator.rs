@@ -25,7 +25,7 @@ impl SystemCoordinator {
     /// Create a new system coordinator with configured systems
     pub fn new() -> Result<Self, String> {
         // Create parallel scheduler with optimal thread count
-        let mut scheduler = EcsScheduler::new(None)
+        let scheduler = EcsScheduler::new(None)
             .map_err(|e| format!("Failed to create ECS scheduler: {}", e))?;
 
         Ok(Self { scheduler })

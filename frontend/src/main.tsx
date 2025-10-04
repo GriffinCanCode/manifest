@@ -20,10 +20,10 @@ const hideLoadingScreen = () => {
 };
 
 // Initialize logging system first
-console.log('🚀 FRONTEND: Initializing logging system...');
-console.log('🚀 FRONTEND: Current URL:', window.location.href);
-console.log('🚀 FRONTEND: User Agent:', navigator.userAgent);
-console.log('🚀 FRONTEND: Environment Mode:', import.meta.env.MODE);
+console.warn('🚀 FRONTEND: Initializing logging system...');
+console.warn('🚀 FRONTEND: Current URL:', window.location.href);
+console.warn('🚀 FRONTEND: User Agent:', navigator.userAgent);
+console.warn('🚀 FRONTEND: Environment Mode:', import.meta.env.MODE);
 
 try {
   AppLogger.info('Frontend application starting', {
@@ -36,13 +36,74 @@ try {
 }
 
 // Initialize shader system
-console.log('🎨 FRONTEND: Initializing shader system...');
+console.warn('🎨 FRONTEND: Initializing shader system...');
 AppLogger.debug('Shader system initialization started');
 initializeShaderSystem();
 AppLogger.debug('Shader system initialization completed');
 
+// Import shader diagnostics in development
+if (import.meta.env.MODE === 'development') {
+  // Load texture service for global console access
+  void import('./services/texture-factory-service')
+    .then(({ textureService }) => {
+      (window as any).textureService = textureService;
+      console.warn('🎨 TEXTURE SERVICE: Available globally');
+      console.warn(
+        '   • Type: textureService.clearCache() - Clear texture cache'
+      );
+      console.warn(
+        '   • Type: textureService.generateTextures({resolution: 1024}) - Generate textures'
+      );
+      console.warn(
+        '   • Type: textureService.debugLogTextures() - Show available textures'
+      );
+    })
+    .catch(error => {
+      console.error('Failed to load texture service:', error);
+    });
+
+  void import('./utils/shader-diagnostics')
+    .then(() => {
+      console.warn('🔍 SHADER DIAGNOSTICS: Loaded successfully');
+      console.warn('   • Type: runShaderDiagnostics() - Run full diagnostics');
+      console.warn('   • Type: runShaderSystemTests() - Run unit tests');
+      console.warn(
+        '   • Type: shaderDiagnostics.getResults() - Get last results'
+      );
+    })
+    .catch(error => {
+      console.error('Failed to load shader diagnostics:', error);
+    });
+
+  void import('./tests/shader-system.test')
+    .then(() => {
+      console.warn('🧪 SHADER TESTS: Test suite loaded');
+    })
+    .catch(error => {
+      console.error('Failed to load shader tests:', error);
+    });
+
+  // Load tile render diagnostics
+  void import('./utils/tile-render-diagnostics')
+    .then(() => {
+      console.warn('🔍 TILE DIAGNOSTICS: System loaded');
+    })
+    .catch(error => {
+      console.error('Failed to load tile diagnostics:', error);
+    });
+
+  // Load camera exposure diagnostics
+  void import('./utils/camera-exposure-diagnostics')
+    .then(() => {
+      console.warn('📷 CAMERA EXPOSURE: Three.js objects will be exposed');
+    })
+    .catch(error => {
+      console.error('Failed to load camera exposure:', error);
+    });
+}
+
 // Initialize React app
-console.log('⚛️  FRONTEND: Starting React application...');
+console.warn('⚛️  FRONTEND: Starting React application...');
 AppLogger.info('React application initialization started');
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
@@ -52,10 +113,35 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 
 // Hide loading screen after initial render
 setTimeout(() => {
-  console.log('🎯 FRONTEND: Hiding loading screen');
+  console.warn('🎯 FRONTEND: Hiding loading screen');
   AppLogger.debug('Loading screen hidden, app fully loaded');
   hideLoadingScreen();
 }, 1000);
 
-console.log('✅ FRONTEND: Main initialization complete');
+console.warn('✅ FRONTEND: Main initialization complete');
+
+// Auto-run tile render diagnostics after a short delay
+setTimeout(async () => {
+  const { tileRenderDiagnostics } = await import(
+    './utils/tile-render-diagnostics'
+  );
+  console.log('🔍 AUTO-RUNNING: Tile render diagnostics...');
+  await tileRenderDiagnostics.runAllDiagnostics();
+
+  // Also run Three.js rendering diagnostics
+  setTimeout(async () => {
+    const { threeRenderDiagnostics } = await import(
+      './utils/three-render-diagnostics'
+    );
+    console.log('🎨 AUTO-RUNNING: Three.js render diagnostics...');
+    await threeRenderDiagnostics.runRenderingDiagnostics();
+
+    // Run camera position diagnostic
+    setTimeout(async () => {
+      await import('./utils/camera-position-diagnostic');
+      console.log('📷 AUTO-RUNNING: Camera position diagnostic...');
+      (window as any).runCameraPositionDiagnostic();
+    }, 500);
+  }, 1000);
+}, 3000);
 AppLogger.info('Frontend main initialization completed successfully');

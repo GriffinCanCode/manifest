@@ -3,7 +3,7 @@
 //! Provides safe Rust wrappers around Zig's high-performance climate calculations
 //! including orographic effects, continental effects, and seasonal variations.
 
-use std::os::raw::{c_float, c_int};
+use std::os::raw::c_float;
 
 // External C function declarations from Zig climate module
 extern "C" {
@@ -186,17 +186,69 @@ pub fn climate_orographic_effects(
     wind_directions: &[f32],
     params: &ClimateParams,
 ) -> Result<Vec<f32>, String> {
-    if positions.len() != elevations.len() || positions.len() != wind_directions.len() {
-        return Err("Input arrays must have same length".to_string());
+    // CRITICAL: Validate ALL input arrays have same length
+    if positions.len() != elevations.len() {
+        return Err(format!("Array length mismatch: positions={}, elevations={}", 
+                          positions.len(), elevations.len()));
+    }
+    if positions.len() != wind_directions.len() {
+        return Err(format!("Array length mismatch: positions={}, wind_directions={}", 
+                          positions.len(), wind_directions.len()));
     }
     
-    let len = positions.len().min(256); // Zig side limits to 256
-    let mut results = vec![0.0f32; len];
+    // CRITICAL: Check for empty input
+    if positions.is_empty() {
+        return Ok(Vec::new());
+    }
     
+    // CRITICAL: Validate size limits BEFORE truncation
+    const MAX_SAFE_SIZE: usize = 256;
+    if positions.len() > MAX_SAFE_SIZE {
+        return Err(format!("Input size {} exceeds maximum safe size {}", positions.len(), MAX_SAFE_SIZE));
+    }
+    
+    let len = positions.len(); // Use actual length, not truncated
+    
+    // CRITICAL: Validate input values are finite
+    for (i, (x, y)) in positions.iter().enumerate() {
+        if !x.is_finite() || !y.is_finite() {
+            return Err(format!("Invalid position at index {}: ({}, {})", i, x, y));
+        }
+    }
+    for (i, &elev) in elevations.iter().enumerate() {
+        if !elev.is_finite() {
+            return Err(format!("Invalid elevation at index {}: {}", i, elev));
+        }
+    }
+    for (i, &wind) in wind_directions.iter().enumerate() {
+        if !wind.is_finite() {
+            return Err(format!("Invalid wind direction at index {}: {}", i, wind));
+        }
+    }
+    
+    // CRITICAL: Validate climate parameters
+    if !params.max_orographic_bonus.is_finite() || params.max_orographic_bonus < 0.0 {
+        return Err(format!("Invalid max_orographic_bonus: {}", params.max_orographic_bonus));
+    }
+    if !params.rain_shadow_factor.is_finite() || params.rain_shadow_factor < 0.0 || params.rain_shadow_factor > 1.0 {
+        return Err(format!("Invalid rain_shadow_factor: {}", params.rain_shadow_factor));
+    }
+    
+    // CRITICAL: Create arrays with exact same length - no truncation
     let positions_x: Vec<f32> = positions.iter().map(|(x, _)| *x).collect();
     let positions_y: Vec<f32> = positions.iter().map(|(_, y)| *y).collect();
+    let mut results = vec![0.0f32; len]; // Match exact length
+    
+    // VALIDATION: All arrays now guaranteed to be same length
+    debug_assert_eq!(positions_x.len(), len);
+    debug_assert_eq!(positions_y.len(), len);
+    debug_assert_eq!(elevations.len(), len);
+    debug_assert_eq!(wind_directions.len(), len);
+    debug_assert_eq!(results.len(), len);
     
     unsafe {
+        // CRITICAL: Verify pointers are not null
+        
         manifest_climate_orographic_effects(
             positions_x.as_ptr(),
             positions_y.as_ptr(),
@@ -207,6 +259,13 @@ pub fn climate_orographic_effects(
             len,
             results.as_mut_ptr(),
         );
+    }
+    
+    // CRITICAL: Validate results from Zig
+    for (i, &result) in results.iter().enumerate() {
+        if !result.is_finite() {
+            return Err(format!("Zig returned invalid result at index {}: {}", i, result));
+        }
     }
     
     Ok(results)
@@ -238,18 +297,67 @@ pub fn climate_continental_effects(
     base_humidity: &[u8],
     params: &ClimateParams,
 ) -> Result<(Vec<i8>, Vec<u8>), String> {
-    if positions.len() != base_temperatures.len() || positions.len() != base_humidity.len() {
-        return Err("Input arrays must have same length".to_string());
+    // CRITICAL: Validate ALL input arrays have same length
+    if positions.len() != base_temperatures.len() {
+        return Err(format!("Array length mismatch: positions={}, base_temperatures={}", 
+                          positions.len(), base_temperatures.len()));
+    }
+    if positions.len() != base_humidity.len() {
+        return Err(format!("Array length mismatch: positions={}, base_humidity={}", 
+                          positions.len(), base_humidity.len()));
     }
     
-    let len = positions.len().min(256);
-    let mut temp_results = vec![0i8; len];
-    let mut humidity_results = vec![0u8; len];
+    // CRITICAL: Check for empty input
+    if positions.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
     
+    // CRITICAL: Validate size limits BEFORE any operations
+    const MAX_SAFE_SIZE: usize = 256;
+    if positions.len() > MAX_SAFE_SIZE {
+        return Err(format!("Input size {} exceeds maximum safe size {}", positions.len(), MAX_SAFE_SIZE));
+    }
+    
+    let len = positions.len(); // Use actual length, not truncated
+    
+    // CRITICAL: Validate input values
+    for (i, (x, y)) in positions.iter().enumerate() {
+        if !x.is_finite() || !y.is_finite() {
+            return Err(format!("Invalid position at index {}: ({}, {})", i, x, y));
+        }
+    }
+    
+    // CRITICAL: Validate climate parameters
+    if !params.temperature_amplification.is_finite() || params.temperature_amplification <= 0.0 {
+        return Err(format!("Invalid temperature_amplification: {}", params.temperature_amplification));
+    }
+    if !params.humidity_reduction.is_finite() || params.humidity_reduction < 0.0 || params.humidity_reduction > 1.0 {
+        return Err(format!("Invalid humidity_reduction: {}", params.humidity_reduction));
+    }
+    if !params.world_width.is_finite() || params.world_width <= 0.0 {
+        return Err(format!("Invalid world_width: {}", params.world_width));
+    }
+    if !params.world_height.is_finite() || params.world_height <= 0.0 {
+        return Err(format!("Invalid world_height: {}", params.world_height));
+    }
+    
+    // CRITICAL: Create arrays with exact same length - no truncation  
     let positions_x: Vec<f32> = positions.iter().map(|(x, _)| *x).collect();
     let positions_y: Vec<f32> = positions.iter().map(|(_, y)| *y).collect();
+    let mut temp_results = vec![0i8; len]; // Match exact length
+    let mut humidity_results = vec![0u8; len]; // Match exact length
+    
+    // VALIDATION: All arrays now guaranteed to be same length
+    debug_assert_eq!(positions_x.len(), len);
+    debug_assert_eq!(positions_y.len(), len);
+    debug_assert_eq!(base_temperatures.len(), len);
+    debug_assert_eq!(base_humidity.len(), len);
+    debug_assert_eq!(temp_results.len(), len);
+    debug_assert_eq!(humidity_results.len(), len);
     
     unsafe {
+        // CRITICAL: Verify pointers are not null
+        
         manifest_climate_continental_effects(
             positions_x.as_ptr(),
             positions_y.as_ptr(),
@@ -263,6 +371,18 @@ pub fn climate_continental_effects(
             temp_results.as_mut_ptr(),
             humidity_results.as_mut_ptr(),
         );
+    }
+    
+    // CRITICAL: Validate results are in reasonable ranges
+    for (i, &temp) in temp_results.iter().enumerate() {
+        if temp < -50 || temp > 50 {
+            return Err(format!("Zig returned invalid temperature at index {}: {}", i, temp));
+        }
+    }
+    for (i, &hum) in humidity_results.iter().enumerate() {
+        if hum > 100 {
+            return Err(format!("Zig returned invalid humidity at index {}: {}", i, hum));
+        }
     }
     
     Ok((temp_results, humidity_results))
@@ -315,16 +435,57 @@ pub fn climate_seasonal_temperature(
     current_season: f32,
     temperature_variations: &[f32; 6],
 ) -> Result<Vec<i8>, String> {
-    if base_temperatures.len() != climate_zones.len() || base_temperatures.len() != latitudes.len() {
-        return Err("Input arrays must have same length".to_string());
+    // CRITICAL: Validate ALL input arrays have same length
+    if base_temperatures.len() != climate_zones.len() {
+        return Err(format!("Array length mismatch: base_temperatures={}, climate_zones={}", 
+                          base_temperatures.len(), climate_zones.len()));
+    }
+    if base_temperatures.len() != latitudes.len() {
+        return Err(format!("Array length mismatch: base_temperatures={}, latitudes={}", 
+                          base_temperatures.len(), latitudes.len()));
     }
     
-    let len = base_temperatures.len().min(256);
+    // CRITICAL: Check for empty input
+    if base_temperatures.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    // CRITICAL: Validate size limits
+    const MAX_SAFE_SIZE: usize = 256;
+    if base_temperatures.len() > MAX_SAFE_SIZE {
+        return Err(format!("Input size {} exceeds maximum safe size {}", base_temperatures.len(), MAX_SAFE_SIZE));
+    }
+    
+    let len = base_temperatures.len();
+    
+    // CRITICAL: Validate input values
+    for (i, &lat) in latitudes.iter().enumerate() {
+        if !lat.is_finite() || lat.abs() > 90.0 {
+            return Err(format!("Invalid latitude at index {}: {}", i, lat));
+        }
+    }
+    if !current_season.is_finite() || current_season < 0.0 || current_season > 1.0 {
+        return Err(format!("Invalid current_season: {}", current_season));
+    }
+    for (i, &var) in temperature_variations.iter().enumerate() {
+        if !var.is_finite() || var < 0.0 {
+            return Err(format!("Invalid temperature_variation at index {}: {}", i, var));
+        }
+    }
+    
+    // CRITICAL: Create arrays with exact same length
+    let zones_u8: Vec<u8> = climate_zones.iter().map(|&z| z as u8).collect();
     let mut results = vec![0i8; len];
     
-    let zones_u8: Vec<u8> = climate_zones.iter().map(|&z| z as u8).collect();
+    // VALIDATION: All arrays guaranteed to be same length
+    debug_assert_eq!(base_temperatures.len(), len);
+    debug_assert_eq!(zones_u8.len(), len);
+    debug_assert_eq!(latitudes.len(), len);
+    debug_assert_eq!(results.len(), len);
     
     unsafe {
+        // CRITICAL: Verify pointers are not null
+        
         manifest_climate_seasonal_temperature(
             base_temperatures.as_ptr(),
             zones_u8.as_ptr(),
@@ -334,6 +495,13 @@ pub fn climate_seasonal_temperature(
             len,
             results.as_mut_ptr(),
         );
+    }
+    
+    // CRITICAL: Validate results are in reasonable ranges
+    for (i, &temp) in results.iter().enumerate() {
+        if temp < -70 || temp > 70 {
+            return Err(format!("Zig returned invalid seasonal temperature at index {}: {}", i, temp));
+        }
     }
     
     Ok(results)
@@ -374,23 +542,85 @@ pub fn climate_process_all(
     base_humidity: &[u8],
     wind_directions: &[f32],
 ) -> Result<(Vec<i8>, Vec<f32>, Vec<u8>), String> {
-    if positions.len() != elevations.len() || 
-       positions.len() != base_temperatures.len() ||
-       positions.len() != base_rainfall.len() ||
-       positions.len() != base_humidity.len() ||
-       positions.len() != wind_directions.len() {
-        return Err("All input arrays must have same length".to_string());
+    // CRITICAL: Validate ALL input arrays have same length
+    if positions.len() != elevations.len() {
+        return Err(format!("Array length mismatch: positions={}, elevations={}", 
+                          positions.len(), elevations.len()));
+    }
+    if positions.len() != base_temperatures.len() {
+        return Err(format!("Array length mismatch: positions={}, base_temperatures={}", 
+                          positions.len(), base_temperatures.len()));
+    }
+    if positions.len() != base_rainfall.len() {
+        return Err(format!("Array length mismatch: positions={}, base_rainfall={}", 
+                          positions.len(), base_rainfall.len()));
+    }
+    if positions.len() != base_humidity.len() {
+        return Err(format!("Array length mismatch: positions={}, base_humidity={}", 
+                          positions.len(), base_humidity.len()));
+    }
+    if positions.len() != wind_directions.len() {
+        return Err(format!("Array length mismatch: positions={}, wind_directions={}", 
+                          positions.len(), wind_directions.len()));
     }
     
-    let len = positions.len().min(256);
+    // CRITICAL: Check for empty input
+    if positions.is_empty() {
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
+    }
+    
+    // CRITICAL: Validate size limits
+    const MAX_SAFE_SIZE: usize = 256;
+    if positions.len() > MAX_SAFE_SIZE {
+        return Err(format!("Input size {} exceeds maximum safe size {}", positions.len(), MAX_SAFE_SIZE));
+    }
+    
+    let len = positions.len();
+    
+    // CRITICAL: Validate input values
+    for (i, (x, y)) in positions.iter().enumerate() {
+        if !x.is_finite() || !y.is_finite() {
+            return Err(format!("Invalid position at index {}: ({}, {})", i, x, y));
+        }
+    }
+    for (i, &elev) in elevations.iter().enumerate() {
+        if !elev.is_finite() {
+            return Err(format!("Invalid elevation at index {}: {}", i, elev));
+        }
+    }
+    for (i, &rain) in base_rainfall.iter().enumerate() {
+        if !rain.is_finite() || rain < 0.0 {
+            return Err(format!("Invalid base_rainfall at index {}: {}", i, rain));
+        }
+    }
+    for (i, &wind) in wind_directions.iter().enumerate() {
+        if !wind.is_finite() {
+            return Err(format!("Invalid wind_direction at index {}: {}", i, wind));
+        }
+    }
+    
+    // CRITICAL: Create arrays with exact same length
+    let positions_x: Vec<f32> = positions.iter().map(|(x, _)| *x).collect();
+    let positions_y: Vec<f32> = positions.iter().map(|(_, y)| *y).collect();
     let mut temp_results = vec![0i8; len];
     let mut rain_results = vec![0.0f32; len];
     let mut humidity_results = vec![0u8; len];
     
-    let positions_x: Vec<f32> = positions.iter().map(|(x, _)| *x).collect();
-    let positions_y: Vec<f32> = positions.iter().map(|(_, y)| *y).collect();
+    // VALIDATION: All arrays guaranteed to be same length
+    debug_assert_eq!(positions_x.len(), len);
+    debug_assert_eq!(positions_y.len(), len);
+    debug_assert_eq!(elevations.len(), len);
+    debug_assert_eq!(base_temperatures.len(), len);
+    debug_assert_eq!(base_rainfall.len(), len);
+    debug_assert_eq!(base_humidity.len(), len);
+    debug_assert_eq!(wind_directions.len(), len);
+    debug_assert_eq!(temp_results.len(), len);
+    debug_assert_eq!(rain_results.len(), len);
+    debug_assert_eq!(humidity_results.len(), len);
     
     unsafe {
+        // CRITICAL: Verify pointers are not null
+        
         manifest_climate_process_all(
             positions_x.as_ptr(),
             positions_y.as_ptr(),
@@ -404,6 +634,23 @@ pub fn climate_process_all(
             rain_results.as_mut_ptr(),
             humidity_results.as_mut_ptr(),
         );
+    }
+    
+    // CRITICAL: Validate results
+    for (i, &temp) in temp_results.iter().enumerate() {
+        if temp < -70 || temp > 70 {
+            return Err(format!("Zig returned invalid temperature at index {}: {}", i, temp));
+        }
+    }
+    for (i, &rain) in rain_results.iter().enumerate() {
+        if !rain.is_finite() || rain < 0.0 {
+            return Err(format!("Zig returned invalid rainfall at index {}: {}", i, rain));
+        }
+    }
+    for (i, &hum) in humidity_results.iter().enumerate() {
+        if hum > 100 {
+            return Err(format!("Zig returned invalid humidity at index {}: {}", i, hum));
+        }
     }
     
     Ok((temp_results, rain_results, humidity_results))
@@ -442,13 +689,47 @@ pub fn climate_ocean_proximity(
     world_width: f32,
     world_height: f32,
 ) -> Result<Vec<f32>, String> {
-    let len = positions.len().min(256);
-    let mut results = vec![0.0f32; len];
+    // CRITICAL: Check for empty input
+    if positions.is_empty() {
+        return Ok(Vec::new());
+    }
     
+    // CRITICAL: Validate size limits
+    const MAX_SAFE_SIZE: usize = 256;
+    if positions.len() > MAX_SAFE_SIZE {
+        return Err(format!("Input size {} exceeds maximum safe size {}", positions.len(), MAX_SAFE_SIZE));
+    }
+    
+    // CRITICAL: Validate world dimensions
+    if !world_width.is_finite() || world_width <= 0.0 {
+        return Err(format!("Invalid world_width: {}", world_width));
+    }
+    if !world_height.is_finite() || world_height <= 0.0 {
+        return Err(format!("Invalid world_height: {}", world_height));
+    }
+    
+    let len = positions.len();
+    
+    // CRITICAL: Validate input positions
+    for (i, (x, y)) in positions.iter().enumerate() {
+        if !x.is_finite() || !y.is_finite() {
+            return Err(format!("Invalid position at index {}: ({}, {})", i, x, y));
+        }
+    }
+    
+    // CRITICAL: Create arrays with exact same length
     let positions_x: Vec<f32> = positions.iter().map(|(x, _)| *x).collect();
     let positions_y: Vec<f32> = positions.iter().map(|(_, y)| *y).collect();
+    let mut results = vec![0.0f32; len];
+    
+    // VALIDATION: Arrays guaranteed to be same length
+    debug_assert_eq!(positions_x.len(), len);
+    debug_assert_eq!(positions_y.len(), len);
+    debug_assert_eq!(results.len(), len);
     
     unsafe {
+        // CRITICAL: Verify pointers are not null
+        
         manifest_climate_ocean_proximity(
             positions_x.as_ptr(),
             positions_y.as_ptr(),
@@ -457,6 +738,13 @@ pub fn climate_ocean_proximity(
             len,
             results.as_mut_ptr(),
         );
+    }
+    
+    // CRITICAL: Validate results are in reasonable range [0, 1]
+    for (i, &result) in results.iter().enumerate() {
+        if !result.is_finite() || result < 0.0 || result > 1.0 {
+            return Err(format!("Zig returned invalid ocean proximity at index {}: {}", i, result));
+        }
     }
     
     Ok(results)

@@ -3,10 +3,8 @@
  */
 
 export { HexBorderRenderer } from './HexBorderRenderer';
-export {
-  HexInstanceRenderer,
-  OptimizedHexRenderer,
-} from './HexInstanceRenderer';
+export { HexInstanceRenderer } from './HexInstanceRenderer';
+export { HexRenderingSystem } from './HexRenderingSystem';
 export {
   HexCoordinateRenderer,
   HexResourceRenderer,

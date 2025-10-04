@@ -5,14 +5,14 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, instrument};
 
 use crate::{
     core::zig_ffi::HexCoord,
+    utils::lod::{calculate_lod_level, should_render_at_lod, LODLevel},
     world::tiles::{
         components::core::{Tile, TerrainType},
-        chunks::{TileId, ChunkCoord},
-        hierarchy::types::HierarchicalTile,
+        chunks::{TileId},
     },
 };
 
@@ -35,6 +35,7 @@ pub struct TileStreamingResponse {
     pub instance_data: Vec<TileInstanceData>,
     pub generation: u64,
     pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,
 }
 
@@ -98,32 +99,77 @@ pub async fn stream_tiles(
     let camera_hex = pixel_to_hex(request.camera_position[0], request.camera_position[2]);
     let hex_radius = (request.view_radius / 2.0) as i32; // Convert to hex radius
 
+    // DEBUG: Log coordinate conversion and radius info
+    eprintln!("🔍 TILE STREAMING DEBUG:");
+    eprintln!("  Camera position: [{}, {}, {}]", 
+              request.camera_position[0], request.camera_position[1], request.camera_position[2]);
+    eprintln!("  Converted to hex: ({}, {})", camera_hex.q, camera_hex.r);
+    eprintln!("  View radius: {} -> hex_radius: {}", request.view_radius, hex_radius);
+
     let mut streamed_tiles = Vec::new();
     let mut instance_data = Vec::new();
 
-    // Query tiles within radius
-    for q_offset in -hex_radius..=hex_radius {
-        for r_offset in -hex_radius..=hex_radius {
-            let s_offset = -q_offset - r_offset;
-            if s_offset.abs() <= hex_radius {
-                let hex = HexCoord {
-                    q: camera_hex.q + q_offset,
-                    r: camera_hex.r + r_offset,
-                };
-
-                // Try to get tile from world
-                if let Some(tile_data) = get_tile_at_hex(&state, hex).await {
-                    if streamed_tiles.len() < request.max_tiles {
-                        let game_tile = convert_to_game_tile(tile_data, hex);
-                        let instance = create_instance_data(&game_tile, request.generation);
-                        
-                        streamed_tiles.push(game_tile);
-                        instance_data.push(instance);
-                    }
-                }
+    // OPTIMIZED: Batch query tiles in radius instead of individual lookups
+    let tiles_in_full_radius = state.tile_manager.get_tiles_in_radius(camera_hex, hex_radius as u32);
+    let tiles_requested = tiles_in_full_radius.len();
+    let mut tiles_found = 0;
+    
+    eprintln!("  Tiles found in radius {}: {}", hex_radius, tiles_requested);
+    
+    // Process batched results with LOD filtering
+    for tile_id in tiles_in_full_radius.into_iter() {
+        if let Ok(tile) = state.tile_manager.get_component::<Tile>(tile_id) {
+            tiles_found += 1;
+            let hex = tile.hex;
+            
+            // Calculate LOD level for this tile
+            let lod_level = calculate_lod_level(camera_hex, hex);
+            
+            // Skip culled tiles completely
+            if lod_level == LODLevel::Culled {
+                continue;
             }
+            
+            // Check if this LOD level is requested
+            if !should_render_at_lod(camera_hex, hex, &request.lod_levels) {
+                continue;
+            }
+            
+            // Stop if we've reached the maximum tile limit
+            if streamed_tiles.len() >= request.max_tiles {
+                break;
+            }
+            
+            let game_tile = convert_to_game_tile(tile, hex);
+            let mut instance = create_instance_data(&game_tile, request.generation);
+            
+            // Set the calculated LOD level in instance data
+            instance.lod_level = lod_level.to_f32();
+            
+            streamed_tiles.push(game_tile);
+            instance_data.push(instance);
         }
     }
+    
+    // Calculate LOD distribution for debugging
+    let mut lod_counts = [0u32; 4]; // [High, Medium, Low, Culled]
+    for instance in &instance_data {
+        let lod = instance.lod_level as u8;
+        if lod < 4 {
+            lod_counts[lod as usize] += 1;
+        }
+    }
+    
+    debug!("🔍 TILE DEBUG: Requested {} tiles, found {} tiles, streaming {} tiles", 
+           tiles_requested, tiles_found, streamed_tiles.len());
+    debug!("📊 LOD DISTRIBUTION: High: {}, Medium: {}, Low: {}, Culled: 0", 
+           lod_counts[0], lod_counts[1], lod_counts[2]);
+
+    // DEBUG: Final streaming results
+    eprintln!("  ✅ FINAL RESULTS:");
+    eprintln!("    Tiles processed: {}/{}", tiles_found, tiles_requested);
+    eprintln!("    Tiles streamed to frontend: {}", streamed_tiles.len());
+    eprintln!("    Instance data entries: {}", instance_data.len());
 
     let response = TileStreamingResponse {
         tiles: streamed_tiles,
@@ -183,10 +229,14 @@ pub async fn get_tile_updates(
 // Helper functions
 
 /// Convert pixel coordinates to hex coordinates
+/// ALIGNED with frontend HexUtils.pixelToHex() for consistency
 fn pixel_to_hex(x: f32, z: f32) -> HexCoord {
     let hex_size = 1.0;
-    let q = (2.0 / 3.0 * x) / hex_size;
-    let r = (-1.0 / 3.0 * x + (3.0_f32).sqrt() / 3.0 * z) / hex_size;
+    let sqrt3 = (3.0_f32).sqrt();
+    
+    // EXACT MATCH to frontend HexUtils.pixelToHex()
+    let q = ((sqrt3 / 3.0) * x - (1.0 / 3.0) * z) / hex_size;
+    let r = ((2.0 / 3.0) * z) / hex_size;
     
     // Round to nearest hex
     let q_round = q.round() as i32;
@@ -196,23 +246,6 @@ fn pixel_to_hex(x: f32, z: f32) -> HexCoord {
         q: q_round,
         r: r_round,
     }
-}
-
-/// Get tile at specific hex coordinate from game state
-async fn get_tile_at_hex(state: &AppState, hex: HexCoord) -> Option<Tile> {
-    // Query tiles in radius around the requested hex coordinate
-    let tiles_in_radius = state.tile_manager.get_tiles_in_radius(hex, 0);
-    
-    // Find the exact tile at this hex coordinate
-    for tile_id in tiles_in_radius {
-        if let Ok(tile) = state.tile_manager.get_component::<Tile>(tile_id) {
-            if tile.hex.q == hex.q && tile.hex.r == hex.r {
-                return Some(tile);
-            }
-        }
-    }
-    
-    None
 }
 
 /// Get tile by ID from game state
@@ -287,10 +320,15 @@ fn convert_to_game_tile(tile: Tile, hex: HexCoord) -> GameTile {
 }
 
 /// Convert hex coordinates to pixel coordinates
+/// ALIGNED with frontend HexUtils.hexToPixel() for consistency
 fn hex_to_pixel(hex: HexCoord) -> (f32, f32) {
-    let hex_size = 1.0;
-    let x = hex_size * (3.0 / 2.0 * hex.q as f32);
-    let z = hex_size * ((3.0_f32).sqrt() / 2.0 * hex.q as f32 + (3.0_f32).sqrt() * hex.r as f32);
+    let hex_size = 1.0 * 1.1; // Base hex size with spacing factor
+    let sqrt3 = (3.0_f32).sqrt();
+    
+    // EXACT MATCH to frontend HexUtils.hexToPixel()
+    let x = hex_size * (sqrt3 * hex.q as f32 + (sqrt3 / 2.0) * hex.r as f32);
+    let z = hex_size * (1.5 * hex.r as f32);
+    
     (x, z)
 }
 

@@ -1,3 +1,5 @@
+![Manifest Logo](asssets/manifest.png)
+
 # Manifest: Grand Strategy Empire Builder
 
 **Build civilizations. Shape history. Command the future.**

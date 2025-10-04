@@ -3,7 +3,7 @@
 //! Replaces the expensive full-rebuild approach with incremental updates
 //! for optimal performance with large entity counts.
 
-use rstar::{RTree, RTreeObject, AABB};
+use rstar::{RTree, AABB};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::Resource;
 use tracing::{info, debug, warn, instrument};

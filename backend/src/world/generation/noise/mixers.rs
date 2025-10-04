@@ -5,7 +5,7 @@
 
 use super::types::*;
 use super::NoiseResult;
-use crate::core::hashing::{FastHasher, HashStrategies};
+use crate::core::hashing::HashStrategies;
 use ordered_float::OrderedFloat;
 use std::collections::HashMap;
 use rayon::prelude::*;

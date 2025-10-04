@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 /// Maximum number of improvements per tile
 pub const MAX_IMPROVEMENTS_PER_TILE: usize = 8;
 
-/// Unique identifier for improvements using slotmap  
+// Unique identifier for improvements using slotmap  
 slotmap::new_key_type! {
-    /// Stable handle to an improvement that remains valid across saves/loads
+    // Stable handle to an improvement that remains valid across saves/loads
     pub struct ImprovementKey;
 }
 

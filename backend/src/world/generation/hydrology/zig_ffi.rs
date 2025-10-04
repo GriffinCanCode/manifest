@@ -4,7 +4,6 @@
 //! for performance-critical water flow, watershed analysis, and hydraulic computations.
 
 use nalgebra::Vector2;
-use std::os::raw::{c_uint, c_uchar};
 
 // External Zig function declarations
 extern "C" {
@@ -424,15 +423,56 @@ pub struct FlowGrid {
 impl FlowGrid {
     /// Create new flow grid with elevation data
     pub fn new(width: usize, height: usize, cell_size: f64, elevation_data: &[f64]) -> Option<Self> {
-        if elevation_data.len() != width * height {
+        // CRITICAL: Validate dimensions before multiplication
+        const MAX_DIMENSION: usize = 10000; // Reasonable limit
+        if width == 0 || height == 0 {
+            eprintln!("FlowGrid: Invalid dimensions {}x{}", width, height);
             return None;
+        }
+        if width > MAX_DIMENSION || height > MAX_DIMENSION {
+            eprintln!("FlowGrid: Dimensions {}x{} exceed maximum {}", 
+                     width, height, MAX_DIMENSION);
+            return None;
+        }
+        
+        // CRITICAL: Check for multiplication overflow
+        let expected_size = match width.checked_mul(height) {
+            Some(size) => size,
+            None => {
+                eprintln!("FlowGrid: Dimension overflow {}x{}", width, height);
+                return None;
+            }
+        };
+        
+        // CRITICAL: Validate array size matches expected
+        if elevation_data.len() != expected_size {
+            eprintln!("FlowGrid: Data size mismatch: got {}, expected {}x{} = {}", 
+                     elevation_data.len(), width, height, expected_size);
+            return None;
+        }
+        
+        // CRITICAL: Validate cell_size parameter
+        if !cell_size.is_finite() || cell_size <= 0.0 || cell_size > 1000000.0 {
+            eprintln!("FlowGrid: Invalid cell_size: {}", cell_size);
+            return None;
+        }
+        
+        // CRITICAL: Validate elevation data is finite
+        for (i, &elevation) in elevation_data.iter().enumerate() {
+            if !elevation.is_finite() {
+                eprintln!("FlowGrid: Invalid elevation data at index {}: {}", i, elevation);
+                return None;
+            }
         }
 
         let ptr = unsafe {
+            // CRITICAL: Verify pointer is not null before passing
+            
             hydrologyCreateFlowGrid(width, height, cell_size, elevation_data.as_ptr())
         };
 
         if ptr.is_null() {
+            eprintln!("FlowGrid: Zig function returned null pointer");
             return None;
         }
 
@@ -640,13 +680,48 @@ pub fn delineate_watershed(
         );
     }
 
-    // Convert to Vec<Vector2<f64>>
+    // CRITICAL: Validate boundary_count before using it
+    if boundary_count > max_boundary_points {
+        eprintln!("SECURITY WARNING: Zig returned boundary_count {} > max {}", 
+                 boundary_count, max_boundary_points);
+        return None;
+    }
+
+    // Additional safety check
+    if boundary_count == 0 {
+        eprintln!("WARNING: Watershed delineation returned no boundary points");
+        return None;
+    }
+
+    // Convert to Vec<Vector2<f64>> with safe iteration and bounds checking
     let mut boundary_points = Vec::with_capacity(boundary_count);
     let mut boundary_elevations = Vec::with_capacity(boundary_count);
 
     for i in 0..boundary_count {
-        boundary_points.push(Vector2::new(boundary_points_x[i], boundary_points_y[i]));
-        boundary_elevations.push(boundary_points_elevation[i]);
+        // CRITICAL: Additional bounds check (defensive programming)
+        if i >= max_boundary_points {
+            eprintln!("CRITICAL ERROR: Index {} >= max boundary points {}", i, max_boundary_points);
+            break;
+        }
+        
+        let x = boundary_points_x[i];
+        let y = boundary_points_y[i];
+        let elev = boundary_points_elevation[i];
+        
+        // CRITICAL: Validate coordinate and elevation values
+        if x.is_finite() && y.is_finite() && elev.is_finite() {
+            boundary_points.push(Vector2::new(x, y));
+            boundary_elevations.push(elev);
+        } else {
+            eprintln!("WARNING: Skipping invalid boundary point at index {} - x:{}, y:{}, elev:{}", 
+                     i, x, y, elev);
+        }
+    }
+    
+    // CRITICAL: Ensure we have valid boundary points after validation
+    if boundary_points.is_empty() {
+        eprintln!("ERROR: No valid boundary points after validation");
+        return None;
     }
 
     Some(WatershedResult {
@@ -753,8 +828,58 @@ pub fn batch_manning_calculations(
     manning_ns: &[f64],
 ) -> Option<Vec<HydraulicResults>> {
     let count = areas.len();
-    if count != wetted_perimeters.len() || count != slopes.len() || count != manning_ns.len() {
+    
+    // CRITICAL: Validate ALL input arrays have same length
+    if count != wetted_perimeters.len() {
+        eprintln!("Array length mismatch: areas={}, wetted_perimeters={}", 
+                 count, wetted_perimeters.len());
         return None;
+    }
+    if count != slopes.len() {
+        eprintln!("Array length mismatch: areas={}, slopes={}", count, slopes.len());
+        return None;
+    }
+    if count != manning_ns.len() {
+        eprintln!("Array length mismatch: areas={}, manning_ns={}", count, manning_ns.len());
+        return None;
+    }
+    
+    // CRITICAL: Check for empty input
+    if count == 0 {
+        return Some(Vec::new());
+    }
+    
+    // CRITICAL: Validate size limits
+    const MAX_BATCH_SIZE: usize = 10000;
+    if count > MAX_BATCH_SIZE {
+        eprintln!("Batch size {} exceeds maximum safe size {}", count, MAX_BATCH_SIZE);
+        return None;
+    }
+    
+    // CRITICAL: Validate input values
+    for (i, &area) in areas.iter().enumerate() {
+        if !area.is_finite() || area <= 0.0 {
+            eprintln!("Invalid area at index {}: {}", i, area);
+            return None;
+        }
+    }
+    for (i, &perimeter) in wetted_perimeters.iter().enumerate() {
+        if !perimeter.is_finite() || perimeter <= 0.0 {
+            eprintln!("Invalid wetted_perimeter at index {}: {}", i, perimeter);
+            return None;
+        }
+    }
+    for (i, &slope) in slopes.iter().enumerate() {
+        if !slope.is_finite() || slope <= 0.0 {
+            eprintln!("Invalid slope at index {}: {}", i, slope);
+            return None;
+        }
+    }
+    for (i, &n) in manning_ns.iter().enumerate() {
+        if !n.is_finite() || n <= 0.0 {
+            eprintln!("Invalid manning_n at index {}: {}", i, n);
+            return None;
+        }
     }
 
     let mut velocities = vec![0.0; count];
@@ -762,6 +887,8 @@ pub fn batch_manning_calculations(
     let mut hydraulic_radii = vec![0.0; count];
 
     unsafe {
+        // CRITICAL: Verify pointers are not null
+        
         manifest_batch_manning_calculations(
             areas.as_ptr(),
             wetted_perimeters.as_ptr(),
@@ -772,6 +899,26 @@ pub fn batch_manning_calculations(
             hydraulic_radii.as_mut_ptr(),
             count,
         );
+    }
+    
+    // CRITICAL: Validate results from Zig
+    for (i, &velocity) in velocities.iter().enumerate() {
+        if !velocity.is_finite() || velocity < 0.0 {
+            eprintln!("Invalid velocity result at index {}: {}", i, velocity);
+            return None;
+        }
+    }
+    for (i, &discharge) in discharges.iter().enumerate() {
+        if !discharge.is_finite() || discharge < 0.0 {
+            eprintln!("Invalid discharge result at index {}: {}", i, discharge);
+            return None;
+        }
+    }
+    for (i, &radius) in hydraulic_radii.iter().enumerate() {
+        if !radius.is_finite() || radius < 0.0 {
+            eprintln!("Invalid hydraulic_radius result at index {}: {}", i, radius);
+            return None;
+        }
     }
 
     let results: Vec<HydraulicResults> = (0..count)

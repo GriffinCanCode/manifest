@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
+import { CAMERA_CONFIG } from '../../../config/world-config';
 import { useCameraStore } from '../../../stores/camera-store';
 import { useRenderStore } from '../../../stores/render-store';
 import type { CameraConstraints } from '../types';
@@ -129,9 +130,10 @@ export const OrbitalCamera: React.FC<OrbitalCameraProps> = ({
   // Set initial camera position and target for hex world viewing
   useEffect(() => {
     if (camera && orbitRef.current) {
-      // Position camera to look down at hex grid from an angle
-      camera.position.set(0, 20, 20);
-      orbitRef.current.target.set(0, 0, 0);
+      // Use centralized camera configuration
+      const config = CAMERA_CONFIG.SPAWN;
+      camera.position.set(...config.position);
+      orbitRef.current.target.set(...config.target);
       orbitRef.current.update();
       handleChange();
     }

@@ -6,7 +6,6 @@
 use super::types::*;
 use super::core::{SimplexGenerator, PerlinGenerator};
 use ordered_float::OrderedFloat;
-use cached::proc_macro::cached;
 
 /// Fractal Brownian Motion generator
 #[derive(Debug)]

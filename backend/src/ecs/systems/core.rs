@@ -5,7 +5,6 @@
 
 use bevy_ecs::prelude::*;
 use tracing::{info, debug, warn, instrument};
-use rstar::AABB;
 
 use crate::core::{Stage, SimulationState, logging::game_logging};
 use crate::ecs::{components::*, resources::*, EcsScheduler, hierarchy::{sync_hierarchy_system, cleanup_hierarchy_system}};

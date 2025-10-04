@@ -6,10 +6,10 @@
 use super::{TectonicsConfig, TectonicPlate, PlateBoundary, BoundaryType};
 use serde::{Deserialize, Serialize};
 use nalgebra::Vector2;
-use ndarray::{Array2, s};
+use ndarray::Array2;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use rand_distr::{Distribution, Normal, Exp, Uniform, Gamma, LogNormal};
+use rand_distr::{Distribution, Normal, Exp, LogNormal};
 use rayon::prelude::*;
 use crate::core::scheduler::SchedulerError;
 

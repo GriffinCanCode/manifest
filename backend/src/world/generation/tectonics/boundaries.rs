@@ -6,10 +6,8 @@
 use super::{TectonicsConfig, TectonicPlate, zig_ffi};
 use serde::{Deserialize, Serialize};
 use nalgebra::Vector2;
-use geo::{LineString, Coord, Contains, Intersects, Line, Point as GeoPoint};
-use robust::{orient2d, incircle};
+use geo::{LineString, Coord, Intersects, Line};
 use rayon::prelude::*;
-use std::collections::HashMap;
 use crate::core::scheduler::SchedulerError;
 
 /// Represents a boundary between two tectonic plates

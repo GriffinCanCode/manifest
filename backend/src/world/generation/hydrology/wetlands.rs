@@ -4,7 +4,7 @@
 //! Uses kdtree for efficient spatial queries and proximity analysis.
 
 use super::{HydrologyConfig, Wetland, WetlandType, FlowAccumulation, Lake};
-use super::zig_ffi::{ZigSpatialTree, zig_evaluate_wetland_candidates, ZigWetlandEvaluation};
+use super::zig_ffi::{ZigSpatialTree, zig_evaluate_wetland_candidates};
 use crate::core::scheduler::SchedulerError;
 use crate::world::WetlandId;
 use nalgebra::Vector2;

@@ -4,7 +4,6 @@
 //! using hecs ECS integrated with bevy_ecs for optimal performance.
 
 use hecs::{World as HecsWorld, Entity as HecsEntity, Component, Query};
-use bevy_ecs::prelude::*;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tracing::{debug, instrument};

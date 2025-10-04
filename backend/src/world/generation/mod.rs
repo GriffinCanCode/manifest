@@ -11,13 +11,70 @@ pub mod resources;
 pub mod climate;
 pub mod biomes;
 
-// Re-export commonly used types
-pub use noise::*;
-pub use tectonics::*;
+// Re-export commonly used types with explicit imports to avoid conflicts
+
+// From noise module
+pub use noise::{
+    NoiseConfig, NoiseGenerator, NoiseType, NoiseCache,
+    Interpolation, NoiseQuality, SimplexConfig,
+    PerlinConfig, VoronoiConfig, WorleyConfig, 
+    FbmConfig, DomainWarpConfig, RidgeConfig,
+    ScheduledNoiseGenerator, NoiseResource,
+};
+
+// From noise module (with aliases for conflicting names)
+pub use noise::{
+    types as noise_types,
+    core as noise_core,
+};
+
+// From tectonics module  
+pub use tectonics::{
+    TectonicSimulator, TectonicsConfig,
+};
+
+// From tectonics module (with alias for conflicting name)
+pub use tectonics::{
+    zig_ffi as tectonics_zig_ffi,
+};
+
+// From hydrology module
 pub use hydrology::*;
-pub use resources::*;
-pub use climate::*;
-pub use biomes::*;
+
+// From resources module
+pub use resources::{
+    ResourceDistributionSystem, ResourceDiscoverySystem, ResourceDepletionSystem,
+};
+
+// From resources module (with aliases for conflicting names)  
+pub use resources::{
+    types as resource_types,
+    core as resource_core,
+};
+
+// From climate module
+pub use climate::{
+    ClimateGenerator, ClimateGenConfig, WindPatterns, OceanCurrents, 
+    SeasonalVariation, OrographicEffects, ContinentalEffects,
+    ClimateBundle,
+};
+
+// From climate module (with alias for conflicting name)
+pub use climate::{
+    systems as climate_systems,
+};
+
+// From biomes module
+pub use biomes::{
+    BiomeGenerator, BiomeGenConfig, LuaBiomeRules, BiomeDecisionTree,
+    BiomeTransitionManager, TransitionType, BiomeBundle, BiomeStage,
+};
+
+// From biomes module (with alias for conflicting name)
+pub use biomes::{
+    systems as biome_systems,
+};
+
 
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};

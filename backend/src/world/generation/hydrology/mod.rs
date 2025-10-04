@@ -34,8 +34,7 @@ use std::sync::Arc;
 
 use crate::core::{
     caching::GameCache,
-    scheduler::{Scheduler, TaskBatch, Stage, Resource as SchedulerResource, Access, SchedulerError},
-    hashing::{FastHashMap, collections},
+    scheduler::{Scheduler, TaskBatch, SchedulerError},
 };
 
 /// Hydrological simulation configuration

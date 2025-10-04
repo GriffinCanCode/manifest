@@ -4,7 +4,7 @@
  */
 
 import { useFrame, useThree } from '@react-three/fiber';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Vector3, type Color, type ShaderMaterial } from 'three';
 
 // Browser-compatible environment check with proper typing
@@ -26,16 +26,10 @@ import type {
   ShaderUniforms,
   TerrainShaderUniforms,
 } from '../../../../types/shaders';
-import { ShaderContext } from '../../hooks/shader-hooks';
-
-interface ShaderContextType {
-  getShader: (name: ShaderName) => ShaderMaterial | null;
-  updateShaderUniforms: (
-    name: ShaderName,
-    uniforms: Partial<ShaderUniforms>
-  ) => void;
-  isReady: boolean;
-}
+import {
+  ShaderContext,
+  type ShaderContextType,
+} from '../../hooks/shader-hooks';
 
 interface ShaderProviderProps {
   children: React.ReactNode;
@@ -50,7 +44,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
 
   const shadersRef = useRef<Map<ShaderName, ShaderMaterial>>(new Map());
   const timeRef = useRef<number>(0);
-  const isReadyRef = useRef<boolean>(false);
+  const [isReady, setIsReady] = useState<boolean>(false);
 
   /**
    * Initialize all core shaders
@@ -169,7 +163,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
           }
         }
 
-        isReadyRef.current = true;
+        setIsReady(true);
       } catch (error) {
         console.error('❌ Failed to initialize shader system:', error);
       }
@@ -186,9 +180,10 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
 
   /**
    * Update shader uniforms every frame
+   * Note: RenderingProvider handles global uniform updates, this handles shader-specific updates
    */
   useFrame((_state, delta) => {
-    if (!isReadyRef.current) return;
+    if (!isReady) return;
 
     timeRef.current += delta;
     const cameraPosition = new Vector3().setFromMatrixPosition(
@@ -306,7 +301,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
    * Handle quality changes
    */
   useEffect(() => {
-    if (!isReadyRef.current) return;
+    if (!isReady) return;
 
     const hexTerrainMaterial = shadersRef.current.get('hex-terrain');
     if (hexTerrainMaterial) {
@@ -322,7 +317,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
       hexTerrainMaterial.defines.QUALITY_LEVEL = qualityLevel;
       hexTerrainMaterial.needsUpdate = true;
     }
-  }, [quality.level]);
+  }, [quality.level, isReady]);
 
   /**
    * Context API methods
@@ -341,7 +336,7 @@ export const ShaderProvider: React.FC<ShaderProviderProps> = ({ children }) => {
   const contextValue: ShaderContextType = {
     getShader,
     updateShaderUniforms: updateShaderUniformsContext,
-    isReady: isReadyRef.current,
+    isReady,
   };
 
   return (

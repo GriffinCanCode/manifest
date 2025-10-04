@@ -3,11 +3,11 @@
 //! High-performance watershed detection using Zig backend for elevation data
 //! and flow direction analysis with SIMD-optimized drainage basin delineation.
 
-use super::{HydrologyConfig, Watershed, WatershedId, FlowAccumulation};
+use super::{HydrologyConfig, Watershed, WatershedId};
 use super::zig_ffi::{
-    FlowGrid, calculate_time_of_concentration, delineate_watershed, WatershedResult,
+    FlowGrid, delineate_watershed, WatershedResult,
     zig_polygon_area, zig_convex_hull, zig_point_in_polygon,
-    zig_elevation_gradient_analysis, zig_elevation_local_statistics, ZigGradientAnalysis, ZigLocalStatistics
+    zig_elevation_gradient_analysis, zig_elevation_local_statistics, ZigGradientAnalysis
 };
 use crate::core::scheduler::SchedulerError;
 use nalgebra::Vector2;

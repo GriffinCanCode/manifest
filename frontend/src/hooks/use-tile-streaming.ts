@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Vector3 } from 'three';
 
-import type { GameTile, HexCoord } from '../utils/game-types';
+import { HexUtils, type GameTile, type HexCoord } from '../utils/game-types';
 import {
   TileDataService,
   type TileStreamingRequest,
@@ -45,7 +45,7 @@ interface TileStreamingState {
  */
 export const useTileStreaming = ({
   cameraPosition,
-  maxDistance = 50,
+  maxDistance = 106, // Optimal radius to cover most of backend world (-75 to +75 range)
   quality = 'high',
   autoStream = true,
 }: UseTileStreamingProps = {}): TileStreamingState & {
@@ -79,16 +79,12 @@ export const useTileStreaming = ({
    * Convert world position to hex coordinate
    */
   const worldToHex = useCallback((worldPos: Vector3): HexCoord => {
-    // Convert 3D world position to hex coordinates
-    // This assumes your hex-to-pixel conversion follows a specific pattern
+    // Convert 3D world position to hex coordinates using HexUtils for consistency
     const { x } = worldPos;
     const { z } = worldPos;
 
-    // Convert pixel coordinates back to hex (reverse of HexUtils.hexToPixel)
-    const q = Math.round((Math.sqrt(3) * x - z) / 3);
-    const r = Math.round((2 * z) / 3);
-
-    return { q, r };
+    // Use HexUtils.pixelToHex for consistent coordinate conversion
+    return HexUtils.pixelToHex(x, z);
   }, []);
 
   /**
@@ -120,7 +116,7 @@ export const useTileStreaming = ({
             : [centerHex.q * 3, 0, centerHex.r * 3],
           view_radius: maxDistance,
           max_tiles:
-            quality === 'low' ? 1000 : quality === 'medium' ? 5000 : 20000,
+            quality === 'low' ? 5000 : quality === 'medium' ? 15000 : 20000, // Backend limit
           lod_levels:
             quality === 'low' ? [0] : quality === 'medium' ? [0, 1] : [0, 1, 2],
           generation: 0, // TODO: Track actual generation for change detection

@@ -6,11 +6,11 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 use tracing::{info, error, debug, warn, instrument};
 
 use crate::ecs::{GameWorld, SaveInfo, SaveSystem};
-use crate::ecs::saves::{SaveThumbnailMetadata, ThumbnailDimensions};
+use crate::ecs::saves::SaveThumbnailMetadata;
 use crate::core::{logging::LoggingSystem, caching::{GameCache, CacheKey, PlayerCacheKey, CachePriority}};
 
 // Import validation and events modules

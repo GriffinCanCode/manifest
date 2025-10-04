@@ -458,7 +458,7 @@ mod tests {
     fn test_interpolated_property() {
         let mut prop = InterpolatedProperty::new(Point2::new(0.0, 0.0));
         
-        prop.update(Point2::new(10.0, 10.0));
+        prop.set_value(Point2::new(10.0, 10.0));
         
         let result = prop.interpolate(lerp_factor(0.5));
         assert_eq!(result, Point2::new(5.0, 5.0));

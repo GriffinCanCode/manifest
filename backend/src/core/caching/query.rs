@@ -39,7 +39,7 @@ impl QueryCacheKey {
     /// This is a best-effort approximation based on query type and signature
     pub fn extract_component_types(&self) -> Vec<TypeId> {
         use std::any::TypeId;
-        use crate::ecs::components::{Position, Movement, Health, Owner, Name};
+        use crate::ecs::components::{Position, Movement, Health, Owner};
         use crate::ecs::components::Renderable;
         use crate::ecs::hierarchy::{Hierarchical, Relationships};
         

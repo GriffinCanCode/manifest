@@ -17,6 +17,10 @@ Thumbs.db
 .vim/
 .zig-cache/
 
+.playwright-mcp
+
+.venv/
+
 # Logs
 *.log
 logs/
@@ -52,3 +56,7 @@ coverage/
 *.backup
 
 zig-out/
+
+# AI Texture Generator - ignore generated textures but keep tools
+tools/ai-texture-generator/generated_textures/
+tools/ai-texture-generator/test_output/

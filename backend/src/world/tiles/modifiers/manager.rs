@@ -143,7 +143,7 @@ impl TileModifierManager {
         self.cache_misses += 1;
 
         // Compute modifiers from component
-        if let Some(mut tile_modifiers) = world.get::<TileModifiers>(tile_entity) {
+        if let Some(tile_modifiers) = world.get::<TileModifiers>(tile_entity) {
             // Safety: We're creating a mutable reference through a temporary clone
             // This is needed because computed() requires mutable access for lazy computation
             let mut temp_modifiers = tile_modifiers.clone();
@@ -402,7 +402,7 @@ impl TileModifierManager {
     
     /// Validate cache consistency (for debugging)
     pub fn validate_cache_consistency(&self, world: &mut World) -> Result<(), Vec<String>> {
-        let mut errors = Vec::new();
+        let errors = Vec::new();
         
         // Check that all cached entries correspond to actual tiles with modifiers
         let mut tile_modifier_query = world.query::<(Entity, &TileModifiers)>();
@@ -557,7 +557,7 @@ pub fn process_modifiers_system(
 
 /// ECS System for updating modifier statistics
 pub fn update_modifier_stats_system(
-    mut modifier_manager: ResMut<TileModifierManager>,
+    modifier_manager: ResMut<TileModifierManager>,
     mut commands: Commands,
     query: Query<&TileModifiers>,
     game_state: Res<crate::core::game_state::CoreGameState>,

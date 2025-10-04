@@ -3,14 +3,10 @@
 //! Provides coordinated, high-performance noise generation with
 //! resource management, task scheduling, and performance monitoring.
 
-use super::types::*;
 use super::core::*;
 use super::{NoiseResult, NoiseConfig};
 use crate::core::scheduler::{Scheduler, TaskBatch, Stage, Resource, SchedulerError};
-use crate::core::hashing::HashStrategies;
-use ordered_float::OrderedFloat;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 /// Resource types for noise generation scheduling
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

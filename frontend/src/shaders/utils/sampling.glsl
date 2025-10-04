@@ -196,7 +196,9 @@ vec2 haltonSequence(int index, int base1, int base2) {
   for(int j = 0; j < 10; j++) {
     if(i1 <= 0) break;
     f1 /= float(base1);
-    result1 += f1 * float(i1 % base1);
+    // Manual modulus for GLSL ES 1.00 compatibility: a % b = a - (a / b) * b
+    int mod_result1 = i1 - (i1 / base1) * base1;
+    result1 += f1 * float(mod_result1);
     i1 /= base1;
   }
   
@@ -204,7 +206,9 @@ vec2 haltonSequence(int index, int base1, int base2) {
   for(int j = 0; j < 10; j++) {
     if(i2 <= 0) break;
     f2 /= float(base2);
-    result2 += f2 * float(i2 % base2);
+    // Manual modulus for GLSL ES 1.00 compatibility: a % b = a - (a / b) * b
+    int mod_result2 = i2 - (i2 / base2) * base2;
+    result2 += f2 * float(mod_result2);
     i2 /= base2;
   }
   

@@ -5,7 +5,7 @@
 use bevy_ecs::prelude::*;
 use glam::IVec2;
 
-use crate::core::caching::{broadcast_cache_invalidation, global_cache_events, SubsystemStats};
+use crate::core::caching::broadcast_cache_invalidation;
 
 use super::core::GameWorld;
 

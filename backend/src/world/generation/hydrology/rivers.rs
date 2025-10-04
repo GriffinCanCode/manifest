@@ -4,7 +4,7 @@
 //! Uses priority queues for source generation and A* pathfinding for river routing.
 
 use super::{HydrologyConfig, River, RiverSegment, FlowAccumulation, Watershed};
-use super::zig_ffi::{zig_find_river_sources, zig_river_astar_pathfinding, ZigRiverPath};
+use super::zig_ffi::{zig_find_river_sources, zig_river_astar_pathfinding};
 use crate::core::scheduler::SchedulerError;
 use crate::world::{WatershedId, RiverId};
 use nalgebra::Vector2;

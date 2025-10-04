@@ -8,13 +8,13 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-use crate::scripting::{ComprehensiveLuaHandler, LuaEventData};
+use crate::scripting::ComprehensiveLuaHandler;
 use crate::world::tiles::TileId;
 
 use super::types::*;
-use super::{ResourceResult, ResourceDistributionError};
+use super::ResourceResult;
 
 /// Resource depletion and scarcity management system
 pub struct ResourceDepletionSystem {
@@ -437,7 +437,7 @@ impl ResourceDepletionSystem {
             // Calculate volatility
             if history.len() > 10 {
                 let recent_history: Vec<f32> = history[history.len()-10..].to_vec();
-                drop(history); // Explicitly drop the mutable borrow
+                let _ = history; // Release the mutable borrow
                 let volatility = self.calculate_price_volatility(&recent_history);
                 self.market_dynamics.volatility.insert(resource_type.clone(), volatility);
             }

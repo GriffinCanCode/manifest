@@ -7,8 +7,19 @@
 precision highp float;
 #endif
 
-// Note: Standard attributes (position, normal, uv) and uniforms (modelMatrix, viewMatrix, etc.)
-// are automatically provided by Three.js - no need to declare them explicitly
+// Three.js built-in attributes and uniforms
+// Only declare these when NOT using Three.js built-in system
+#ifndef USE_THREEJS_BUILTIN
+attribute vec3 position;
+attribute vec3 normal;
+attribute vec2 uv;
+
+uniform mat4 modelMatrix;
+uniform mat4 viewMatrix;
+uniform mat4 projectionMatrix;
+uniform mat3 normalMatrix;
+uniform vec3 cameraPosition;
+#endif
 
 // Instanced attributes (per-hex data)
 attribute vec3 instancePosition;
@@ -44,57 +55,10 @@ varying vec4 v_shadowCoord[4]; // Support up to 4 cascades
 varying float v_shadowDistance;
 #endif
 
-// Import utility modules - Add functions directly since includes aren't working
-// #include ../modules/noise.glsl
-// #include ../modules/hex.glsl
-// #include ../modules/common.glsl
-
-// Essential noise functions for vertex shader
-vec2 mod289(vec2 x) {
-  return x - floor(x * (1.0 / 289.0)) * 289.0;
-}
-
-vec3 mod289(vec3 x) {
-  return x - floor(x * (1.0 / 289.0)) * 289.0;
-}
-
-vec3 permute(vec3 x) {
-  return mod289(((x * 34.0) + 1.0) * x);
-}
-
-float simplex2D(vec2 v) {
-  const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-  vec2 i = floor(v + dot(v, C.yy));
-  vec2 x0 = v - i + dot(i, C.xx);
-  vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-  vec4 x12 = x0.xyxy + C.xxzz;
-  x12.xy -= i1;
-  i = mod289(i.xy);
-  vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
-  vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.0);
-  m = m * m;
-  m = m * m;
-  vec3 x = 2.0 * fract(p * C.www) - 1.0;
-  vec3 h = abs(x) - 0.5;
-  vec3 ox = floor(x + 0.5);
-  vec3 a0 = x - ox;
-  m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
-  vec3 g;
-  g.x = a0.x * x0.x + h.x * x0.y;
-  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-  return 130.0 * dot(m, g);
-}
-
-float terrainHeight(vec2 pos, float scale, float time) {
-  vec2 p = pos * scale;
-  // Simple fbm approximation using simplex noise  
-  float height = simplex2D(p) * 0.5 + 0.5;
-  height += simplex2D(p * 2.0) * 0.25;
-  height += simplex2D(p * 4.0) * 0.125;
-  // Add time-based animation
-  height += simplex2D(p + time * 0.01) * 0.02;
-  return height;
-}
+// Import utility modules (functions already defined in these modules)
+#include <common>
+#include <hex>
+#include <noise>
 
 #ifdef USE_SHADOWS
 // CSM matrices - these would normally come from shadows module
@@ -137,7 +101,7 @@ vec3 displaceTerrain(vec3 pos, vec2 hexCoord, float height, float lod) {
 vec3 calculateTerrainNormal(vec2 hexCoord, float height, float lod) {
   if (lod > 0.7) {
     // Use standard normal for distant tiles
-    return normal;
+    return vec3(0.0, 1.0, 0.0); // Default up normal
   }
   
   // Calculate height gradient for nearby tiles
@@ -154,12 +118,20 @@ vec3 calculateTerrainNormal(vec2 hexCoord, float height, float lod) {
 }
 
 void main() {
-  // Calculate hex coordinates
+  // Extract hex coordinates from instancePosition (q*spacing, height, r*spacing)
   vec2 hexCoord = instancePosition.xz / u_hexSpacing;
+  
+  // Convert hex coordinates to world coordinates (pointy-top orientation - Civ6 style)
+  // EXACT MATCH to frontend HexUtils.hexToPixel() for consistency
+  float hexSize = u_hexSize * 1.1; // ALIGNED with backend hex_to_pixel() spacing
+  float sqrt3 = 1.732050808; // sqrt(3)
+  float x = hexSize * (1.5 * hexCoord.x); // Pointy-top: 3/2 * q
+  float z = hexSize * ((sqrt3 / 2.0) * hexCoord.x + sqrt3 * hexCoord.y); // Pointy-top: sqrt3/2 * q + sqrt3 * r
+  vec3 hexWorldPos = vec3(x, instancePosition.y, z);
   
   // Transform position to instance space
   vec3 transformed = position * u_hexSize;
-  transformed += instancePosition;
+  transformed += hexWorldPos;
   
   // Calculate LOD
   vec3 worldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;

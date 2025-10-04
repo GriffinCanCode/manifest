@@ -88,11 +88,16 @@ const App = () => {
       // Check if we're running in Tauri environment
       const isTauri =
         typeof window !== 'undefined' &&
-        '__TAURI__' in (window as unknown as { __TAURI__?: unknown });
+        ('__TAURI__' in (window as unknown as { __TAURI__?: unknown }) ||
+          '__TAURI_INTERNALS__' in
+            (window as unknown as { __TAURI_INTERNALS__?: unknown }));
 
       console.warn('🔍 TAURI DETECTION:', {
         windowUndefined: typeof window === 'undefined',
         tauriInWindow: isTauri,
+        hasTauriLegacy: typeof window !== 'undefined' && '__TAURI__' in window,
+        hasTauriInternals:
+          typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window,
         allWindowProps:
           typeof window !== 'undefined'
             ? Object.keys(window).filter(

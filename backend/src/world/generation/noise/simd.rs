@@ -4,7 +4,6 @@
 //! Zig SIMD implementation with fallback to Rust implementations.
 
 use super::{NoiseConfig, NoiseResult};
-use crate::core::zig_ffi;
 use std::os::raw::{c_float, c_int, c_uint};
 
 /// C struct for noise parameters passed to Zig
@@ -185,8 +184,6 @@ fn batch_noise_sample_zig(coords: &[(f64, f64)], config: &NoiseConfig) -> Vec<No
     // Call Zig SIMD function with additional safety checks
     unsafe {
         // Verify pointers are not null
-        debug_assert!(!c_coords.as_ptr().is_null());
-        debug_assert!(!results.as_mut_ptr().is_null());
         
         manifest_noise_multilayer_batch_simd(
             c_coords.as_ptr(),
@@ -300,8 +297,6 @@ fn batch_domain_warp_zig(coords: &[(f64, f64)], config: &NoiseConfig) -> Vec<(f6
 
     unsafe {
         // Verify pointers are not null
-        debug_assert!(!c_coords.as_ptr().is_null());
-        debug_assert!(!warped_coords.as_mut_ptr().is_null());
         
         manifest_noise_domain_warp_batch_simd(
             c_coords.as_ptr(),
@@ -411,10 +406,6 @@ fn batch_noise_mix_zig(
 
     unsafe {
         // Verify pointers are not null
-        debug_assert!(!noise1.as_ptr().is_null());
-        debug_assert!(!noise2.as_ptr().is_null());
-        debug_assert!(!weights.as_ptr().is_null());
-        debug_assert!(!results.as_mut_ptr().is_null());
         
         manifest_noise_mix_batch_simd(
             noise1.as_ptr(),

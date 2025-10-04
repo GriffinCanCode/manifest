@@ -3,15 +3,13 @@
 //! Provides comprehensive Lua API for configurable resource rules,
 //! geological analysis, and procedural distribution algorithms.
 
-use std::collections::HashMap;
-use mlua::{Lua, UserData, UserDataMethods, Function, Value, Table};
+use mlua::{UserData, UserDataMethods};
 use serde_json;
 use tracing::{debug, warn};
 
-use crate::scripting::{ComprehensiveLuaHandler, ScriptResult, ScriptError};
-use crate::world::tiles::TileId;
+use crate::scripting::ComprehensiveLuaHandler;
 use super::types::*;
-use super::{ResourceResult, ResourceDistributionError};
+use super::ResourceResult;
 
 /// Lua API for resource distribution system
 pub struct ResourceLuaApi;

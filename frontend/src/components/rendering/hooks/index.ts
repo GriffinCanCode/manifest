@@ -3,6 +3,13 @@
  */
 
 export {
+  RenderingDebugInfo,
+  useRendering,
+  useTerrainMaterial,
+  useTileMaterials,
+  useUnifiedMaterial,
+} from './rendering-hooks';
+export {
   ShaderContext,
   ShaderDebugInfo,
   useShader,

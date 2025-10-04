@@ -59,22 +59,23 @@ export class HexUtils {
   private static readonly HEX_SIZE = 1;
 
   /**
-   * Convert hex coordinates to pixel coordinates (flat-top hexagons)
+   * Convert hex coordinates to pixel coordinates (pointy-top hexagons - Civ6 style)
    */
   static hexToPixel(hex: HexCoord): [number, number] {
-    // Flat-top hexagon layout with proper spacing
-    const size = this.HEX_SIZE * 1.1; // Slightly larger spacing
-    const x = size * (this.SQRT_3 * hex.q + (this.SQRT_3 / 2) * hex.r);
-    const z = size * ((3 / 2) * hex.r);
+    // Pointy-top hexagon layout for Civ6 style
+    const size = this.HEX_SIZE * 1.1; // ALIGNED with backend hex_to_pixel() spacing
+    const x = size * ((3 / 2) * hex.q);
+    const z = size * ((this.SQRT_3 / 2) * hex.q + this.SQRT_3 * hex.r);
     return [x, z];
   }
 
   /**
-   * Convert pixel coordinates to hex coordinates
+   * Convert pixel coordinates to hex coordinates (pointy-top hexagons - Civ6 style)
    */
   static pixelToHex(x: number, z: number): HexCoord {
-    const q = ((this.SQRT_3 / 3) * x - (1 / 3) * z) / this.HEX_SIZE;
-    const r = ((2 / 3) * z) / this.HEX_SIZE;
+    const size = this.HEX_SIZE * 1.1; // ALIGNED with backend hex_to_pixel() spacing
+    const q = ((2 / 3) * x) / size;
+    const r = ((-1 / 3) * x + (this.SQRT_3 / 3) * z) / size;
     return this.roundHex({ q, r });
   }
 
@@ -113,16 +114,17 @@ export class HexUtils {
   }
 
   /**
-   * Get neighbors of a hex coordinate
+   * Get neighbors of a hex coordinate (pointy-top hexagons - Civ6 style)
    */
   static neighbors(hex: HexCoord): HexCoord[] {
+    // Pointy-top hexagon neighbor directions
     const directions = [
-      { q: 1, r: 0 },
-      { q: 1, r: -1 },
-      { q: 0, r: -1 },
-      { q: -1, r: 0 },
-      { q: -1, r: 1 },
-      { q: 0, r: 1 },
+      { q: 1, r: 0 }, // East
+      { q: 0, r: 1 }, // Southeast
+      { q: -1, r: 1 }, // Southwest
+      { q: -1, r: 0 }, // West
+      { q: 0, r: -1 }, // Northwest
+      { q: 1, r: -1 }, // Northeast
     ];
 
     return directions.map(dir => ({
@@ -140,8 +142,8 @@ export const createMockGameWorld = (): GameWorld => {
   const tiles: GameTile[] = [];
   const units: GameUnit[] = [];
 
-  // Generate hex grid - smaller radius for better visibility
-  const radius = 6;
+  // Generate hex grid - LARGER radius to demonstrate texture variety
+  const radius = 18; // Increased from 6 to 18 for ~1000+ tiles
   for (let q = -radius; q <= radius; q++) {
     const r1 = Math.max(-radius, -q - radius);
     const r2 = Math.min(radius, -q + radius);
@@ -154,49 +156,57 @@ export const createMockGameWorld = (): GameWorld => {
       const distance = Math.hypot(q, r);
       let terrain: TerrainType;
 
-      if (distance < 1.5) {
-        // Center: Plains and Grassland
-        terrain =
-          Math.random() > 0.5 ? TerrainType.Plains : TerrainType.Grassland;
-      } else if (distance < 3) {
-        // Inner ring: Diverse land types
-        const rand = Math.random();
-        if (rand > 0.8) {
-          terrain = TerrainType.Forest;
-        } else if (rand > 0.6) {
-          terrain = TerrainType.Jungle;
-        } else if (rand > 0.4) {
-          terrain = TerrainType.Hills;
-        } else if (rand > 0.2) {
-          terrain = TerrainType.Grassland;
-        } else {
-          terrain = TerrainType.Plains;
-        }
+      // Create diverse biome zones to showcase different textures
+      const angle = Math.atan2(r, q); // Angle for creating directional biomes
+
+      // Deterministic pseudo-random based on coordinates
+      const seed = Math.abs(q * 17 + r * 23) % 1000;
+      const noise = seed / 1000;
+
+      if (distance < 2) {
+        // Central grassland and plains core
+        terrain = noise > 0.5 ? TerrainType.Plains : TerrainType.Grassland;
       } else if (distance < 5) {
-        // Middle ring: Hills and Mountains with some variety
-        const rand = Math.random();
-        if (rand > 0.7) {
-          terrain = TerrainType.Mountain;
-        } else if (rand > 0.4) {
-          terrain = TerrainType.Hills;
-        } else if (rand > 0.2) {
-          terrain = TerrainType.Desert;
-        } else {
-          terrain = TerrainType.Tundra;
-        }
-      } else if (distance < 7) {
-        // Outer ring: Mix of land and water
-        const rand = Math.random();
-        if (rand > 0.6) {
-          terrain = TerrainType.Ocean;
-        } else if (rand > 0.4) {
-          terrain = TerrainType.Tundra;
-        } else {
-          terrain = TerrainType.Snow;
-        }
+        // Inner fertile ring with varied terrain - ensure all biome types appear
+        if (noise < 0.15) terrain = TerrainType.Forest;
+        else if (noise < 0.3) terrain = TerrainType.Jungle;
+        else if (noise < 0.45) terrain = TerrainType.Grassland;
+        else if (noise < 0.6) terrain = TerrainType.Plains;
+        else if (noise < 0.75) terrain = TerrainType.Hills;
+        else terrain = TerrainType.Desert;
+      } else if (distance < 10) {
+        // Climate zones based on angle to create distinct regions
+        const climateZone = ((angle + Math.PI) / (2 * Math.PI)) * 8;
+
+        if (climateZone < 1) terrain = TerrainType.Desert;
+        else if (climateZone < 2) terrain = TerrainType.Plains;
+        else if (climateZone < 3) terrain = TerrainType.Forest;
+        else if (climateZone < 4) terrain = TerrainType.Jungle;
+        else if (climateZone < 5) terrain = TerrainType.Grassland;
+        else if (climateZone < 6) terrain = TerrainType.Hills;
+        else if (climateZone < 7) terrain = TerrainType.Tundra;
+        else terrain = TerrainType.Mountain;
+
+        // Add mountainous variation
+        if (noise > 0.9) terrain = TerrainType.Mountain;
+        else if (noise > 0.85) terrain = TerrainType.Hills;
+      } else if (distance < 15) {
+        // Outer harsh terrain
+        if (noise < 0.3) terrain = TerrainType.Mountain;
+        else if (noise < 0.5) terrain = TerrainType.Hills;
+        else if (noise < 0.7) terrain = TerrainType.Tundra;
+        else if (noise < 0.85) terrain = TerrainType.Desert;
+        else terrain = TerrainType.Forest;
       } else {
-        // Far edges: Mostly ocean with some islands
-        terrain = Math.random() > 0.8 ? TerrainType.Snow : TerrainType.Ocean;
+        // Ocean boundary with islands
+        if (noise < 0.8) {
+          terrain = TerrainType.Ocean;
+        } else {
+          // Remote islands with varied terrain
+          if (noise > 0.95) terrain = TerrainType.Mountain;
+          else if (noise > 0.9) terrain = TerrainType.Hills;
+          else terrain = TerrainType.Forest;
+        }
       }
 
       // Generate elevation based on terrain

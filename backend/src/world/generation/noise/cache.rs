@@ -3,7 +3,7 @@
 //! Integrates with the existing GameCache system to provide
 //! efficient caching of noise calculations with spatial coherence.
 
-use crate::core::caching::{GameCache, CacheKeyTrait, CacheStats, CacheConfig, EvictionPolicy};
+use crate::core::caching::{CacheKeyTrait, CacheStats};
 use super::types::*;
 use super::NoiseResult;
 
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Specialized noise cache key for spatial coherence
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]

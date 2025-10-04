@@ -3,7 +3,6 @@
 //! Contains the fundamental Tile struct and TerrainType enum that form the basis
 //! of the tile system.
 
-use hecs::Component;
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use glam::{Vec2, Vec3};
@@ -43,12 +42,17 @@ impl Tile {
     }
 
     /// Get world position as Vec2 for rendering
+    /// ALIGNED with frontend HexUtils.hexToPixel() for consistency
     pub fn world_position(&self) -> Vec2 {
-        // Convert hex to pixel coordinates
-        let hex_size = 1.0; // Base hex size
-        let x = hex_size * (3.0 / 2.0 * self.hex.q as f32);
-        let y = hex_size * ((3.0_f32).sqrt() / 2.0 * self.hex.q as f32 + (3.0_f32).sqrt() * self.hex.r as f32);
-        Vec2::new(x, y)
+        // Convert hex to pixel coordinates - EXACT MATCH to frontend HexUtils
+        let hex_size = 1.0 * 1.1; // Base hex size with spacing factor
+        let sqrt3 = (3.0_f32).sqrt();
+        
+        // EXACT MATCH to frontend HexUtils.hexToPixel()
+        let x = hex_size * (sqrt3 * self.hex.q as f32 + (sqrt3 / 2.0) * self.hex.r as f32);
+        let z = hex_size * (1.5 * self.hex.r as f32);
+        
+        Vec2::new(x, z)
     }
 
     /// Get 3D world position including elevation

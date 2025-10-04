@@ -7,6 +7,7 @@ import { Canvas } from '@react-three/fiber';
 import { Leva } from 'leva';
 import React, { useCallback, useEffect, useState } from 'react';
 
+import { CAMERA_CONFIG } from '../../../../config/world-config';
 import { useLogger, usePerformanceLogger } from '../../../../hooks/use-logger';
 import { useRenderStore } from '../../../../stores/render-store';
 import {
@@ -16,6 +17,7 @@ import {
   type RenderingSettings,
 } from '../../../../utils/capabilities';
 import { performanceMonitor } from '../../../../utils/performance';
+// TextureProvider functionality is now part of RenderingProvider
 import { ShaderProvider } from '../providers/ShaderProvider';
 
 // Browser-compatible environment check with proper typing
@@ -301,8 +303,8 @@ export const RenderInitializer: React.FC<RenderInitializerProps> = ({
     <div className='render-initializer'>
       <Canvas
         camera={{
-          position: [15, 15, 15],
-          fov: 65,
+          position: CAMERA_CONFIG.SPAWN.position,
+          fov: CAMERA_CONFIG.SPAWN.fov,
           near: settings?.logarithmicDepthBuffer ? 1 : 0.1,
           far: settings?.logarithmicDepthBuffer ? 1000000 : 1000,
         }}

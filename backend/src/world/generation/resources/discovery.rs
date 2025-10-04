@@ -8,7 +8,7 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::world::tiles::TileId;
 use crate::core::zig_ffi::HexCoord;

@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 
+import { CAMERA_CONFIG } from '../config/world-config';
 import { PerformanceLogger, RenderLogger } from '../services/logger';
 import type {
   DeviceCapabilities,
@@ -204,10 +205,10 @@ const DEFAULT_QUALITY: RenderQuality = {
 };
 
 const DEFAULT_CAMERA: CameraState = {
-  position: [15, 15, 15],
-  target: [0, 0, 0],
-  zoom: 1.0,
-  fov: 65,
+  position: [...CAMERA_CONFIG.SPAWN.position],
+  target: [...CAMERA_CONFIG.SPAWN.target],
+  zoom: CAMERA_CONFIG.SPAWN.zoom,
+  fov: CAMERA_CONFIG.SPAWN.fov,
   near: 0.1,
   far: 1000,
   isDirty: false,

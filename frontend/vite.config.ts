@@ -121,7 +121,7 @@ export default defineConfig(({ mode }) => ({
     __PROD__: JSON.stringify(mode === 'production'),
   },
 
-  // Enhanced dependency optimization
+  // Enhanced dependency optimization with aggressive cache invalidation
   optimizeDeps: {
     include: [
       'react',
@@ -132,16 +132,39 @@ export default defineConfig(({ mode }) => ({
       '@react-three/drei',
       'zustand',
       '@tauri-apps/api',
+      '@tauri-apps/api/core',
+      '@tauri-apps/api/path',
+      '@tauri-apps/plugin-fs',
       '@tanstack/react-query',
       'framer-motion',
       'lodash-es',
       'date-fns',
       'zod',
+      'immer',
+      'sift',
+      'eventemitter3',
+      'nprogress',
+      'react-hot-toast',
+      'web-vitals',
+      'nanoid',
+      'valtio',
+      'p-queue',
+      'leva',
+      'zustand/middleware',
+      'zustand/middleware/immer',
+      'html-to-image',
+      'react-error-boundary',
+      'valtio/utils',
     ],
     exclude: ['@tauri-apps/cli'],
-    // Force optimization for game-specific libraries
+    // Force optimization and more aggressive cache invalidation
     force: true,
+    // More aggressive cache invalidation based on dependencies
+    entries: ['src/main.tsx', 'src/App.tsx', 'src/components/**/*.tsx'],
   },
+
+  // Add cache directory configuration
+  cacheDir: 'node_modules/.vite',
 
   // Enhanced CSS processing with SCSS optimization
   css: {

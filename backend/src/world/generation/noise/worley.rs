@@ -4,10 +4,8 @@
 //! configurable distance functions for organic terrain generation.
 
 use super::types::*;
-use crate::core::hashing::{CoordinateHasher, HashStrategies, FastHasher};
-use ordered_float::OrderedFloat;
+use crate::core::hashing::{CoordinateHasher, HashStrategies};
 use rayon::prelude::*;
-use std::hash::Hash;
 
 /// High-performance Worley (cellular) noise generator
 #[derive(Debug)]

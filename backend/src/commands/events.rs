@@ -2,7 +2,7 @@
 //! 
 //! Handles emitting events to the frontend for reactive updates
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tracing::{debug, error, warn};
 use std::time::{SystemTime, UNIX_EPOCH};

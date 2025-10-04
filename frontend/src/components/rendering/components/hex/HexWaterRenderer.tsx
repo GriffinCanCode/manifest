@@ -5,15 +5,14 @@
  */
 
 import { useFrame } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   CylinderGeometry,
   DynamicDrawUsage,
   Matrix4,
-  MeshLambertMaterial,
+  MeshBasicMaterial,
   Vector3,
   type InstancedMesh,
-  type ShaderMaterial,
 } from 'three';
 
 import { useRenderStore } from '../../../../stores/render-store';
@@ -22,7 +21,7 @@ import {
   TerrainType,
   type GameTile,
 } from '../../../../utils/game-types';
-import { useShader } from '../../hooks/shader-hooks';
+import { useRendering } from '../../hooks/rendering-hooks';
 
 // Import shaders
 
@@ -41,12 +40,13 @@ interface HexWaterRendererProps {
 export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
   tiles,
   maxInstances = 5000,
-  waveHeight = 0.2,
-  waveSpeed = 1.0,
+  waveHeight: _waveHeight = 0.2,
+  waveSpeed: _waveSpeed = 1.0,
   transparency = 0.8,
 }) => {
+  // ALL HOOKS FIRST - Required by React Rules of Hooks
   const { quality, debug } = useRenderStore();
-  const animatedWaterShader = useShader('animated-water');
+  const renderingContext = useRendering();
   const meshRef = useRef<InstancedMesh>(null);
   const waterTilesRef = useRef<GameTile[]>([]);
 
@@ -56,11 +56,27 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
     [tiles]
   );
 
+  // Get animated water shader material
+  const animatedWaterShader = useMemo(() => {
+    if (!renderingContext?.materialService) {
+      return null;
+    }
+    try {
+      return renderingContext.materialService.getMaterial({
+        terrainType: TerrainType.Ocean,
+        useShader: true,
+        wireframe: debug.showWireframe,
+      });
+    } catch {
+      return null;
+    }
+  }, [renderingContext?.materialService, debug.showWireframe]);
+
   // Water shader material
   const waterMaterial = useMemo(() => {
     if (!animatedWaterShader) {
-      // Fallback to basic material if shader not ready
-      return new MeshLambertMaterial({
+      // Fallback to basic material if shader not ready - use MeshBasicMaterial to avoid GeometricContext issues
+      return new MeshBasicMaterial({
         color: 0x4a90e2,
         transparent: true,
         opacity: transparency,
@@ -68,34 +84,10 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
       });
     }
 
-    // Clone the shader material and update uniforms
-    const material = animatedWaterShader.clone();
-
-    // Update custom uniforms (safely check if they exist)
-    const { uniforms } = material;
-    if (uniforms && typeof uniforms === 'object') {
-      if ('u_waveHeight' in uniforms && uniforms.u_waveHeight) {
-        uniforms.u_waveHeight.value = waveHeight;
-      }
-      if ('u_waveSpeed' in uniforms && uniforms.u_waveSpeed) {
-        uniforms.u_waveSpeed.value = waveSpeed;
-      }
-      if ('u_transparency' in uniforms && uniforms.u_transparency) {
-        uniforms.u_transparency.value = transparency;
-      }
-    }
-
-    // Update wireframe mode
-    material.wireframe = debug.showWireframe;
-
-    return material;
-  }, [
-    animatedWaterShader,
-    waveHeight,
-    waveSpeed,
-    transparency,
-    debug.showWireframe,
-  ]);
+    // Use the shader material directly - uniforms are managed by RenderingProvider
+    // Clone is handled by material service internally
+    return animatedWaterShader;
+  }, [animatedWaterShader, transparency, debug.showWireframe]);
 
   // Create hex geometry based on quality
   const hexGeometry = useMemo(() => {
@@ -134,48 +126,13 @@ export const HexWaterRenderer: React.FC<HexWaterRendererProps> = ({
     waterTilesRef.current = visibleTiles;
   }, [waterTiles, maxInstances]);
 
-  // Update uniforms on each frame
-  useFrame(({ clock, camera: frameCamera }) => {
-    const mesh = meshRef.current;
-    if (!mesh || !animatedWaterShader) return;
-
-    const material = mesh.material as ShaderMaterial;
-    if (!material?.uniforms) return;
-
-    // Update time for animation
-    if (material.uniforms.u_time) {
-      material.uniforms.u_time.value = clock.elapsedTime;
-    }
-
-    // Update camera position
-    if (material.uniforms.u_cameraPosition?.value instanceof Vector3) {
-      material.uniforms.u_cameraPosition.value.copy(frameCamera.position);
-    }
-
-    // Quality-based animation adjustments
-    const qualityMultiplier = quality.level === 'low' ? 0.5 : 1.0;
-    if (material.uniforms.u_waveHeight) {
-      material.uniforms.u_waveHeight.value = waveHeight * qualityMultiplier;
-    }
-    if (material.uniforms.u_waveSpeed) {
-      material.uniforms.u_waveSpeed.value = waveSpeed * qualityMultiplier;
-    }
-
-    // LOD adjustments
-    const cameraDistance = frameCamera.position.length();
-    const lodFactor = Math.min(1.0, 50.0 / cameraDistance);
-    if (material.uniforms.u_waveHeight) {
-      material.uniforms.u_waveHeight.value *= lodFactor;
-    }
-  });
-
   // Update instances when tiles change
   useEffect(() => {
     updateInstances();
   }, [updateInstances]);
 
-  // Don't render if no water tiles or material not ready
-  if (waterTiles.length === 0 || !waterMaterial) {
+  // Don't render if no rendering context, water tiles, or material not ready
+  if (!renderingContext || waterTiles.length === 0 || !waterMaterial) {
     return null;
   }
 
@@ -211,7 +168,7 @@ export const SimpleHexWaterRenderer: React.FC<{
   }, []);
 
   const simpleMaterial = useMemo(() => {
-    return new MeshLambertMaterial({
+    return new MeshBasicMaterial({
       color: 0x4a90e2,
       transparent: true,
       opacity: 0.8,

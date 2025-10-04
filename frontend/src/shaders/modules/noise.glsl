@@ -3,9 +3,12 @@
  * Optimized versions of noise used in Rust backend (Zig SIMD)
  */
 
+#ifndef NOISE_GLSL
+#define NOISE_GLSL
+
 #include ./common.glsl
 
-// Helper functions (must be defined before use)
+// Noise-specific helper functions (provide all needed overloads)
 vec2 mod289(vec2 x) {
   return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
@@ -30,7 +33,7 @@ vec4 taylorInvSqrt(vec4 r) {
   return 1.79284291400159 - 0.85373472095314 * r;
 }
 
-// 2D Simplex noise
+// 2D Simplex noise  
 float simplex2D(vec2 v) {
   const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
                       0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
@@ -268,3 +271,5 @@ float terrainTemperature(vec2 pos, float scale, float latitude) {
 #pragma glslify: export(terrainHeight)
 #pragma glslify: export(terrainMoisture)
 #pragma glslify: export(terrainTemperature)
+
+#endif // NOISE_GLSL

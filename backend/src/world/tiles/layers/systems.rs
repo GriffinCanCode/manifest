@@ -4,7 +4,7 @@
 //! and visibility management within the Bevy ECS framework.
 
 use bevy_ecs::prelude::*;
-use tracing::{debug, instrument};
+use tracing::debug;
 
 use super::{
     stack::TileLayerStack,

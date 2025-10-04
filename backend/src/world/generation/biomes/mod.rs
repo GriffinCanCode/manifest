@@ -15,7 +15,6 @@ pub use systems::{biome_generation_system, biome_transition_system, biome_valida
 pub use transitions::{BiomeTransitionManager, TransitionType};
 
 use bevy_ecs::prelude::*;
-use crate::world::tiles::properties::{Biome, BiomeDefinition};
 
 /// Biome generation resource bundle for ECS
 #[derive(Bundle)]

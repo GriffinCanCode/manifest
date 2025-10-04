@@ -27,7 +27,6 @@ pub use serialization::*;
 
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
-use nalgebra::Vector2;
 use chrono::{DateTime, Utc};
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;

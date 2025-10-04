@@ -6,14 +6,12 @@
 use super::{TectonicsConfig, TectonicPlate, PlateBoundary, BoundaryType};
 use serde::{Deserialize, Serialize};
 use nalgebra::Vector2;
-use line_drawing::{Bresenham, Point};
-use spade::{Triangulation as SpadeTriangulation, Point2};
-use rstar::Point as RStarPoint;
+use line_drawing::Bresenham;
+use spade::Triangulation as SpadeTriangulation;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use rand_distr::{Distribution, Normal, Uniform};
+use rand_distr::{Distribution, Normal};
 use rayon::prelude::*;
-use geo::{Coord, Polygon, Point as GeoPoint};
 use crate::core::scheduler::SchedulerError;
 
 /// Mountain range created by convergent boundaries

@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use tracing::{debug, instrument};
 
 use crate::{
-    core::{scheduler::Scheduler, logging::game_logging},
+    core::scheduler::Scheduler,
     ecs::components::{Position, Name},
     world::tiles::{
         chunks::TileId,
@@ -18,7 +18,7 @@ use crate::{
 use super::{
     core::BiomeGenerator,
     rules::{LuaBiomeRules, BiomeClimateData},
-    transitions::{BiomeTransitionManager, BiomeTransition},
+    transitions::BiomeTransitionManager,
 };
 
 /// Biome generation system - creates biomes from climate data

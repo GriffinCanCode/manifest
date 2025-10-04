@@ -166,22 +166,27 @@ pub fn batchDistances(coords1: []const HexCoord, coords2: []const HexCoord, dist
 }
 
 /// Convert hex coordinates to pixel position (flat-top orientation)
+/// ALIGNED with frontend HexUtils.hexToPixel() for consistency
 pub fn toPixel(q: i32, r: i32, size: f32) PixelPos {
     const q_f = @as(f32, @floatFromInt(q));
     const r_f = @as(f32, @floatFromInt(r));
 
-    // Flat-top hex orientation
-    const x = precise.detMul(size, precise.detAdd(precise.detMul(3.0 / 2.0, q_f), 0.0));
-    const y = precise.detMul(size, precise.detMul(std.math.sqrt(3.0), precise.detAdd(r_f, precise.detMul(0.5, q_f))));
+    // EXACT MATCH to frontend HexUtils.hexToPixel()
+    const hex_size_with_spacing = size * 1.1; // Match HexUtils spacing factor
+    const sqrt3 = std.math.sqrt(3.0);
+    const x = precise.detMul(hex_size_with_spacing, precise.detAdd(precise.detMul(sqrt3, q_f), precise.detMul(sqrt3 / 2.0, r_f)));
+    const y = precise.detMul(hex_size_with_spacing, precise.detMul(1.5, r_f));
 
     return PixelPos.init(x, y);
 }
 
 /// Convert pixel position to hex coordinates (flat-top orientation)
+/// ALIGNED with frontend HexUtils.pixelToHex() for consistency
 pub fn fromPixel(x: f32, y: f32, size: f32) HexCoord {
-    // Flat-top hex orientation (inverse)
-    const q_f = precise.detMul(2.0 / 3.0, precise.detDiv(x, size));
-    const r_f = precise.detSub(precise.detDiv(y, precise.detMul(size, std.math.sqrt(3.0))), precise.detMul(0.5, q_f));
+    // EXACT MATCH to frontend HexUtils.pixelToHex()
+    const sqrt3 = std.math.sqrt(3.0);
+    const q_f = precise.detDiv(precise.detSub(precise.detMul(sqrt3 / 3.0, x), precise.detMul(1.0 / 3.0, y)), size);
+    const r_f = precise.detDiv(precise.detMul(2.0 / 3.0, y), size);
 
     return roundToHex(q_f, r_f);
 }

@@ -47,7 +47,7 @@ export const HEX_TERRAIN_SHADER: ShaderDefinition = {
 
     // Hex terrain properties
     u_hexSize: { value: 1.0 },
-    u_hexSpacing: { value: 1.15 },
+    u_hexSpacing: { value: 1.1 }, // ALIGNED with backend spacing
     u_heightScale: { value: 10.0 },
     u_lodDistance: { value: 100.0 },
     u_qualityLevel: { value: 3 },
@@ -84,6 +84,17 @@ export const HEX_TERRAIN_SHADER: ShaderDefinition = {
     u_showBiomes: { value: false },
     u_showResources: { value: false },
     u_showHeight: { value: false },
+
+    // Procedural texture uniforms
+    u_hasAlbedoTexture: { value: false },
+    u_hasNormalTexture: { value: false },
+    u_hasRoughnessTexture: { value: false },
+    u_hasMetallicTexture: { value: false },
+    u_albedoTexture: { value: null },
+    u_normalTexture: { value: null },
+    u_roughnessTexture: { value: null },
+    u_metallicTexture: { value: null },
+    u_textureScale: { value: 1.0 },
   } as TerrainShaderUniforms,
   defines: {
     // Note: USE_INSTANCING is handled automatically by Three.js

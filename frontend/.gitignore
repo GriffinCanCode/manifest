@@ -15,6 +15,7 @@ pids
 *.pid
 *.seed
 *.pid.lock
+generated_textures/
 
 # Coverage directory used by tools like istanbul
 coverage/

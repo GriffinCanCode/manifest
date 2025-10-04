@@ -123,19 +123,10 @@ fn build_zig_library() -> bool {
     let mut zig_cmd = Command::new("zig");
     zig_cmd.arg("build").current_dir(zig_dir);
     
-    // Use system temp directory for Zig cache AND output to avoid Tauri file watcher conflicts
-    let temp_base = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP"))
-        .unwrap_or_else(|_| "/tmp".to_string());
-    let temp_base = temp_base.trim_end_matches('/');
+    // Use local zig-out directory to avoid temp directory issues
+    let zig_output_dir = zig_dir.join("zig-out").join("lib");
     
-    let zig_cache_dir = format!("{}/.manifest-zig-cache", temp_base);
-    let zig_output_dir = format!("{}/.manifest-zig-output", temp_base);
-    
-    zig_cmd.arg("--cache-dir").arg(&zig_cache_dir);
-    zig_cmd.arg("--prefix-lib-dir").arg(&zig_output_dir);
-    
-    println!("cargo:warning=Using Zig cache directory: {}", zig_cache_dir);
-    println!("cargo:warning=Using Zig output directory: {}", zig_output_dir);
+    println!("cargo:warning=Using Zig output directory: {}", zig_output_dir.display());
     
     // ========================================================================
     // CROSS-COMPILATION TARGET MATCHING  
@@ -219,14 +210,9 @@ fn build_zig_library() -> bool {
                     println!("cargo:warning=Zig build info: {}", stderr);
                 }
                 
-                // Verify artifacts were created in temp directory
-                let temp_base = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP"))
-                    .unwrap_or_else(|_| "/tmp".to_string());
-                let temp_base = temp_base.trim_end_matches('/');
-                let zig_output_dir = format!("{}/.manifest-zig-output", temp_base);
-                
-                let lib_path = Path::new(&zig_output_dir).join("libmanifest_zig.a");
-                let obj_path = Path::new(&zig_output_dir).join("libmanifest_zig.o");
+                // Verify artifacts were created in local zig-out directory
+                let lib_path = zig_output_dir.join("libmanifest_zig.a");
+                let obj_path = zig_output_dir.join("libmanifest_zig.o");
                 
                 if lib_path.exists() {
                     println!("cargo:warning=Zig static archive created: {}", lib_path.display());
@@ -277,14 +263,12 @@ fn configure_rust_linking(zig_available: bool) {
         // ZIG LIBRARY LINKING CONFIGURATION
         // ====================================================================
         
-        // Use the same temp directory as the build process
-        let temp_base = env::var("TMPDIR").or_else(|_| env::var("TMP")).or_else(|_| env::var("TEMP"))
-            .unwrap_or_else(|_| "/tmp".to_string());
-        let temp_base = temp_base.trim_end_matches('/');
-        let zig_output_dir = format!("{}/.manifest-zig-output", temp_base);
+        // Use local zig-out directory 
+        let zig_dir = Path::new("zig-modules");
+        let zig_output_dir = zig_dir.join("zig-out").join("lib");
         
-        let lib_path = Path::new(&zig_output_dir).join("libmanifest_zig.a");
-        let obj_path = Path::new(&zig_output_dir).join("libmanifest_zig.o");
+        let lib_path = zig_output_dir.join("libmanifest_zig.a");
+        let obj_path = zig_output_dir.join("libmanifest_zig.o");
         
         // Determine which artifact to link
         let (link_type, link_name, artifact_path) = if lib_path.exists() {

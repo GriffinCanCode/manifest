@@ -32,10 +32,45 @@ pub use hierarchy::*;
 pub use adjacency::*;
 pub use edges::*;
 pub use ownership::*;
-pub use improvements::*;
 pub use modifiers::*;
 pub use layers::*;
-pub use properties::*;
+
+// Explicit imports from improvements to avoid conflicts with properties
+pub use improvements::{
+    ImprovementKey, ImprovementType, ImprovementState, MAX_IMPROVEMENTS_PER_TILE,
+    Improvement, ImprovementProperties, TileImprovements, ImprovementError,
+    ImprovementResult, ImprovementTurnResults, ImprovementStats,
+    ImprovementCompletionInfo, ImprovementUpgradeInfo, ImprovementDestructionInfo,
+    DestructionCause, StateBreakdown, ImprovementManagerResult, Improvable, YieldProvider,
+    utils as improvement_utils
+};
+
+// Explicit imports from improvements (with aliases for conflicting types)
+pub use improvements::{
+    ImprovementCategory as MainImprovementCategory,
+    ResourceYields as MainResourceYields,
+};
+
+// Explicit imports from properties to avoid conflicts with improvements
+pub use properties::{
+    EnhancedTerrainType, Elevation, ElevationTier, EnhancedClimate, ClimateInterpolation,
+    VegetationType, Biome, BiomeDefinition, BiomeModifiers, ClimateRequirements,
+    BiomeCategory, BiomeSuitabilityCalculator, ResourceConfig, ResourceDefinition,
+    ResourceCategory, ResourceSpawner, MovementCosts, UnitType, HexDirection,
+    WeatherEffect, MovementCategory, DefenseBonuses, DefenseCategory, DefenseBreakdown,
+    DefenseComparison, DefenseSource, FogOfWar, VisionLevel, FogStatus,
+    CulturalInfluence, PlayerCulture, TilePropertiesSystem, update_tile_properties,
+    update_cultural_influence, process_tile_property_changes, PropertiesResult,
+    TileProperties, TilePropertyType, TileSuitability, TileUseCase,
+    utils as properties_utils
+};
+
+// Explicit imports from properties (with aliases for conflicting types)  
+pub use properties::{
+    TileImprovement, ImprovementEffects,
+    ImprovementCategory as PropertyImprovementCategory,
+    ResourceYields as PropertyResourceYields,
+};
 
 #[cfg(test)]
 mod integration_tests {

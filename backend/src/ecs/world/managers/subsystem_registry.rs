@@ -10,8 +10,7 @@ use tracing::{info, warn, error, debug};
 use crate::core::{
     caching::{GameCache, GameCacheBuilder, broadcast_cache_invalidation, global_cache_events, SubsystemStats, events::CacheInvalidationEvent},
     logging::{LoggingSystem, game_logging},
-    reloader::ReloadManager,
-    time::SimulationState
+    reloader::ReloadManager
 };
 use crate::ecs::{
     spatial::OptimalSpatialIndex,
@@ -73,7 +72,7 @@ impl SubsystemRegistry {
     #[cfg(debug_assertions)]
     fn setup_hot_reload() -> Option<ReloadManager> {
         use std::path::Path;
-        use crate::core::reloader::{LuaHandler, ConfigHandler, AssetHandler, FileType};
+        use crate::core::reloader::{LuaHandler, ConfigHandler, AssetHandler};
         
         match ReloadManager::new() {
             Ok(mut manager) => {

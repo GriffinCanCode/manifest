@@ -32,6 +32,8 @@ if [ ! -d "node_modules" ]; then
     echo ""
 fi
 
-# Start the development server
+# Start the development server with cache clearing
+echo -e "${GREEN}🧹 Clearing Vite cache to prevent 504 errors...${NC}"
 echo -e "${GREEN}🌐 Frontend server starting on http://localhost:${VITE_DEV_PORT}${NC}"
+echo -e "${YELLOW}💡 Use 'npm run dev:safe' if you need to skip cache clearing${NC}"
 npm run dev

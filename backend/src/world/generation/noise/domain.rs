@@ -5,7 +5,7 @@
 
 use super::types::*;
 use super::core::SimplexGenerator;
-use crate::core::hashing::{CoordinateHasher, HashStrategies};
+use crate::core::hashing::HashStrategies;
 use ordered_float::OrderedFloat;
 use rayon::prelude::*;
 

@@ -9,11 +9,11 @@ use tracing::{debug, info, instrument};
 
 use crate::{
     core::{
-        scheduler::{Scheduler, SchedulerError}, 
+        scheduler::Scheduler, 
         caching::{GameCache, CacheConfig, CacheKey, CachePriority},
         hashing::{HashStrategies, FastHashMap},
     },
-    scripting::{ScriptManager, ScriptResult, LuaEventData, LuaEventValue},
+    scripting::{ScriptManager, ScriptResult, LuaEventValue},
     world::tiles::{
         chunks::TileId,
         properties::{
@@ -63,7 +63,7 @@ impl BiomeGenerator {
         let script_manager = Arc::new(ScriptManager::new()?);
         let cache = GameCache::new(CacheConfig::default());
         
-        let mut generator = Self {
+        let generator = Self {
             config,
             biome_definitions,
             script_manager,
@@ -176,7 +176,7 @@ impl BiomeGenerator {
                 reason: format!("Biome definition not found: {}", biome_type)
             })?;
         
-        let mut biome = Biome::with_modifiers(biome_type.clone(), suitability, biome_def.modifiers.clone());
+        let biome = Biome::with_modifiers(biome_type.clone(), suitability, biome_def.modifiers.clone());
         
         // Apply Lua rules if enabled
         let final_biome = if self.config.use_lua_rules {
@@ -223,7 +223,7 @@ impl BiomeGenerator {
                 reason: format!("Biome definition not found: {}", biome_type)
             })?;
         
-        let mut biome = Biome::with_modifiers(biome_type.clone(), suitability, biome_def.modifiers.clone());
+        let biome = Biome::with_modifiers(biome_type.clone(), suitability, biome_def.modifiers.clone());
         
         // Apply Lua rules if enabled (synchronous version)
         let final_biome = if self.config.use_lua_rules {

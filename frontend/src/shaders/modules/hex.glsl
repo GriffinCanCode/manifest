@@ -3,11 +3,14 @@
  * Integrates with Rust backend hex mathematics (Zig SIMD optimized)
  */
 
+#ifndef HEX_GLSL
+#define HEX_GLSL
+
 #include ./common.glsl
 
 // Hex grid constants
 #define HEX_SIZE 1.0
-#define HEX_SPACING 1.15
+#define HEX_SPACING 1.1 // ALIGNED with backend spacing
 #define HEX_HEIGHT 0.866025404  // sqrt(3) / 2
 
 // Axial to cube coordinate conversion
@@ -24,24 +27,30 @@ vec2 cubeToAxial(vec3 cube) {
 }
 
 // Hex to pixel conversion (flat-top orientation)
+// ALIGNED with frontend HexUtils.hexToPixel() for consistency
 vec2 hexToPixel(vec2 hex, float size) {
-  float x = size * (1.5 * hex.x);
-  float y = size * (HEX_HEIGHT * (hex.x + 2.0 * hex.y));
-  return vec2(x, y);
+  float hexSizeWithSpacing = size * 1.1; // Match HexUtils spacing factor
+  float sqrt3 = 1.732050808; // sqrt(3)
+  float x = hexSizeWithSpacing * (sqrt3 * hex.x + (sqrt3 / 2.0) * hex.y);
+  float z = hexSizeWithSpacing * (1.5 * hex.y);
+  return vec2(x, z);
 }
 
 // Pixel to hex conversion (flat-top orientation)
+// ALIGNED with frontend HexUtils.pixelToHex() for consistency
 vec2 pixelToHex(vec2 pixel, float size) {
-  float x = (2.0 / 3.0) * pixel.x / size;
-  float y = (-1.0 / 3.0 * pixel.x + HEX_HEIGHT / 3.0 * pixel.y) / size;
-  return vec2(x, y);
+  float sqrt3 = 1.732050808; // sqrt(3)
+  float q = ((sqrt3 / 3.0) * pixel.x - (1.0 / 3.0) * pixel.y) / size;
+  float r = ((2.0 / 3.0) * pixel.y) / size;
+  return vec2(q, r);
 }
 
 // Round fractional cube coordinates to nearest hex
+// Use floor(x + 0.5) for GLSL ES 1.00 compatibility instead of round()
 vec3 cubeRound(vec3 cube) {
-  float rx = round(cube.x);
-  float ry = round(cube.y);
-  float rz = round(cube.z);
+  float rx = floor(cube.x + 0.5);
+  float ry = floor(cube.y + 0.5);
+  float rz = floor(cube.z + 0.5);
 
   float dx = abs(rx - cube.x);
   float dy = abs(ry - cube.y);
@@ -102,7 +111,9 @@ vec2 hexRing(vec2 center, int radius, int index) {
   
   // Walk along current side
   for (int i = 0; i < index; i++) {
-    hex = getHexNeighbor(hex, (index / radius) % 6);
+    // Use mod() instead of % for GLSL ES 1.00 compatibility
+    int direction = int(mod(float(index / radius), 6.0));
+    hex = getHexNeighbor(hex, direction);
   }
   
   return hex;
@@ -181,3 +192,5 @@ vec4 hexPattern(vec2 uv, float scale, float time) {
 #pragma glslify: export(hexGrid)
 #pragma glslify: export(hexTileID)
 #pragma glslify: export(hexPattern)
+
+#endif // HEX_GLSL

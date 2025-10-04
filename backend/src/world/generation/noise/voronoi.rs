@@ -5,9 +5,8 @@
 
 use super::types::*;
 use super::VoronoiPoint;
-use crate::core::hashing::{CoordinateHasher, HashStrategies};
+use crate::core::hashing::CoordinateHasher;
 use fast_poisson::Poisson2D;
-use ordered_float::OrderedFloat;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;

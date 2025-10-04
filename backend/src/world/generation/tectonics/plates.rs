@@ -6,13 +6,11 @@
 use super::TectonicsConfig;
 use serde::{Deserialize, Serialize};
 use nalgebra::Vector2;
-use chrono::{DateTime, Utc};
 use delaunator::{triangulate, Point};
 use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use rand_distr::{Distribution, Normal, Uniform};
+use rand_distr::{Distribution, Normal};
 use rayon::prelude::*;
-use std::collections::HashMap;
 use geo::{Polygon, Coord, Contains};
 use crate::core::scheduler::SchedulerError;
 

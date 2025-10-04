@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-use crate::core::interpolate::{Interpolate, InterpolatedProperty, Color as InterpolateColor};
+use crate::core::interpolate::InterpolatedProperty;
 use super::{
     core::{Position, Health},
     rendering::{Renderable, Color},

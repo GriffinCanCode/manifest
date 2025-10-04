@@ -5,7 +5,6 @@
 
 use bevy_ecs::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use crate::core::hashing::FastHashMap;
 
 /// Biome definition loaded from RON files

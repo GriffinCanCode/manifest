@@ -249,7 +249,7 @@ impl<'w, 's, T: Component> ChangeDetectionExt<'w, 's> for Query<'w, 's, &T, Chan
 /// Central change detection system optimized for archetype performance
 /// Position and Movement change tracking system (split from unified system)
 pub fn position_movement_change_system(
-    mut commands: Commands,
+    commands: Commands,
     mut monitor: ResMut<ChangeMonitor>,
     game_time: Res<GameTime>,
     
@@ -283,7 +283,7 @@ pub fn position_movement_change_system(
     }
     
     // Process individual movement changes and restoration
-    for (entity, mut movement, name) in movement_queries.p1().iter_mut() {
+    for (entity, movement, name) in movement_queries.p1().iter_mut() {
         let entity_name = name.map(|n| n.value()).unwrap_or("unnamed");
         debug!("🚶 Movement changed for entity {} ({}): {:?}", entity.index(), entity_name, *movement);
         
@@ -303,7 +303,7 @@ pub fn position_movement_change_system(
 
 /// Health and Owner change tracking system (split from unified system)
 pub fn health_owner_change_system(
-    mut commands: Commands,
+    commands: Commands,
     mut monitor: ResMut<ChangeMonitor>,
     game_time: Res<GameTime>,
     

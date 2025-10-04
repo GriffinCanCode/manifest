@@ -11,7 +11,7 @@ import { shaderManager } from '../../../shaders/manager';
 import { useRenderStore } from '../../../stores/render-store';
 import type { ShaderUniforms } from '../../../types/shaders';
 
-interface ShaderContextType {
+export interface ShaderContextType {
   getShader: (name: ShaderName) => ShaderMaterial | null;
   updateShaderUniforms: (
     name: ShaderName,

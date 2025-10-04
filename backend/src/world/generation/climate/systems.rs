@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use tracing::{debug, instrument};
 
 use crate::{
-    core::{scheduler::Scheduler, logging::game_logging, hashing::FastHashMap},
+    core::scheduler::Scheduler,
     ecs::{components::{Position, Name}, resources::GameTime},
     world::{
         generation::noise::NoiseGenerator,
@@ -630,7 +630,6 @@ pub fn configure_climate_systems(scheduler: &mut crate::ecs::EcsScheduler, world
     );
 }
 
-use bevy_ecs::schedule::IntoSystemConfigs;
 
 #[cfg(test)]
 mod tests {

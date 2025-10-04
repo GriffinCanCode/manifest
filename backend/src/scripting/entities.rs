@@ -219,7 +219,7 @@ impl LuaEcsIntegration {
         };
         
         match world_ref.try_write() {
-            Some(mut world) => {
+            Some(world) => {
                 let bevy_entity: Entity = entity.into();
                 
                 // For safety, only expose basic component data that's safe to access from Lua
@@ -264,7 +264,7 @@ impl LuaEcsIntegration {
         };
         
         match world_ref.try_write() {
-            Some(mut world) => {
+            Some(world) => {
                 let bevy_entity: Entity = entity.into();
                 
                 // Check for specific component types that are safe to expose

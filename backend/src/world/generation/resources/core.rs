@@ -8,11 +8,11 @@ use std::collections::HashMap;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use bevy_ecs::prelude::*;
-use tracing::{info, debug, warn, error};
-use rand::{Rng, SeedableRng};
+use tracing::{info, debug};
+use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
-use crate::scripting::{ComprehensiveLuaHandler, ScriptResult, LuaEventData};
+use crate::scripting::ComprehensiveLuaHandler;
 use crate::world::tiles::TileId;
 use crate::world::generation::noise::NoiseGenerator;
 use crate::world::generation::tectonics::TectonicPlate;

@@ -3,15 +3,32 @@
  * Provides extensible pass management with render target support
  */
 
-import type { Camera, Scene, WebGLRenderer, WebGLRenderTarget } from 'three';
 import {
+  type Camera,
   Color,
   Mesh,
   MeshBasicMaterial,
   OrthographicCamera,
   PlaneGeometry,
+  type Scene,
   Scene as ThreeScene,
+  type WebGLRenderer,
+  type WebGLRenderTarget,
 } from 'three';
+
+// Extend Window interface for frame counting
+declare global {
+  interface Window {
+    __renderFrameCount?: number;
+  }
+}
+
+// Type for post-processing callback
+type PostProcessingCallback = (
+  renderer: WebGLRenderer,
+  inputBuffer: WebGLRenderTarget,
+  camera: Camera
+) => void;
 
 export interface RenderPassConfig {
   name: string;
@@ -127,7 +144,7 @@ export class GeometryPass extends RenderPass {
 
     // Reduced debug logging
     if (import.meta.env.MODE === 'development') {
-      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      const frameCount = window.__renderFrameCount ?? 0;
       if (frameCount % 60 === 0) {
         console.warn(
           `GeometryPass: Rendered scene to ${shouldRenderToScreen ? 'screen' : 'buffer'}`
@@ -165,9 +182,7 @@ export class ShadowPass extends RenderPass {
  * Coordinates with PostProcessingComposer for intelligent integration
  */
 export class PostProcessPass extends RenderPass {
-  private postProcessingCallback:
-    | ((renderer: any, inputBuffer: any, camera: any) => void)
-    | null = null;
+  private postProcessingCallback: PostProcessingCallback | null = null;
 
   constructor(config: Partial<RenderPassConfig> = {}) {
     super({
@@ -184,9 +199,7 @@ export class PostProcessPass extends RenderPass {
   /**
    * Set the PostProcessingComposer callback for coordination
    */
-  setPostProcessingCallback(
-    callback: (renderer: any, inputBuffer: any, camera: any) => void
-  ): void {
+  setPostProcessingCallback(callback: PostProcessingCallback): void {
     this.postProcessingCallback = callback;
   }
 
@@ -225,7 +238,7 @@ export class PostProcessPass extends RenderPass {
 
     // Reduced debug logging
     if (import.meta.env.MODE === 'development') {
-      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      const frameCount = window.__renderFrameCount ?? 0;
       if (frameCount % 60 === 0) {
         const method = this.postProcessingCallback
           ? 'PostProcessingComposer'
@@ -272,7 +285,7 @@ export class PostProcessPass extends RenderPass {
       copyMesh.geometry.dispose();
 
       // Reduced logging
-      const frameCount = ((window as any).__renderFrameCount as number) ?? 0;
+      const frameCount = window.__renderFrameCount ?? 0;
       if (frameCount % 60 === 0) {
         console.warn('PostProcessPass: Successfully copied buffer to screen');
       }

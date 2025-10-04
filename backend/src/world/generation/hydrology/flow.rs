@@ -3,7 +3,7 @@
 //! High-performance flow accumulation using Zig backend with D8 flow direction
 //! and SIMD-optimized calculations for large terrain datasets.
 
-use super::{HydrologyConfig, FlowAccumulation, FlowDirectionVector};
+use super::{HydrologyConfig, FlowAccumulation};
 use super::zig_ffi::{FlowGrid, batch_slope_calculations};
 use crate::core::scheduler::SchedulerError;
 use nalgebra::Vector2;
@@ -66,7 +66,7 @@ impl FlowCalculator {
         flow_accumulation: &FlowAccumulation,
         threshold: f64,
     ) -> Vec<Vector2<f64>> {
-        let mut stream_points = Vec::new();
+        let stream_points = Vec::new();
         
         // This would typically iterate through the flow accumulation grid
         // and identify cells above the threshold

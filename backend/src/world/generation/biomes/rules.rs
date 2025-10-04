@@ -22,7 +22,7 @@ impl LuaBiomeRules {
         let script_manager = Arc::new(ScriptManager::new()?);
         let decision_trees = Self::create_default_decision_trees();
         
-        let mut rules = Self { script_manager, decision_trees };
+        let rules = Self { script_manager, decision_trees };
         rules.load_biome_scripts()?;
         
         Ok(rules)

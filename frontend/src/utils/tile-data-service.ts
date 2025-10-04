@@ -57,7 +57,9 @@ export class TileDataService {
   private lastStreamingGeneration = 0;
   private lastUpdateTime = 0;
   private isStreaming = false;
-  private mockGameWorld: { tiles: GameTile[] } | null = null;
+  private currentStreamingPromise: Promise<TileStreamingResponse> | null = null;
+  // Removed unused mockGameWorld property
+  private preferDirectInvoke = false; // Track which IPC method works
 
   private metrics: StreamingMetrics = {
     instancesStreamed: 0,
@@ -74,42 +76,69 @@ export class TileDataService {
   public async streamTiles(
     request: TileStreamingRequest
   ): Promise<TileStreamingResponse> {
-    if (this.isStreaming) {
-      console.warn('Tile streaming already in progress, skipping request');
-      return this.getCachedResponse(request);
+    if (this.isStreaming && this.currentStreamingPromise) {
+      console.warn(
+        'Tile streaming already in progress, waiting for completion...'
+      );
+      return await this.currentStreamingPromise;
     }
 
     this.isStreaming = true;
     const startTime = performance.now();
 
+    // Create the streaming promise for concurrent requests to wait on
+    this.currentStreamingPromise = this.performStreaming(request, startTime);
+
+    try {
+      return await this.currentStreamingPromise;
+    } finally {
+      this.isStreaming = false;
+      this.currentStreamingPromise = null;
+    }
+  }
+
+  private async performStreaming(
+    request: TileStreamingRequest,
+    startTime: number
+  ): Promise<TileStreamingResponse> {
     try {
       let response: TileStreamingResponse;
 
-      // Try to use sophisticated IPC system first
-      try {
-        const ipc = getGlobalIPC();
-        response = await ipc.service.command('stream_tiles', {
-          request: {
-            ...request,
-            camera_position: [...request.camera_position] as [
-              number,
-              number,
-              number,
-            ],
-            lod_levels: [...request.lod_levels],
-          },
-        });
-        console.log('✅ Tile streaming via sophisticated IPC system');
-      } catch (ipcError) {
-        // Fall back to direct invoke if sophisticated IPC is not available
-        console.warn(
-          '⚠️ Falling back to direct invoke for tile streaming:',
-          ipcError
-        );
+      // OPTIMIZED: Use preferred IPC method based on previous success
+      if (this.preferDirectInvoke) {
+        // Use direct invoke if we know it works
         response = await invoke<TileStreamingResponse>('stream_tiles', {
           request,
         });
-        console.log('⚠️ Tile streaming via direct invoke fallback');
+        console.warn('✅ Tile streaming via direct invoke (preferred)');
+      } else {
+        // Try sophisticated IPC first, but remember if it fails
+        try {
+          const ipc = getGlobalIPC();
+          response = await ipc.service.command('stream_tiles', {
+            request: {
+              ...request,
+              camera_position: [...request.camera_position] as [
+                number,
+                number,
+                number,
+              ],
+              lod_levels: [...request.lod_levels],
+            },
+          });
+          console.warn('✅ Tile streaming via sophisticated IPC system');
+        } catch (ipcError) {
+          // Remember that direct invoke is preferred and use it
+          this.preferDirectInvoke = true;
+          console.warn(
+            '⚠️ Sophisticated IPC failed, switching to direct invoke:',
+            ipcError
+          );
+          response = await invoke<TileStreamingResponse>('stream_tiles', {
+            request,
+          });
+          console.warn('✅ Tile streaming via direct invoke (now preferred)');
+        }
       }
 
       // Validate response structure
@@ -137,8 +166,6 @@ export class TileDataService {
     } catch (error) {
       console.error('Failed to stream tiles from backend:', error);
       return this.getEmptyResponse();
-    } finally {
-      this.isStreaming = false;
     }
   }
 

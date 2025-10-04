@@ -197,9 +197,9 @@ impl Validator {
             });
         }
 
-        if request.max_tiles > 10000 {
+        if request.max_tiles > 25000 {
             return Err(IPCErrorType::Validation {
-                message: "Max tiles cannot exceed 10000 for performance reasons".to_string(),
+                message: "Max tiles cannot exceed 25000 for performance reasons".to_string(),
                 field: Some("max_tiles".to_string()),
             });
         }

@@ -4,7 +4,6 @@
 //! for managing tile properties with Lua scripting integration.
 
 use bevy_ecs::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::{sync::Arc, collections::HashMap, path::PathBuf};
 use tracing::{debug, info, error};
 use crate::core::hashing::FastHashMap;
@@ -377,10 +376,10 @@ impl TilePropertiesSystem {
     }
 
     /// Reload configuration files
-    pub fn reload_configs(&mut self) -> ScriptResult<()> {
+    pub async fn reload_configs(&mut self) -> ScriptResult<()> {
         self.biome_definitions = Self::load_biome_definitions()?;
         self.resource_config = Self::load_resource_config()?;
-        self.properties_cache.clear(); // Clear cache after reload
+        self.properties_cache.clear().await; // Clear cache after reload
         
         info!("🔄 Reloaded tile properties configurations");
         Ok(())
@@ -420,7 +419,7 @@ pub fn process_tile_property_changes(
     mut changed_tiles: Query<(Entity, &TileId, &mut Biome), Changed<EnhancedClimate>>,
     properties_system: Res<TilePropertiesSystem>,
 ) {
-    for (entity, tile_id, mut biome) in changed_tiles.iter_mut() {
+    for (entity, tile_id, biome) in changed_tiles.iter_mut() {
         // Recalculate biome when climate changes
         // This would need access to climate and terrain components
         debug!("Processing property changes for tile {:?}", tile_id);

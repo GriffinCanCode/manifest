@@ -881,3 +881,154 @@ export fn manifest_batch_point_distances(
         distances[0 .. actual_count1 * actual_count2],
     );
 }
+
+// Watershed delineation exports
+export fn manifest_watershed_delineate(
+    flow_grid: *hydrology.flow.FlowGrid,
+    outlet_x: usize,
+    outlet_y: usize,
+    watershed_id: u32,
+    boundary_points_x: [*]f64,
+    boundary_points_y: [*]f64,
+    boundary_points_elevation: [*]f64,
+    max_boundary_points: usize,
+    boundary_count: *usize,
+    area: *f64,
+    perimeter: *f64,
+    relief: *f64,
+) bool {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    var delineator = hydrology.watersheds.WatershedDelineator.init(flow_grid, allocator) catch return false;
+    defer delineator.deinit();
+
+    delineator.delineateWatershed(outlet_x, outlet_y, watershed_id) catch return false;
+
+    // Find the watershed we just created
+    for (delineator.watersheds.items) |watershed| {
+        if (watershed.id == watershed_id) {
+            // Copy boundary points (limited by max_boundary_points)
+            const actual_count = @min(watershed.boundary_points.items.len, max_boundary_points);
+            boundary_count.* = actual_count;
+
+            for (0..actual_count) |i| {
+                boundary_points_x[i] = watershed.boundary_points.items[i].x;
+                boundary_points_y[i] = watershed.boundary_points.items[i].y;
+                boundary_points_elevation[i] = watershed.boundary_points.items[i].elevation;
+            }
+
+            // Set morphometric data
+            area.* = watershed.area;
+            perimeter.* = watershed.perimeter;
+            relief.* = watershed.relief;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+export fn manifest_watershed_calculate_morphometrics(
+    boundary_points_x: [*]const f64,
+    boundary_points_y: [*]const f64,
+    boundary_points_elevation: [*]const f64,
+    boundary_count: usize,
+    area: *f64,
+    perimeter: *f64,
+    shape_factor: *f64,
+    mean_elevation: *f64,
+    relief: *f64,
+) void {
+    if (boundary_count == 0) return;
+
+    // Calculate area using shoelace formula
+    var calculated_area: f64 = 0.0;
+    for (0..boundary_count) |i| {
+        const next_i = (i + 1) % boundary_count;
+        calculated_area += boundary_points_x[i] * boundary_points_y[next_i] - boundary_points_x[next_i] * boundary_points_y[i];
+    }
+    calculated_area = @abs(calculated_area) / 2.0;
+    area.* = calculated_area;
+
+    // Calculate perimeter
+    var calculated_perimeter: f64 = 0.0;
+    for (0..boundary_count) |i| {
+        const next_i = (i + 1) % boundary_count;
+        const dx = boundary_points_x[next_i] - boundary_points_x[i];
+        const dy = boundary_points_y[next_i] - boundary_points_y[i];
+        calculated_perimeter += @sqrt(dx * dx + dy * dy);
+    }
+    perimeter.* = calculated_perimeter;
+
+    // Calculate shape factor (area / perimeter²)
+    if (calculated_perimeter > 0.0) {
+        shape_factor.* = calculated_area / (calculated_perimeter * calculated_perimeter);
+    } else {
+        shape_factor.* = 0.0;
+    }
+
+    // Calculate elevation statistics
+    var total_elevation: f64 = 0.0;
+    var min_elevation: f64 = boundary_points_elevation[0];
+    var max_elevation: f64 = boundary_points_elevation[0];
+
+    for (0..boundary_count) |i| {
+        const elev = boundary_points_elevation[i];
+        total_elevation += elev;
+        min_elevation = @min(min_elevation, elev);
+        max_elevation = @max(max_elevation, elev);
+    }
+
+    mean_elevation.* = total_elevation / @as(f64, @floatFromInt(boundary_count));
+    relief.* = max_elevation - min_elevation;
+}
+
+// River segment calculation exports
+export fn manifest_rivers_calculate_segments(
+    points_x: [*]const f64,
+    points_y: [*]const f64,
+    point_count: usize,
+    min_segment_length: f64,
+    segments_x: [*]f64,
+    segments_y: [*]f64,
+    segment_lengths: [*]f64,
+    max_segments: usize,
+    segment_count: *usize,
+) void {
+    if (point_count < 2) {
+        segment_count.* = 0;
+        return;
+    }
+
+    var current_segment: usize = 0;
+    var current_length: f64 = 0.0;
+    var segment_start_x = points_x[0];
+    var segment_start_y = points_y[0];
+
+    for (1..point_count) |i| {
+        const dx = points_x[i] - points_x[i - 1];
+        const dy = points_y[i] - points_y[i - 1];
+        const distance = @sqrt(dx * dx + dy * dy);
+        current_length += distance;
+
+        // If we've accumulated enough length or this is the last point, create a segment
+        if (current_length >= min_segment_length or i == point_count - 1) {
+            if (current_segment < max_segments) {
+                segments_x[current_segment] = (segment_start_x + points_x[i]) / 2.0;
+                segments_y[current_segment] = (segment_start_y + points_y[i]) / 2.0;
+                segment_lengths[current_segment] = current_length;
+                current_segment += 1;
+            }
+
+            // Start new segment
+            segment_start_x = points_x[i];
+            segment_start_y = points_y[i];
+            current_length = 0.0;
+        }
+    }
+
+    segment_count.* = current_segment;
+}

@@ -3,6 +3,9 @@
  * Shared across all shaders for consistency
  */
 
+#ifndef COMMON_GLSL
+#define COMMON_GLSL
+
 // Mathematical constants
 #define PI 3.14159265359
 #define TAU 6.28318530718
@@ -138,3 +141,5 @@ vec3 softLight(vec3 base, vec3 blend) {
 #pragma glslify: export(mirrorUV)
 #pragma glslify: export(overlay)
 #pragma glslify: export(softLight)
+
+#endif // COMMON_GLSL

@@ -4,7 +4,7 @@
 //! Provides flood risk assessment and inundation mapping.
 
 use super::{HydrologyConfig, FlowAccumulation};
-use super::zig_ffi::{zig_flood_fill_inundation, zig_batch_flood_risk_assessment, FloodInundationResult};
+use super::zig_ffi::{zig_flood_fill_inundation, zig_batch_flood_risk_assessment};
 use crate::core::scheduler::SchedulerError;
 use nalgebra::Vector2;
 

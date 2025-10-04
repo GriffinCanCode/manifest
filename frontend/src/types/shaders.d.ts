@@ -10,12 +10,27 @@ declare module '*.glsl' {
   export default source;
 }
 
+declare module '*.glsl?raw' {
+  const source: string;
+  export default source;
+}
+
 declare module '*.vert' {
   const source: string;
   export default source;
 }
 
+declare module '*.vert?raw' {
+  const source: string;
+  export default source;
+}
+
 declare module '*.frag' {
+  const source: string;
+  export default source;
+}
+
+declare module '*.frag?raw' {
   const source: string;
   export default source;
 }
@@ -33,7 +48,7 @@ declare module '*.fs' {
 // Shader-specific types for our hex terrain system
 export interface ShaderUniforms {
   [key: string]: {
-    value: any;
+    value: unknown;
     type?: string;
   };
 }
@@ -68,5 +83,16 @@ export interface TerrainShaderUniforms extends ShaderUniforms {
   // Texture maps
   u_heightMap?: { value: THREE.Texture };
   u_biomeMap?: { value: THREE.Texture };
+
+  // PBR texture uniforms
+  u_hasAlbedoTexture: { value: boolean };
+  u_hasNormalTexture: { value: boolean };
+  u_hasRoughnessTexture: { value: boolean };
+  u_hasMetallicTexture: { value: boolean };
+  u_albedoTexture: { value: THREE.Texture | null };
+  u_normalTexture: { value: THREE.Texture | null };
+  u_roughnessTexture: { value: THREE.Texture | null };
+  u_metallicTexture: { value: THREE.Texture | null };
+  u_textureScale: { value: number };
   u_resourceMap?: { value: THREE.Texture };
 }

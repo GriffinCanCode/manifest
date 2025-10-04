@@ -1,6 +1,6 @@
 /**
- * Game Canvas with WebGL2/WebGPU Initialization
- * Integrates device detection, performance monitoring, and optimized rendering
+ * Game Canvas with WebGL2/WebGPU Initialization and Procedural Texture Support
+ * Integrates device detection, performance monitoring, optimized rendering, and procedural textures
  */
 
 import { Environment, Html } from '@react-three/drei';
@@ -11,6 +11,10 @@ import type * as THREE from 'three';
 import { Vector3 } from 'three';
 
 import { LoggingUtils } from '../../config/logging';
+import {
+  WORLD_CONFIG,
+  getWorldFramingCameraPosition,
+} from '../../config/world-config';
 import { useLogger, usePerformanceLogger } from '../../hooks/use-logger';
 import { useTileStreaming } from '../../hooks/use-tile-streaming';
 import { usePostProcessingMetrics } from '../../hooks/usePostProcessingMetrics';
@@ -30,9 +34,16 @@ import {
   type GameTile,
   type GameUnit,
 } from '../../utils/game-types';
+import { R3FExposer } from '../../utils/r3f-exposure';
+import { throttledLog } from '../../utils/throttled-logger';
+import { useTileDebug } from '../../utils/tile-debug-hook';
 import { CameraController } from '../controls';
-import { HexInstanceRenderer } from '../rendering/components/hex/HexInstanceRenderer';
+import { HexRenderingSystem } from '../rendering/components/hex/HexRenderingSystem';
+import { MultiStepRenderer } from '../rendering/components/pipeline/MultiStepRenderer';
 import RenderInitializer from '../rendering/components/pipeline/RenderInitializer';
+import { RenderingDebugInfo } from '../rendering/hooks/rendering-hooks';
+import { RenderingFrameUpdater } from '../rendering/hooks/RenderingFrameUpdater';
+import { RenderingProvider } from '../rendering/providers/RenderingProvider';
 
 /**
  * Now using sophisticated HexInstanceRenderer with BVH acceleration and advanced materials
@@ -56,8 +67,10 @@ const GameScene: React.FC = () => {
   const renderLogger = useLogger('render', 'GameScene');
   const performanceLogger = usePerformanceLogger('performance', 'GameScene');
 
-  // Camera position ref for tile streaming - positioned to view hex grid centered at origin
-  const cameraPositionRef = useRef(new Vector3(0, 20, 20));
+  // Camera position ref for tile streaming - positioned to view actual tile area
+  // Tiles are around hex (4, -43) which converts to world coords around (-30, 0, -70)
+  // Position camera to look at the center of the tile area
+  const cameraPositionRef = useRef(new Vector3(-20, 40, -40));
   const lastCameraLogRef = useRef(0);
 
   // Real tile streaming from backend (replaces mock data)
@@ -69,15 +82,13 @@ const GameScene: React.FC = () => {
     refreshTiles,
   } = useTileStreaming({
     cameraPosition: cameraPositionRef.current,
-    maxDistance: 50,
-    quality:
-      quality.level === 'low'
-        ? 'low'
-        : quality.level === 'ultra'
-          ? 'high'
-          : 'medium',
+    maxDistance: 106, // Match optimized radius from previous fix
+    quality: 'high', // Force high quality to get LOD levels [0, 1, 2] and show more tiles
     autoStream: true,
   });
+
+  // COMPREHENSIVE DEBUG: Monitor tile streaming
+  useTileDebug(tiles, 'GameCanvas');
 
   // Log tile streaming events
   React.useEffect(() => {
@@ -111,8 +122,29 @@ const GameScene: React.FC = () => {
     [tiles]
   );
 
+  // Initialize camera position to look at tiles
+  const cameraInitialized = useRef(false);
+
   // Performance monitoring and camera tracking
   useFrame(state => {
+    // Initialize camera position once when tiles are loaded
+    if (!cameraInitialized.current && tiles.length > 0) {
+      // Use centralized world framing to position camera for entire map
+      const { position, target } = getWorldFramingCameraPosition();
+
+      state.camera.position.set(...position);
+      state.camera.lookAt(...target);
+      cameraInitialized.current = true;
+
+      renderLogger.info('🎥 Camera positioned to view entire world', {
+        position: state.camera.position,
+        target,
+        tilesCount: tiles.length,
+        worldSize: WORLD_CONFIG.WORLD_SIZE,
+        totalTiles: WORLD_CONFIG.TOTAL_TILES,
+      });
+    }
+
     // Update camera position for tile streaming
     const previousPosition = cameraPositionRef.current.clone();
     cameraPositionRef.current.copy(state.camera.position);
@@ -207,6 +239,19 @@ const GameScene: React.FC = () => {
         },
         refreshTiles: button(() => void refreshTiles()),
         error: { value: tileError ?? 'None', disabled: true },
+      },
+      { collapsed: !debug.showStats }
+    );
+
+    // Development texture controls
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useControls(
+      'Procedural Textures',
+      {
+        showTexturePanel: button(() => {
+          // This could open a full texture test panel in a modal
+          console.warn('🎨 Texture panel would open here');
+        }),
       },
       { collapsed: !debug.showStats }
     );
@@ -321,32 +366,56 @@ const GameScene: React.FC = () => {
     );
   }
 
-  // ULTRA-SIMPLE RENDERING: Skip MultiStepRenderer completely to avoid shader issues
+  // INTEGRATED RENDERING: Using proper pipeline with coordinated hex rendering
   return (
-    <>
-      {/* BASIC LIGHTING - absolutely minimal */}
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
+    <MultiStepRenderer
+      enableSelection
+      enableDebug={debug.showStats}
+      enableTAA={capabilities?.supportsHDR}
+    >
+      {/* Rendering system frame updater - handles uniform updates */}
+      <RenderingFrameUpdater />
 
-      {/* SOPHISTICATED HEX RENDERING: Advanced instanced rendering with BVH acceleration */}
-      {/* DEBUG: Monitor tile data flow */}
+      {/* R3F Diagnostics Exposure */}
+      <R3FExposer />
+
+      {/* NORMAL LIGHTING - good visibility with realistic shadows */}
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[10, 10, 5]} intensity={1.2} />
+      <directionalLight position={[-5, 15, -5]} intensity={0.4} />
+
+      {/* CAMERA CONTROLS - Position to view tile area around (-30, 0, -70) */}
+      <CameraController
+        mode='orbital'
+        constraints={{
+          minDistance: 15,
+          maxDistance: 150,
+          enablePan: true,
+          enableZoom: true,
+          enableRotate: true,
+        }}
+      />
+
+      {/* COORDINATED HEX RENDERING: All hex renderers working together */}
       {(() => {
-        console.warn(`🔍 TILE FLOW DEBUG:`, {
-          'gameWorld.tiles.length': gameWorld.tiles.length,
-          'raw tiles.length': tiles.length,
-          tilesLoading,
-          'tiles sample': gameWorld.tiles.slice(0, 2),
-        });
+        throttledLog(
+          'tile-flow-debug',
+          'log',
+          `🔍 TILE FLOW: ${tiles.length} tiles loaded from backend`,
+          [],
+          120000
+        );
         return null;
       })()}
 
-      <HexInstanceRenderer
-        tiles={gameWorld.tiles}
+      <HexRenderingSystem
+        tiles={tiles}
         onTileClick={handleTileClick}
         selectedTileId={selectedTile?.id}
-        maxInstances={5000}
-        enableSpatialQueries
-        enableStreaming={false}
+        highlightedTiles={new Set()}
+        isLoading={tilesLoading}
+        cameraPosition={cameraPositionRef.current}
+        maxInstances={10000}
       />
 
       {/* Add hex borders for Civ-like appearance - DISABLED DUE TO WEBGL CONTEXT LOSS */}
@@ -359,7 +428,7 @@ const GameScene: React.FC = () => {
       /> */}
 
       {/* EMERGENCY FALLBACK: Simple cube rendering if sophisticated renderer fails */}
-      {gameWorld.tiles.length > 0 && (
+      {tiles.length > 0 && (
         <group>
           {/* Green indicator: tiles are loaded */}
           <mesh position={[0, 8, 0]}>
@@ -412,14 +481,6 @@ const GameScene: React.FC = () => {
       {/* Game UI overlays */}
       <GameUIOverlays selectedTile={selectedTile} selectedUnit={selectedUnit} />
 
-      {/* Enhanced camera controls */}
-      <CameraController
-        mode='orbital'
-        enableShake={false}
-        enableFocus
-        smoothTransitions
-      />
-
       {/* DEBUG: Force camera to a good viewing position */}
       <mesh position={[0, 20, 0]}>
         <sphereGeometry args={[0.1, 8, 8]} />
@@ -464,7 +525,7 @@ const GameScene: React.FC = () => {
       {/* {quality.level !== 'low' && !debug.disableFog && (
         <fog attach='fog' args={['#87CEEB', 20, 80]} />
       )} */}
-    </>
+    </MultiStepRenderer>
   );
 };
 
@@ -682,33 +743,36 @@ const AdaptiveEnvironment: React.FC<{
 };
 
 /**
- * Main Game Canvas component
+ * Main Game Canvas component with integrated procedural texture system
  */
 const GameCanvas: React.FC = () => {
   const renderLogger = useLogger('render', 'GameCanvas');
 
   const handleInitialized = useCallback(
     (capabilities: DeviceCapabilities, settings: RenderingSettings) => {
-      renderLogger.info('Render system initialized successfully', {
-        capabilities: {
-          supportsHDR: capabilities.supportsHDR,
-          supportsShadows: capabilities.supportsShadows,
-          maxTextureSize: capabilities.maxTextureSize,
-          preferredBackend: capabilities.preferredBackend,
-        },
-        settings: {
-          backend: settings.backend,
-          pixelRatio: settings.pixelRatio,
-          antialias: settings.antialias,
-        },
-      });
+      renderLogger.info(
+        '🎨 Enhanced render system initialized with texture support',
+        {
+          capabilities: {
+            supportsHDR: capabilities.supportsHDR,
+            supportsShadows: capabilities.supportsShadows,
+            maxTextureSize: capabilities.maxTextureSize,
+            preferredBackend: capabilities.preferredBackend,
+          },
+          settings: {
+            backend: settings.backend,
+            pixelRatio: settings.pixelRatio,
+            antialias: settings.antialias,
+          },
+        }
+      );
     },
     [renderLogger]
   );
 
   const handleInitError = useCallback(
     (error: Error) => {
-      renderLogger.error('Render initialization failed', error, {
+      renderLogger.error('❌ Enhanced render initialization failed', error, {
         errorName: error.name,
         errorMessage: error.message,
         userAgent: navigator.userAgent,
@@ -719,17 +783,23 @@ const GameCanvas: React.FC = () => {
 
   return (
     <div className='game-canvas'>
-      <RenderInitializer
-        enableDevTools={LoggingUtils.isDevelopment()}
-        onInitialized={handleInitialized}
-        onError={handleInitError}
-      >
-        <Suspense fallback={null}>
-          <GameScene />
-        </Suspense>
-      </RenderInitializer>
+      {/* Unified rendering provider for materials, textures, and uniforms */}
+      <RenderingProvider autoGenerate={LoggingUtils.isDevelopment()}>
+        <RenderInitializer
+          enableDevTools={LoggingUtils.isDevelopment()}
+          onInitialized={handleInitialized}
+          onError={handleInitError}
+        >
+          <Suspense fallback={null}>
+            <GameScene />
+          </Suspense>
+        </RenderInitializer>
 
-      <GameControlsUI />
+        <GameControlsUI />
+
+        {/* Rendering System Status in Development */}
+        {LoggingUtils.isDevelopment() && <RenderingDebugInfo />}
+      </RenderingProvider>
     </div>
   );
 };

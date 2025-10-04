@@ -9,7 +9,6 @@ use crate::core::scheduler::SchedulerError;
 use nalgebra::Vector2;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use rand_distr::{Distribution, Uniform};
 
 /// Spring generation system
 #[derive(Debug)]

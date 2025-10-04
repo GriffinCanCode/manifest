@@ -16,7 +16,6 @@ pub use effects::{OrographicEffects, ContinentalEffects};
 pub use systems::{climate_generation_system, climate_interpolation_system};
 
 use bevy_ecs::prelude::*;
-use serde::{Deserialize, Serialize};
 
 /// Climate generation resource bundle for ECS
 /// Note: Not a Bundle since these are Resources, not Components
